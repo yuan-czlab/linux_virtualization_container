@@ -1,0 +1,26 @@
+# ===== PPT 课件（二进制文件，本地保留不提交） =====
+courseware/
+*.pptx
+*.ppt
+
+# ===== 操作系统 =====
+.DS_Store
+Thumbs.db
+
+# ===== IDE =====
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ===== Python =====
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.env
+
+# ===== 临时文件 =====
+*.tmp
+*.bak
+*.log
