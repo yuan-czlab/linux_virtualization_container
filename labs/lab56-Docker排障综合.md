@@ -151,6 +151,52 @@ docker system prune -a --volumes
 # ⚠️ 慎用！会删除所有停止的容器、未使用的网络、悬空镜像、构建缓存
 ```
 
+### 故障7：容器Up但应用不健康
+
+```bash
+# 创建带健康检查的 Nginx
+docker run -d --name health-web -p 18080:80 \
+  --health-cmd='wget -q -O- http://127.0.0.1/ || exit 1' \
+  --health-interval=5s --health-timeout=2s --health-retries=2 \
+  nginx:alpine
+
+docker ps
+docker inspect --format '{{json .State.Health}}' health-web
+
+# 故意破坏首页，使检查返回失败
+docker exec health-web sh -c 'rm -f /usr/share/nginx/html/index.html'
+sleep 12
+docker ps
+docker inspect --format '{{range .State.Health.Log}}{{.Output}}{{end}}' health-web
+
+# 修复
+docker exec health-web sh -c 'echo healthy > /usr/share/nginx/html/index.html'
+sleep 12
+docker ps
+```
+
+回答：为什么容器状态仍是`Up`，健康状态却可以是`unhealthy`？
+
+### 故障8：内存限制与OOM
+
+```bash
+docker run -d --name limited --memory=64m --cpus=0.5 alpine sleep 3600
+docker inspect --format 'Memory={{.HostConfig.Memory}} NanoCPUs={{.HostConfig.NanoCpus}}' limited
+docker stats --no-stream limited
+
+# 在受限容器中申请超过限制的内存，可能触发OOM
+docker exec limited sh -c 'dd if=/dev/zero of=/tmp/big bs=1M count=100' || true
+docker inspect --format 'Status={{.State.Status}} Exit={{.State.ExitCode}} OOMKilled={{.State.OOMKilled}}' limited
+```
+
+若容器被杀死，结合退出码137、`OOMKilled`和宿主日志说明证据链：
+
+```bash
+sudo journalctl -k --since "10 minutes ago" | grep -i -E 'oom|killed process' || true
+```
+
+> **验收点**：能够区分“容器进程退出”“容器仍运行但应用不健康”“资源限制触发OOM”三类问题。
+
 ---
 
 ## 五、练习题
@@ -162,7 +208,7 @@ docker system prune -a --volumes
 
 ### 练习2：综合排障（30分）
 
-教师注入 3 个故障（从上面 6 个中选），学生排查并写排障报告：
+教师注入3个故障（从上面8个中选，至少包含1个健康或资源故障），学生排查并写排障报告：
 
 ```
 故障#：__
@@ -207,3 +253,10 @@ A: `sudo systemctl status docker` 查状态。常见原因：磁盘满了（df -
 1. 生产环境中容器故障的"自愈"机制怎么实现？（提示：restart policy、healthcheck、Kubernetes liveness probe、监控告警+自动重启）
 
 2. Docker 的排障和传统 Linux 排障有什么异同？容器化的引入让排障变简单了还是变复杂了？
+
+## 九、清理环境
+
+```bash
+docker rm -f health-web limited web1 web2 bad-alpine bad-app good-alpine net-a net-b dns-test 2>/dev/null || true
+rm -rf /tmp/readonly-dir
+```

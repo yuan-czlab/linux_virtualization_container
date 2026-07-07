@@ -80,14 +80,76 @@ dd if=/dev/zero of=/tmp/mock-backup-$(date +%Y%m%d).tar.gz bs=1M count=30 2>/dev
 
 ---
 
+## 场景四：rsync + crontab 自动增量备份
+
+**背景**：网站目录每天需要备份到远程服务器，任务必须自动执行并保留日志。
+
+### 1. 编写备份脚本
+
+```bash
+mkdir -p ~/bin ~/logs
+cat > ~/bin/backup-website.sh <<'SCRIPT'
+#!/bin/bash
+set -u
+
+SOURCE=/tmp/lab21-website/
+TARGET=student@localhost:/tmp/backup-archive/website/
+LOG=$HOME/logs/backup-website.log
+
+echo "[$(date '+%F %T')] backup start" >> "$LOG"
+if rsync -az --delete-delay "$SOURCE" "$TARGET" >> "$LOG" 2>&1; then
+  echo "[$(date '+%F %T')] backup success" >> "$LOG"
+  exit 0
+else
+  code=$?
+  echo "[$(date '+%F %T')] backup failed: $code" >> "$LOG"
+  exit "$code"
+fi
+SCRIPT
+chmod +x ~/bin/backup-website.sh
+~/bin/backup-website.sh
+echo "exit_code=$?"
+tail -n 10 ~/logs/backup-website.log
+```
+
+### 2. 先做dry-run再加入定时任务
+
+```bash
+rsync -azn --delete-delay /tmp/lab21-website/ student@localhost:/tmp/backup-archive/website/
+
+(crontab -l 2>/dev/null; echo "*/10 * * * * $HOME/bin/backup-website.sh") | crontab -
+crontab -l
+```
+
+### 3. 验证增量与恢复
+
+1. 修改一个文件并新增一个文件，再手动执行脚本。
+2. 检查日志，确认只同步变化内容。
+3. 将远程备份恢复到`/tmp/restore-test/`。
+4. 使用`diff -qr`验证恢复目录与源目录一致。
+
+```bash
+mkdir -p /tmp/restore-test
+rsync -az student@localhost:/tmp/backup-archive/website/ /tmp/restore-test/
+diff -qr /tmp/lab21-website/ /tmp/restore-test/
+```
+
+> **验收点**：定时任务存在、脚本有明确退出码、日志可追踪、恢复结果一致。
+
+---
+
 ## 验收标准
 - [ ] 场景一：scp 和 rsync 都能完成文件传输
 - [ ] 场景一：能解释 rsync 比 scp 在增量同步时的优势
 - [ ] 场景二：scp 下载+上传完成
 - [ ] 场景二：知道 rsync -P 支持断点续传
 - [ ] 场景三：会使用 tmux new/attach/detach
+- [ ] 场景四：能用rsync+crontab完成自动备份并写日志
+- [ ] 场景四：完成一次恢复并用diff验证一致性
 
 ## 清理
 ```bash
-rm -rf /tmp/lab21-website /tmp/backups /tmp/backup-archive /tmp/deployed-site /tmp/mock-backup-*.tar.gz
+crontab -l 2>/dev/null | grep -v 'backup-website.sh' | crontab -
+rm -rf /tmp/lab21-website /tmp/backups /tmp/backup-archive /tmp/deployed-site /tmp/restore-test /tmp/mock-backup-*.tar.gz
+rm -f ~/bin/backup-website.sh ~/logs/backup-website.log
 ```

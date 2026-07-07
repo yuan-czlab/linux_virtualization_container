@@ -1,247 +1,217 @@
-# Lab52：Docker 数据卷与网络
+# Lab52：Docker部署Nginx、MySQL与Redis
 
 > 课时：2 | 类型：个人 | 前置：Lab51
 
 ## 一、你会学到什么
-- 理解容器删除=数据丢失，需要用 Volume 持久化
-- 能创建和使用 named volume
-- 能区分 bind mount 和 volume
-- 能用自定义网络让容器通过名称互相访问
 
-## 二、实验步骤
+- 能从镜像说明识别端口、环境变量、配置和数据目录
+- 能使用容器部署Nginx、MySQL和Redis
+- 能用日志、端口和客户端命令验证服务，而不只看容器状态
+- 能避免把数据库和Redis端口无条件暴露到外部网络
+- 能形成三种服务的容器运行参数表
 
-### 第一部分：数据卷
+## 二、原理速览
 
-### 步骤1：演示数据丢失问题
-
-```bash
-# 创建 MySQL 容器并建库
-docker run -d --name temp-mysql \
-  -e MYSQL_ROOT_PASSWORD=pass123 \
-  mysql:8.0
-
-sleep 20  # 等 MySQL 启动
-docker exec temp-mysql mysql -uroot -ppass123 -e "CREATE DATABASE testdb;"
-docker exec temp-mysql mysql -uroot -ppass123 -e "SHOW DATABASES;" | grep testdb
-# testdb ✓
-
-# 删除容器
-docker rm -f temp-mysql
-
-# 重新运行 → 数据库没了！
-docker run -d --name temp-mysql2 \
-  -e MYSQL_ROOT_PASSWORD=pass123 \
-  mysql:8.0
-sleep 15
-docker exec temp-mysql2 mysql -uroot -ppass123 -e "SHOW DATABASES;" | grep testdb
-# ✗ 没有 testdb！数据丢了
-docker rm -f temp-mysql2
+```text
+镜像 + 运行参数（名称/端口/环境变量/卷/网络）= 可运行容器
+容器状态Up ≠ 应用已就绪
 ```
 
-### 步骤2：使用 Volume 持久化
+服务验证至少包含三层：
+
+1. `docker ps`：容器进程是否运行。
+2. `docker logs`和容器内客户端：应用是否初始化成功。
+3. 宿主机或测试容器访问：服务是否真的可用。
+
+本实验只引入必要的数据卷和自定义网络。卷备份、SELinux标签和网络深入分别在Lab54、Lab55学习。
+
+## 三、实验环境
+
+- Rocky Linux 9，Docker Engine与Compose插件已安装
+- 教师已提供或预加载：`nginx:alpine`、`mysql:8.0`、`redis:7-alpine`
+- 建议可用内存不少于4GB、磁盘不少于10GB
+
+创建实验网络：
 
 ```bash
-# 创建命名数据卷
-docker volume create mysql-data
-
-# 查看数据卷
-docker volume ls
-docker volume inspect mysql-data
-# "Mountpoint": "/var/lib/docker/volumes/mysql-data/_data"
-# 这就是数据在宿主机上的实际存储位置
-
-# 使用数据卷启动 MySQL
-docker run -d --name mysql-persist \
-  -e MYSQL_ROOT_PASSWORD=RootPass123! \
-  -v mysql-data:/var/lib/mysql \
-  -p 3307:3306 \
-  mysql:8.0
-
-# -v 数据卷名:容器内路径
-# mysql-data → 挂载到容器的 /var/lib/mysql（MySQL 数据目录）
+docker network create lab52-net 2>/dev/null || true
+docker network inspect lab52-net
 ```
 
-### 步骤3：验证数据持久化
+## 四、实验步骤
+
+### 步骤1：部署Nginx静态网站
 
 ```bash
-sleep 20
-# 创建数据库和表
-docker exec mysql-persist mysql -uroot -pRootPass123! -e "
-CREATE DATABASE myapp;
-USE myapp;
-CREATE TABLE users (id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(50));
-INSERT INTO users (name) VALUES ('Alice'), ('Bob');
-SELECT * FROM users;
-"
+mkdir -p ~/lab52/html
+cat > ~/lab52/html/index.html <<'HTML'
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>Lab52</title></head>
+<body><h1>Nginx container is running</h1></body>
+</html>
+HTML
 
-# 删除容器（但保留 volume！）
-docker rm -f mysql-persist
-
-# 用同一个 volume 重新启动
-docker run -d --name mysql-restored \
-  -e MYSQL_ROOT_PASSWORD=RootPass123! \
-  -v mysql-data:/var/lib/mysql \
-  mysql:8.0
-
-sleep 10
-docker exec mysql-restored mysql -uroot -pRootPass123! -e "SELECT * FROM myapp.users;"
-# ✓ Alice, Bob 数据还在！
-```
-
-### 步骤4：bind mount vs volume
-
-```bash
-# bind mount：宿主机具体路径 → 容器路径（开发常用）
-mkdir /tmp/nginx-html
-echo "<h1>Bind Mount Test</h1>" > /tmp/nginx-html/index.html
-
-docker run -d --name bind-demo -p 8082:80 \
-  -v /tmp/nginx-html:/usr/share/nginx/html:ro \
+docker run -d --name lab52-nginx \
+  --network lab52-net \
+  -p 8080:80 \
+  -v "$HOME/lab52/html:/usr/share/nginx/html:ro,Z" \
   nginx:alpine
-# :ro = 只读挂载，容器不能修改
 
-curl http://localhost:8082        # ✓ Bind Mount Test
-
-# 修改宿主机文件
-echo "<h1>Updated on host</h1>" > /tmp/nginx-html/index.html
-curl http://localhost:8082        # ✓ Updated on host（实时生效！）
-
-# named volume：Docker 管理（生产推荐）
-# bind mount：宿主机路径直接映射（开发调试方便）
-
-docker rm -f bind-demo
+docker ps --filter name=lab52-nginx
+docker logs lab52-nginx
+curl -fsS http://127.0.0.1:8080
 ```
 
-### 步骤5：Volume 备份
+检查容器配置：
 
 ```bash
-# 用临时容器备份 volume 数据
-docker run --rm \
-  -v mysql-data:/data \
-  -v /tmp/backup:/backup \
-  alpine \
-  tar czf /backup/mysql-backup-$(date +%Y%m%d).tar.gz -C /data .
-
-ls -lh /tmp/backup/
+docker inspect --format 'Image={{.Config.Image}} IP={{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' lab52-nginx
+docker port lab52-nginx
+ss -lntp | grep :8080
 ```
 
-### 第二部分：Docker 网络
+> **验收点**：宿主机访问8080返回自定义页面；能够说明宿主8080和容器80的区别。
 
-### 步骤6：默认 bridge 网络的局限
+### 步骤2：部署MySQL并等待就绪
 
 ```bash
-docker run -d --name net-a nginx:alpine
-docker run -d --name net-b nginx:alpine
+docker volume create lab52-mysql-data
 
-# 获取 net-a 的 IP
-docker inspect net-a | grep IPAddress
-# "IPAddress": "172.17.0.2"
+docker run -d --name lab52-mysql \
+  --network lab52-net \
+  -e MYSQL_ROOT_PASSWORD='LabRoot2026!' \
+  -e MYSQL_DATABASE='lab52db' \
+  -e MYSQL_USER='labuser' \
+  -e MYSQL_PASSWORD='LabUser2026!' \
+  -v lab52-mysql-data:/var/lib/mysql \
+  mysql:8.0
 
-# net-b 可以通过 IP ping 通 net-a
-docker exec net-b ping -c 2 172.17.0.2    # ✓
-
-# 但用容器名不行（默认 bridge 没有 DNS）
-docker exec net-b ping -c 2 net-a
-# ping: bad address 'net-a'               # ✗
-
-docker rm -f net-a net-b
+docker ps --filter name=lab52-mysql
+docker logs -f lab52-mysql
 ```
 
-### 步骤7：自定义网络（推荐）
+看到`ready for connections`后按`Ctrl+C`退出日志，再验证：
 
 ```bash
-# 创建自定义 bridge 网络
-docker network create my-net
+docker exec lab52-mysql \
+  mysql -ulabuser -pLabUser2026! -e 'SELECT VERSION(); SHOW DATABASES;'
 
-# 查看网络
-docker network ls
-docker network inspect my-net | head -20
-
-# 两个容器都加入 my-net
-docker run -d --name web --network my-net nginx:alpine
-docker run -d --name app --network my-net alpine sleep 3600
-
-# 现在可以通过容器名互相访问！
-docker exec app ping -c 2 web
-# PING web (172.18.0.2): 56 data bytes
-# 64 bytes from 172.18.0.2: ... ✓
-# 自定义网络自带 DNS 解析！
+docker exec lab52-mysql \
+  mysql -ulabuser -pLabUser2026! lab52db -e '
+    CREATE TABLE IF NOT EXISTS health(id INT PRIMARY KEY, message VARCHAR(50));
+    INSERT INTO health VALUES(1,"mysql-ok") ON DUPLICATE KEY UPDATE message="mysql-ok";
+    SELECT * FROM health;'
 ```
 
-### 步骤8：网络模式对比
+> **验收点**：MySQL未发布宿主端口，但在容器内部正常工作；删除容器后数据卷仍存在。
+
+### 步骤3：部署带密码的Redis
 
 ```bash
-# bridge（默认）：docker0 网桥，容器间 IP 通信，无 DNS
-# 自定义 bridge：自带 DNS，推荐生产使用
+docker volume create lab52-redis-data
 
-# host 模式：容器共享宿主机网络栈
-docker run -d --name host-nginx --network host nginx:alpine
-# 不需要 -p！直接占用宿主机 80 端口
-curl http://localhost              # ✓
-docker rm -f host-nginx
+docker run -d --name lab52-redis \
+  --network lab52-net \
+  -v lab52-redis-data:/data \
+  redis:7-alpine \
+  redis-server --appendonly yes --requirepass 'RedisLab2026!'
 
-# none 模式：无网络
-docker run --rm --network none alpine ip a
-# 只有 lo 回环，没有 eth0
+docker logs lab52-redis
+docker exec lab52-redis redis-cli -a 'RedisLab2026!' PING
+docker exec lab52-redis redis-cli -a 'RedisLab2026!' SET course docker
+docker exec lab52-redis redis-cli -a 'RedisLab2026!' GET course
 ```
 
----
+无密码测试应失败：
 
-## 五、练习题
+```bash
+docker exec lab52-redis redis-cli PING
+# 预期：NOAUTH Authentication required
+```
 
-### 练习1：Volume 持久化验证（20分）
+> **验收点**：有密码返回PONG，无密码被拒绝；Redis未发布到宿主机端口。
 
-1. 创建 Redis 容器，使用 volume 持久化
-2. 写入数据（SET mykey "persistent"）
-3. 删除容器
-4. 重新创建容器（用同一个 volume）
-5. 验证数据还在（GET mykey）
+### 步骤4：从同一网络使用服务名访问
 
-### 练习2：多容器自定义网络（25分）
+Nginx、MySQL和Redis位于`lab52-net`，容器名可作为DNS名称。
 
-1. 创建网络 `app-network`
-2. 在网络上启动 Nginx + 2 个 Alpine 容器
-3. 验证三个容器可以通过容器名互相 ping 通
-4. 对比：如果不用自定义网络，容器名能 ping 通吗？
+```bash
+docker run --rm --network lab52-net mysql:8.0 \
+  mysql -h lab52-mysql -ulabuser -pLabUser2026! \
+  -e 'SELECT message FROM lab52db.health;'
 
-### 练习3：bind mount 开发场景（20分）
+docker run --rm --network lab52-net redis:7-alpine \
+  redis-cli -h lab52-redis -a 'RedisLab2026!' GET course
 
-模拟开发场景：
-1. 本地有一个网站目录 `/tmp/my-site/`，包含 index.html
-2. 用 bind mount 挂载到 Nginx 容器
-3. 修改本地 index.html → 验证容器内实时生效
-4. 为什么开发环境推荐 bind mount？（实时修改，不需要重建镜像）
+docker run --rm --network lab52-net curlimages/curl:8.5.0 \
+  curl -fsS http://lab52-nginx
+```
 
-### 练习4：Volume 数据备份恢复（20分）
+若`curlimages/curl`未预加载，可使用教师提供的测试镜像或在宿主机验证Nginx。
 
-1. 备份 mysql-data 卷的数据
-2. 删除 mysql-data 卷
-3. 从备份恢复数据到新卷
-4. 验证数据完整
+> **验收点**：三个服务都能通过容器名访问，说明自定义网络提供容器DNS。
 
-### 练习5：容器网络排障（15分）
+### 步骤5：完成运行参数表
 
-以下场景，排查网络问题：
+| 服务 | 镜像 | 容器端口 | 宿主端口 | 数据目录 | 认证方式 | 外部是否需要访问 |
+|---|---|---:|---:|---|---|---|
+| Nginx | | | | | | |
+| MySQL | | | | | | |
+| Redis | | | | | | |
 
-| 现象 | 排查步骤 |
-|------|---------|
-| 容器 A ping 不通容器 B 的 IP | |
-| 容器 A ping 不通容器 B 的容器名 | |
-| 容器内 curl 不通外网 | |
+讨论：为什么只发布Nginx端口，而MySQL和Redis保持在容器内部网络？
 
-## 七、常见问题
+### 步骤6：故障挑战
 
-**Q: volume 和 bind mount 什么时候用哪个？**
-A: 生产环境数据 → named volume（Docker 管理，可移植，支持驱动）。开发调试 → bind mount（实时同步本地文件）。数据库数据 → named volume 或外挂磁盘。
+教师选择一个故障：
 
-**Q: 容器间通信推荐什么方式？**
-A: 自定义 bridge 网络（自带 DNS，容器名互访）。不推荐默认 bridge（无 DNS，依赖 IP 会变）和 --link（已废弃）。
+- Nginx宿主端口8080被占用
+- MySQL密码环境变量错误
+- Redis客户端忘记认证
+- 测试容器未加入`lab52-net`
+- bind mount缺少`:Z`导致SELinux拒绝访问
 
-**Q: host 网络模式有什么风险？**
-A: 容器直接使用宿主机端口，端口冲突风险高，隔离性差。仅适合高性能场景或需要访问宿主机网络的特殊情况。
+排障顺序：
 
-## 八、课后思考
+```bash
+docker ps -a
+docker logs 容器名
+docker inspect 容器名
+docker network inspect lab52-net
+ss -lntp
+```
 
-1. Docker 网络和你在 M4 学的 KVM 虚拟网络（NAT/桥接/隔离）有哪些相似之处？Docker 的自定义 bridge 对应 KVM 的哪种网络？
+## 五、验收标准
 
-2. 如果 MySQL 容器删了但 volume 还在，磁盘空间会不会被 volume 占满？你作为运维怎么监控和清理 Docker 占用的磁盘空间？
+- [ ] Nginx通过宿主8080返回自定义页面
+- [ ] MySQL完成初始化、建表和查询
+- [ ] Redis密码认证与AOF参数生效
+- [ ] 三个服务通过自定义网络和容器名互访
+- [ ] MySQL/Redis未无条件发布宿主端口
+- [ ] 完成运行参数表和一个故障报告
+
+## 六、常见问题
+
+**Q：MySQL容器Up但连接失败？**
+
+A：首次初始化需要时间。查看`docker logs lab52-mysql`，等待`ready for connections`，不要用固定`sleep`判断服务一定就绪。
+
+**Q：为什么实验密码直接写在命令中？**
+
+A：这里只用于隔离实验。综合项目必须使用`.env`或其他配置方式，并提交`.env.example`而不是实际密码文件。
+
+**Q：为什么不在本实验深入卷备份和Docker网络模式？**
+
+A：本实验目标是服务部署与验证。Lab54专门处理卷、权限和恢复，Lab55专门处理网络和DNS，避免重复占用课堂时间。
+
+## 七、清理环境
+
+```bash
+docker rm -f lab52-nginx lab52-mysql lab52-redis 2>/dev/null || true
+docker network rm lab52-net 2>/dev/null || true
+docker volume rm lab52-mysql-data lab52-redis-data 2>/dev/null || true
+rm -rf ~/lab52
+```
+
+如后续课程继续使用数据，先完成Lab54备份后再删除数据卷。

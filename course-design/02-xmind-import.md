@@ -1,16 +1,18 @@
 # Linux与虚拟化容器技术
 
-## 模块一：Linux基础运维（28课时·第1-4周）
+> **版本提示**：本文件保留旧版知识点层级，暂作为知识库使用；课时、周次和单元编号已由v3.0进度表重排，排课请以《01-unit-index.md》和《04-18周课程进度表.md》为准。
 
-### 1.1 走进Linux（第1周）
+## 模块一：Linux基础运维（知识点资源池）
+
+### 1.1 走进Linux
 - Linux是什么：操作系统内核
 - Linux发行版家族
-  - Debian系（Ubuntu Server 24.04 LTS）
+  - Debian系（Ubuntu Server 22.04 LTS）
   - RHEL系（Rocky Linux 9·主线）
   - 其他（Arch/SUSE/Alpine）
 - 为什么主线用Rocky、对照用Ubuntu
-  - RHEL系在国内企业市场占有率高
-  - 运维岗位招聘要求"熟练CentOS/RHEL"
+  - RHEL兼容发行版常见于企业服务器环境
+  - 部分运维岗位会要求CentOS/RHEL兼容系统经验
   - 学会两种包管理体系应对多数场景
 - Linux在运维岗位中的作用
   - 服务器操作系统市场份额90%+
@@ -20,7 +22,7 @@
   - VMware虚拟机创建
   - 磁盘分区方案（/boot / /home swap）
   - root与普通用户创建
-- Ubuntu Server 24.04 对照安装
+- Ubuntu Server 22.04 对照安装
   - netplan网络配置 vs nmcli
   - apt vs dnf初识
 - 命令行终端基本使用
@@ -30,7 +32,7 @@
   - Tab补全/Ctrl+C中断/Ctrl+R搜索历史
   - 命令类型：内置/外部/别名（type/which）
 
-### 1.2 文件、目录与文本编辑（第2周）
+### 1.2 文件、目录与文本编辑
 - Linux目录结构FHS
   - /etc配置文件（系统"设置"面板）
   - /var变化数据（日志/缓存/数据库）
@@ -67,7 +69,7 @@
   - zip/unzip兼容Windows
   - gzip/gunzip单文件压缩
 
-### 1.3 用户、用户组与权限（第3周）
+### 1.3 用户、用户组与权限
 - root用户与普通用户
   - UID：root=0 系统=1-999 普通=1000+
   - 生产环境禁止root直接SSH，用普通用户+sudo
@@ -105,7 +107,7 @@
   - getfacl查看/setfacl设置
   - 比ugo更精细的权限控制
 
-### 1.4 软件包与基础服务管理（第4周）
+### 1.4 软件包与基础服务管理
 - Rocky软件包管理dnf
   - search搜索/info详情/install安装/remove卸载
   - update升级/check-update检查/list installed已安装
@@ -138,9 +140,9 @@
   - 端口：ss -tunlp监听列表/0.0.0.0对外vs 127.0.0.1本地
   - 日志：journalctl -u/-f/-p err/--since
 
-## 模块二：Linux网络、协议与远程管理（26课时·第4-7周）
+## 模块二：Linux网络、协议与远程管理（知识点资源池）
 
-### 2.1 Linux网络基础（第4-5周）
+### 2.1 Linux网络基础
 - IP地址与子网掩码
   - 公网IP vs 私网IP（10.x/172.16-31.x/192.168.x）
   - CIDR表示法 /24 = 255.255.255.0
@@ -180,7 +182,7 @@
   - Nginx作为Web服务初识
   - 浏览器F12 Network标签查看请求
 
-### 2.2 SSH远程管理（第5-6周）
+### 2.2 SSH远程管理
 - SSH协议原理
   - 加密远程登录，替代telnet明文
   - 两阶段：密钥交换建立加密通道→身份认证
@@ -210,7 +212,7 @@
   - 防止SSH断线导致任务中断
   - Ctrl+b d分离/Ctrl+b c新窗口
 
-### 2.3 防火墙与安全（第6-7周）
+### 2.3 防火墙与安全
 - firewalld防火墙
   - zone信任级别：public不信任/drop丢弃/trusted全信/internal内网
   - service预定义端口组合：http=80 https=443 ssh=22
@@ -242,9 +244,9 @@
   - Permission denied=密码/密钥/权限/SELinux
   - Name or service not known=DNS解析失败
 
-## 模块三：企业常见服务部署与基础排障（28课时·第7-11周）
+## 模块三：企业常见服务部署与基础排障（知识点资源池）
 
-### 3.1 Nginx Web服务（第7-8周）
+### 3.1 Nginx Web服务
 - Nginx安装与目录结构
   - /etc/nginx/nginx.conf主配置
   - /etc/nginx/conf.d/*.conf虚拟主机
@@ -267,7 +269,7 @@
   - Nginx SSL配置：listen 443 ssl/ssl_certificate/ssl_certificate_key
   - HTTP→HTTPS自动跳转：return 301
 
-### 3.2 MySQL/MariaDB（第8-9周）
+### 3.2 MySQL/MariaDB
 - MariaDB=MySQL分支，RHEL系默认
 - 安装与安全初始化：mysql_secure_installation
 - 3306端口/bind-address=127.0.0.1只监听本地
@@ -283,7 +285,7 @@
   - 备份脚本+crontab自动化
 - 安全风险：3306不对公网开放
 
-### 3.3 Redis缓存（第8-9周）
+### 3.3 Redis缓存
 - Redis=内存键值存储，用作缓存/会话/计数/队列
 - 6379端口/redis-cli命令行
 - 基础操作：PING/SET/GET/DEL/INCR/EXPIRE/TTL/KEYS/INFO
@@ -294,7 +296,7 @@
   - 真实案例：公网Redis无密码被入侵挖矿
 - Redis与Docker Compose项目关系
 
-### 3.4 Git版本控制（第9-10周）
+### 3.4 Git版本控制
 - Git在运维部署中的作用：拉代码+版本控制+回滚
 - 基础操作
   - git clone克隆仓库
@@ -308,7 +310,7 @@
 - .gitignore忽略密码/日志/临时文件
 - 代码平台：GitHub/Gitee/GitLab
 
-### 3.5 Shell运维脚本（第10-11周）
+### 3.5 Shell运维脚本
 - 脚本定位：自动化日常任务，不是应用程序开发
 - 基础语法
   - Shebang #!/bin/bash
@@ -330,9 +332,9 @@
 - 10项任务分解（单元索引中有完整清单）
 - 产出：一台完整Web+DB+Cache服务器+部署文档+排障记录
 
-## 模块四：虚拟化技术与多机环境搭建（26课时·第11-14周）
+## 模块四：虚拟化技术与多机环境搭建（知识点资源池）
 
-### 4.1 虚拟化基础认知（第11-12周）
+### 4.1 虚拟化基础认知
 - 虚拟化定义：一台物理机抽象为多台逻辑独立VM
 - 物理机→虚拟机→容器演进
 - 云服务器=云厂商通过虚拟化切分物理机
@@ -350,14 +352,14 @@
   - 最小化+基础工具→以此为模板克隆
   - 清除：SSH host key/机器ID/MAC/日志
 
-### 4.2 虚拟网络（第12-13周）
+### 4.2 虚拟网络
 - NAT模式：VM通过宿主机上网，外网不能主动访问VM
 - 桥接模式：VM直接接入物理网络，局域网可见
 - 仅主机模式：VM只能与宿主机通信，隔离环境
 - 虚拟网络编辑器：修改子网IP/关闭DHCP/选择桥接网卡
 - 常见问题：IP冲突/网段不一致/无法上网/宿主机不能访问VM
 
-### 4.3 KVM虚拟化（第12-13周）
+### 4.3 KVM虚拟化（条件/选做资源）
 - KVM架构：kvm.ko内核模块+QEMU设备模拟+libvirt管理
 - 工具链：virsh命令行/virt-manager图形/virt-install创建
 - virsh核心命令
@@ -375,7 +377,7 @@
   - 隔离网络isolated：只有VM之间通信
   - 多VM网络拓扑：前端双网卡做网关+后端隔离
 
-### 4.4 多机环境搭建（第13-14周）
+### 4.4 多机环境搭建
 - 三节点实验环境
   - web-server：Nginx Web服务
   - db-server：MySQL+Redis数据缓存
@@ -389,7 +391,7 @@
   - IP地址规划表
   - 部署步骤文档
 
-### 4.5 云服务概念（第14周）
+### 4.5 云服务概念
 - 云服务器与虚拟化对照
   - 镜像Image↔ISO/模板机
   - 快照Snapshot↔VM快照
@@ -399,11 +401,11 @@
 - cloud-init：云实例首次启动自动化
 - virt-builder：快速构建预配置Linux镜像
 
-## 模块五：Docker容器化部署与综合项目（36课时·第14-18周）
+## 模块五：Docker容器化部署与综合项目（知识点资源池）
 
-### 5.1 容器化认知（第14周）
+### 5.1 容器化认知
 - 容器=应用+依赖打包，"一次构建到处运行"
-- Docker=最流行的容器平台
+- Docker=本课程采用的容器构建与运行平台
 - 镜像只读模版→容器运行实例
 - 容器vs虚拟机
   - 容器共享内核/进程级隔离/秒级启动/MB级
@@ -411,7 +413,7 @@
 - 容器解决的核心问题：环境一致/快速部署/隔离运行/便于迁移
 - Docker架构：Client→Daemon(dockerd)→containerd+runc→Registry
 
-### 5.2 Docker基础操作（第14-15周）
+### 5.2 Docker基础操作
 - 安装Docker Engine
   - dnf添加Docker官方仓库
   - docker-ce + docker-ce-cli + containerd.io + compose-plugin
@@ -427,7 +429,7 @@
   - 生命周期：created→running→paused→stopped→deleted
   - docker stop/start/restart/rm -f
 
-### 5.3 Docker端口、数据卷与网络（第15-16周）
+### 5.3 Docker端口、数据卷与网络
 - 端口映射-p
   - 宿主机端口:容器端口
   - 端口冲突排查：ss -tlnp
@@ -446,7 +448,7 @@
   - docker network create/ls/inspect/rm
   - 多容器通过自定义网络互相访问
 
-### 5.4 Dockerfile镜像构建（第16-17周）
+### 5.4 Dockerfile镜像构建
 - Dockerfile=镜像的"安装说明书"
 - 核心指令
   - FROM基础镜像（alpine>slim>full）
@@ -468,7 +470,7 @@
   - 非root用户运行（安全）
   - 固定版本号（不用latest）
 
-### 5.5 Docker Compose多服务编排（第16-17周）
+### 5.5 Docker Compose多服务编排
 - Compose解决的问题：一键管理多容器应用
 - YAML语法：缩进表示层级/键值对/列表(-)
 - 文件结构
@@ -487,8 +489,8 @@
   - WordPress（Nginx+WordPress+MySQL）
   - 自定义多服务应用（前端Nginx+后端Flask+MySQL+Redis）
 
-### 5.6 综合项目：企业基础运维环境搭建与容器化部署（第17-18周）
-- 项目阶段（12项任务）
+### 5.6 综合项目：企业基础运维环境搭建与容器化部署
+- 项目阶段（10项核心任务，以学生任务书为准）
   - Linux基础：安装系统/用户权限/软件源
   - 网络远程：IP/SSH/DNS/hosts/防火墙
   - Web服务：Nginx部署+日志
@@ -500,5 +502,5 @@
   - Compose：docker-compose.yml一键编排
   - 排障：3-5个故障模拟排查
   - 文档：拓扑图/IP规划/部署文档/排障记录
-- 12项交付物（详见单元索引）
+- 10项核心交付物（详见Project02学生任务书）
 - 答辩评分：环境搭建20%+服务部署20%+容器化25%+排障15%+文档10%+素养10%

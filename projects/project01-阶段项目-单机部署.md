@@ -1,8 +1,7 @@
 # 阶段项目：单机 Linux Web 服务部署与排障
 
-> 对应单元：U39（项目启动 · 第1次大课）+ U41（项目交付 · 第2次大课）
-> 课时：4（2次大课 × 90分钟） | 类型：个人/双人
-> 前置：模块一 + 模块二 + 模块三（Lab01-38）
+> 对应单元：U33-U36｜课时：8（4次大课 × 90分钟）｜类型：2-3人小组
+> 前置：U01-U32核心内容；Lab01-Lab38按进度表完成核心部分
 
 ## 一、项目目标
 
@@ -16,7 +15,38 @@
 
 ---
 
-## 二、第1次大课：环境搭建（U39 · 90分钟）
+## 二、四次大课实施安排
+
+| 单元 | 阶段 | 课堂任务 | 当堂成果 |
+|---|---|---|---|
+| U33 | 项目发布与设计 | 需求、角色、端口、安全、验收标准；恢复干净快照并检查环境 | 项目计划、端口表、环境基线 |
+| U34 | 服务集成部署 | Nginx、MariaDB、Redis、Git和Shell巡检 | 可运行服务、配置与脚本 |
+| U35 | 故障注入与恢复 | 教师注入3-4个故障，学生按证据链定位 | 故障报告、恢复验证 |
+| U36 | 文档、答辩与总结 | 整理部署文档、随机操作、个人问答 | 项目归档与答辩成绩 |
+
+### U33：项目设计与环境基线（90分钟）
+
+1. 阅读项目目标，画出单机服务关系和端口表。
+2. 明确Nginx、MariaDB、Redis只是在同一服务器上分别提供服务，本阶段不开发业务系统。
+3. 恢复干净快照，检查系统版本、IP、DNS、软件源、时间和磁盘空间。
+4. 设计账号、数据库监听、Redis认证、防火墙和SELinux策略。
+5. 建立Git仓库和任务清单，每完成一个阶段提交一次。
+
+环境基线命令：
+
+```bash
+hostnamectl
+ip -br addr
+ip route
+df -h
+systemctl --failed
+firewall-cmd --list-all
+getenforce
+```
+
+> **U33验收**：提交服务关系图、端口与暴露范围表、环境基线和实施计划。
+
+## 三、U34：服务集成部署（90分钟）
 
 ### 第一部分：Nginx 部署与虚拟主机（35分钟）
 
@@ -194,11 +224,11 @@ CREATE DATABASE company_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE USER 'db_admin'@'localhost' IDENTIFIED BY 'AdminPass123!';
 GRANT ALL PRIVILEGES ON company_db.* TO 'db_admin'@'localhost';
 
-CREATE USER 'app_user'@'192.168.200.%' IDENTIFIED BY 'AppPass456!';
-GRANT SELECT, INSERT, UPDATE, DELETE ON company_db.* TO 'app_user'@'192.168.200.%';
+CREATE USER 'app_user'@'localhost' IDENTIFIED BY 'AppPass456!';
+GRANT SELECT, INSERT, UPDATE, DELETE ON company_db.* TO 'app_user'@'localhost';
 
-CREATE USER 'readonly'@'192.168.200.%' IDENTIFIED BY 'ReadPass789!';
-GRANT SELECT ON company_db.* TO 'readonly'@'192.168.200.%';
+CREATE USER 'readonly'@'localhost' IDENTIFIED BY 'ReadPass789!';
+GRANT SELECT ON company_db.* TO 'readonly'@'localhost';
 
 FLUSH PRIVILEGES;
 SELECT User, Host FROM mysql.user WHERE User IN ('db_admin','app_user','readonly');
@@ -342,9 +372,9 @@ chmod +x ~/ops-check.sh
 
 ---
 
-## 三、第2次大课：排障实战与交付（U41 · 90分钟）
+## 四、U35-U36：排障实战、文档与答辩
 
-### 第一部分：故障模拟与排查（60分钟）
+### U35：故障模拟与排查（90分钟）
 
 教师从以下 6 个故障中选 3-4 个注入。
 
@@ -372,7 +402,7 @@ chmod +x ~/ops-check.sh
 **验证**：
 ```
 
-### 第二部分：项目文档整理（20分钟）
+### U36第一部分：项目文档整理（35分钟）
 
 ```bash
 cat > ~/deploy-report.md << 'DOC'
@@ -393,7 +423,7 @@ cat > ~/deploy-report.md << 'DOC'
 
 ## 数据库
 - DB: company_db | 表: employees(5条)
-- 用户: db_admin(localhost) / app_user(内网) / readonly(内网只读)
+- 用户: db_admin(localhost) / app_user(localhost) / readonly(localhost只读)
 
 ## 验证清单
 - [ ] curl官网200OK  [ ] curl管理后台200OK
@@ -412,7 +442,7 @@ cat > ~/deploy-report.md << 'DOC'
 DOC
 ```
 
-### 第三部分：提交（10分钟）
+### U36第二部分：提交与自动验收（20分钟）
 
 ```
 □ 1. deploy-report.md 完整内容
@@ -427,9 +457,24 @@ DOC
 □ 10. ops-check.sh 源码
 ```
 
+### U36第三部分：答辩与随机操作（35分钟）
+
+- 项目结构和安全设计说明：5分钟。
+- 服务、端口、日志、备份和巡检演示：10分钟。
+- 教师随机指定一个故障或配置变更：10分钟。
+- 个人问答与项目复盘：10分钟。
+
+随机任务示例：
+
+- 找出Nginx当前加载的配置和监听端口。
+- 证明MariaDB只监听预期地址。
+- 从备份恢复一张测试表并验证数据。
+- 找出Redis认证或服务启动失败的日志证据。
+- 修改巡检脚本，使服务异常时返回非0退出码。
+
 ---
 
-## 四、评分标准
+## 五、评分标准
 
 | 评分项 | 满分 | 要点 |
 |--------|------|------|

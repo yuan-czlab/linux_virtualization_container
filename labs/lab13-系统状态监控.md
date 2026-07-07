@@ -54,6 +54,52 @@ du -sh /* 2>/dev/null | sort -rh | head -10  # 根下最大10个目录
 sudo find /var -type f -size +100M -exec ls -lh {} \; 2>/dev/null
 ```
 
+### 步骤3A：识别磁盘、分区、文件系统与挂载点
+
+```bash
+# 块设备树：磁盘→分区→LVM→挂载点
+lsblk -o NAME,TYPE,SIZE,FSTYPE,FSAVAIL,FSUSE%,MOUNTPOINTS
+
+# 文件系统类型和UUID
+sudo blkid
+
+# 当前挂载关系
+findmnt
+findmnt /
+
+# LVM环境只要求识别，不在本单元执行扩容
+sudo pvs 2>/dev/null || true
+sudo vgs 2>/dev/null || true
+sudo lvs 2>/dev/null || true
+```
+
+填写识别表：
+
+| 对象 | 设备名 | 类型/文件系统 | 容量 | 挂载点 | 当前使用率 |
+|---|---|---|---:|---|---:|
+| 系统磁盘 | | | | | |
+| 根文件系统 | | | | `/` | |
+| swap | | | | | |
+
+> **验收点**：能够从`lsblk`说明“物理/虚拟磁盘、分区、文件系统、挂载点”不是同一个概念。
+
+### 步骤3B：生成容量阈值告警
+
+```bash
+df -P | awk 'NR>1 {
+  usage=$5; gsub("%","",usage);
+  if (usage >= 80) print "WARNING", $6, usage"%";
+  else print "OK", $6, usage"%"
+}'
+
+df -Pi | awk 'NR>1 {
+  usage=$5; gsub("%","",usage);
+  if (usage >= 80) print "INODE_WARNING", $6, usage"%"
+}'
+```
+
+讨论：容量告警和inode告警为什么必须分别检查？生产环境阈值为什么不能机械固定为100%？
+
 ### 步骤4：进程
 
 ```bash
@@ -155,6 +201,8 @@ PID=$!
 
 ## 六、验收标准
 - [ ] top/free/df/ps/ss 五个命令熟练使用
+- [ ] 能用lsblk/findmnt说明磁盘、文件系统和挂载点关系
+- [ ] 能生成磁盘容量和inode阈值告警
 - [ ] 能解释 load average 的含义和判断标准
 - [ ] health-check.sh 能正常运行并输出完整报告
 - [ ] 练习 1-5 全部完成
