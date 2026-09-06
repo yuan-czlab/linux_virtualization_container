@@ -1,0 +1,677 @@
+# 实验11：Kubernetes编排体验与容器化综合项目
+
+> 所属模块：模块二 Docker容器化应用构建与交付
+>
+> 建议学时：8学时
+>
+> 实验方式：2—3人协作，个人操作与个人答辩
+>
+> 对应教材：《模块二 Docker容器化应用构建与交付》第11章
+>
+> 前置实验：实验10
+>
+> 项目成果：Kubernetes Deployment/Service基础操作、Rocky/Ubuntu跨环境部署、离线交付包、故障报告和答辩材料
+
+## 一、项目情境
+
+TechCorp已经能用Compose在单台Linux主机运行多服务应用。下一阶段需要理解云平台如何在集群中维持期望副本、替换异常实例并提供稳定访问入口。你将连接教师预建Kubernetes集群，使用指定命名空间部署课程应用、查看Pod和日志、通过Service访问并完成扩缩容。随后把Compose项目从Ubuntu交付到Rocky或反向迁移，在无Docker Hub条件下完成部署、故障排查、恢复和答辩。
+
+## 二、实验目标
+
+### 1. 知识目标
+
+1. 说明Docker/OCI镜像、容器、Pod、Deployment和Service之间的关系。
+2. 理解Kubernetes控制面、Node、Namespace和声明式期望状态的基本作用。
+3. 区分Compose单主机编排和Kubernetes集群编排。
+4. 理解就绪探针、存活探针、扩缩容、日志和滚动更新的基础意义。
+
+### 2. 能力目标
+
+1. 使用教师提供的kubeconfig安全连接集群。
+2. 在个人命名空间应用和检查Deployment、Pod、Service。
+3. 使用端口转发访问应用并查看日志。
+4. 完成手动扩缩容并观察Pod变化。
+5. 将Compose项目及全部镜像跨Rocky/Ubuntu迁移。
+6. 完成综合故障排查、数据验证和交付归档。
+
+### 3. 素质目标
+
+1. 只在个人命名空间操作，不删除集群级资源和他人资源。
+2. 不公开kubeconfig、Token、Registry凭据和应用密码。
+3. 小组成果必须能通过个人操作和问答证明真实参与。
+
+## 三、知识准备
+
+### 1. 对象关系
+
+```text
+Deployment：声明应用镜像、副本数和Pod模板
+      ↓ 创建和维持
+ReplicaSet
+      ↓ 创建和替换
+Pod：Kubernetes最小可部署对象，内部运行一个或多个容器
+      ↑ 被选择
+Service：为一组标签匹配的Pod提供稳定访问入口
+```
+
+### 2. Compose与Kubernetes
+
+| 维度 | Docker Compose | Kubernetes |
+|---|---|---|
+| 主要范围 | 单台Docker主机 | 多节点集群 |
+| 基本应用单元 | Service对应的容器 | Pod及其控制器 |
+| 副本维持 | 有限 | 控制器持续协调期望状态 |
+| 服务发现 | Compose网络中的服务名 | Service与集群DNS |
+| 更新 | 重新创建服务容器 | Deployment滚动更新 |
+| 课程深度 | 完整部署与排障 | 基础体验，不搭建集群 |
+
+### 3. 权限边界
+
+教师应为每位学生或小组预建：
+
+```text
+Namespace：vc-<学号或组号>
+Context：<K8S_CONTEXT>
+权限：仅管理本命名空间常用工作负载和Service
+镜像拉取：课程Registry已由集群配置访问
+```
+
+## 四、实验环境
+
+- 教师提供Kubernetes API访问、kubeconfig和个人命名空间。
+- 学生在Ubuntu或Rocky安装与集群版本兼容的`kubectl`客户端。
+- 集群能够拉取教师课程应用镜像。
+- 实验10的Compose项目、`.env.example`、数据备份和镜像均保留。
+- Rocky和Ubuntu至少有一台作为源环境、一台作为目标环境。
+- 最终项目端口由教师统一分配，避免小组冲突。
+
+## 五、项目任务
+
+1. 安全连接Kubernetes集群并确认命名空间。
+2. 阅读并应用Deployment和Service YAML。
+3. 查看Pod、事件、日志、探针和Service。
+4. 访问应用并完成扩缩容。
+5. 清理个人Kubernetes资源。
+6. 打包Compose项目和全部镜像。
+7. 在另一发行版恢复并验证。
+8. 完成随机故障、交付文档和个人答辩。
+
+## 六、实验步骤
+
+### 任务一：连接Kubernetes集群
+
+#### 步骤1：准备kubectl和kubeconfig
+
+按教师方式安装离线`kubectl`，验证：
+
+```bash
+kubectl version --client
+```
+
+教师提供个人kubeconfig后保存：
+
+```bash
+mkdir -p ~/.kube ~/vc-course/lab11/k8s ~/vc-course/evidence
+install -m 600 <教师提供的kubeconfig路径> ~/.kube/config
+```
+
+不得输出或提交完整kubeconfig。
+
+#### 步骤2：检查Context和权限
+
+```bash
+kubectl config current-context
+kubectl config get-contexts
+kubectl cluster-info
+kubectl auth can-i get pods -n <K8S_NAMESPACE>
+kubectl auth can-i delete namespaces
+```
+
+预期：能够在个人命名空间查看Pod，但不应有删除Namespace等集群级权限。
+
+#### 步骤3：固定当前命名空间
+
+先确认教师分配值，再执行：
+
+```bash
+kubectl config set-context --current --namespace=<K8S_NAMESPACE>
+kubectl config view --minify \
+  --output 'jsonpath={..namespace}'; echo
+```
+
+后续命令仍建议在关键删除操作中显式写`-n <K8S_NAMESPACE>`。
+
+> **验收点**：Context正确、个人命名空间正确、权限没有越过课程边界。
+
+### 任务二：阅读Kubernetes YAML
+
+#### 步骤4：创建课程应用清单
+
+将`<K8S_IMAGE>`替换为教师发布、集群能够拉取的固定镜像：
+
+```bash
+cat > ~/vc-course/lab11/k8s/vc-api.yaml <<'YAML'
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vc-api
+  labels:
+    app: vc-api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: vc-api
+  template:
+    metadata:
+      labels:
+        app: vc-api
+    spec:
+      containers:
+        - name: api
+          image: <K8S_IMAGE>
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: APP_ENV
+              value: kubernetes-lab
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vc-api
+spec:
+  selector:
+    app: vc-api
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+  type: ClusterIP
+YAML
+```
+
+#### 步骤5：检查清单对象
+
+```bash
+grep -E '^kind:|^  name:|image:|replicas:|path:|type:' \
+  ~/vc-course/lab11/k8s/vc-api.yaml
+kubectl apply --dry-run=server \
+  -f ~/vc-course/lab11/k8s/vc-api.yaml
+```
+
+服务端dry-run通过后再实际应用。若学生权限不允许server dry-run，使用`--dry-run=client`并由教师统一验证。
+
+### 任务三：部署和观察应用
+
+#### 步骤6：应用YAML
+
+```bash
+kubectl apply -f ~/vc-course/lab11/k8s/vc-api.yaml
+kubectl rollout status deployment/vc-api --timeout=120s
+```
+
+查看对象：
+
+```bash
+kubectl get deployment,replicaset,pod,service -o wide
+kubectl get pods -l app=vc-api --show-labels
+```
+
+#### 步骤7：查看Deployment和Pod细节
+
+```bash
+kubectl describe deployment vc-api
+kubectl describe pods -l app=vc-api
+kubectl get events --sort-by=.metadata.creationTimestamp | tail -n 30
+```
+
+重点观察镜像、期望/可用副本、节点、Pod IP、探针、重启次数和事件。
+
+#### 步骤8：查看日志
+
+```bash
+kubectl logs deployment/vc-api --tail=50
+```
+
+如果有多个Pod，查看具体Pod：
+
+```bash
+kubectl get pods -l app=vc-api
+kubectl logs <POD_NAME> --tail=50
+```
+
+### 任务四：访问Service
+
+#### 步骤9：检查Service与后端
+
+```bash
+kubectl get service vc-api
+kubectl get endpointslice -l kubernetes.io/service-name=vc-api
+```
+
+Service的ClusterIP通常只在集群内部可达。使用端口转发建立本地体验通道：
+
+```bash
+kubectl port-forward service/vc-api 18080:80
+```
+
+保持终端A运行，在终端B执行：
+
+```bash
+curl --fail http://127.0.0.1:18080/health
+curl --fail http://127.0.0.1:18080/info
+```
+
+预期返回`API_HEALTH_OK`和`APP_ENV=kubernetes-lab`相关信息。按`Ctrl+C`结束端口转发。
+
+> **验收点**：Deployment保持2个Ready Pod，Service选择到后端，端口转发访问成功，日志中出现请求。
+
+### 任务五：扩缩容和自愈观察
+
+#### 步骤10：扩容到3个副本
+
+```bash
+kubectl scale deployment/vc-api --replicas=3
+kubectl rollout status deployment/vc-api --timeout=120s
+kubectl get pods -l app=vc-api -o wide
+```
+
+记录新增Pod和所在节点。
+
+#### 步骤11：删除一个Pod观察恢复
+
+先取得一个明确Pod名称：
+
+```bash
+kubectl get pods -l app=vc-api
+```
+
+选择自己命名空间中的一个Pod：
+
+```bash
+kubectl delete pod <POD_NAME>
+kubectl get pods -l app=vc-api -w
+```
+
+看到旧Pod删除且新Pod创建后按`Ctrl+C`。Deployment期望副本仍为3。
+
+#### 步骤12：缩容回2个副本
+
+```bash
+kubectl scale deployment/vc-api --replicas=2
+kubectl rollout status deployment/vc-api --timeout=120s
+kubectl get deployment vc-api
+kubectl get pods -l app=vc-api
+```
+
+把YAML中的`replicas`也保持为2，避免下次`apply`覆盖命令式扩缩容结果而产生理解偏差。
+
+### 任务六：清理Kubernetes资源
+
+#### 步骤13：保存证据
+
+```bash
+{
+  date -Is
+  kubectl config current-context
+  kubectl get deployment,replicaset,pod,service -o wide
+  kubectl describe deployment vc-api
+  kubectl get events --sort-by=.metadata.creationTimestamp
+} > ~/vc-course/evidence/lab11-k8s-result.txt
+```
+
+检查文件不包含Token或证书内容。
+
+#### 步骤14：按文件清理
+
+确认当前命名空间：
+
+```bash
+kubectl config view --minify \
+  --output 'jsonpath={..namespace}'; echo
+```
+
+执行：
+
+```bash
+kubectl delete -f ~/vc-course/lab11/k8s/vc-api.yaml \
+  -n <K8S_NAMESPACE>
+kubectl get all -n <K8S_NAMESPACE>
+```
+
+不要执行删除整个命名空间或集群范围资源的命令。
+
+### 任务七：制作Compose项目交付包
+
+#### 步骤15：在源主机停止并检查项目
+
+进入实验10目录：
+
+```bash
+cd ~/vc-course/lab10/techcorp-stack
+sudo docker compose --env-file .env up -d
+sudo docker compose --env-file .env ps
+curl --fail http://127.0.0.1:8088/health
+curl --fail http://127.0.0.1:8088/api/info
+```
+
+逻辑备份：
+
+```bash
+VC_DB_ROOT_PASSWORD_VALUE=$(awk -F= '$1=="VC_DB_ROOT_PASSWORD" {print substr($0,index($0,"=")+1)}' .env)
+sudo docker compose --env-file .env exec -T db \
+  mysqldump -uroot -p"$VC_DB_ROOT_PASSWORD_VALUE" --databases vcdb \
+  > backup/vcdb-final.sql
+unset VC_DB_ROOT_PASSWORD_VALUE
+test -s backup/vcdb-final.sql
+```
+
+#### 步骤16：导出全部课程镜像
+
+获取Compose实际镜像清单：
+
+```bash
+sudo docker compose --env-file .env config --images \
+  | sort -u | tee evidence/compose-images.txt
+```
+
+建立独立交付目录。后续校验文件统一使用交付目录内的相对文件名，避免复制到目标主机后路径失效：
+
+```bash
+VC_DELIVERY_DIR="$(readlink -f ~/vc-course/lab11/delivery)"
+install -d -m 700 "$VC_DELIVERY_DIR"
+```
+
+教师提供经过审核的明确导出命令。示例：
+
+```bash
+sudo docker save \
+  -o "$VC_DELIVERY_DIR/vcstack-images.tar" \
+  <COURSE_REGISTRY>/vc/gateway:<COURSE_TAG> \
+  <COURSE_REGISTRY>/vc/techcorp-api:<COURSE_TAG> \
+  <COURSE_REGISTRY>/vc/mysql:<COURSE_TAG> \
+  <COURSE_REGISTRY>/vc/redis:<COURSE_TAG>
+sudo chown "$(id -u):$(id -g)" "$VC_DELIVERY_DIR/vcstack-images.tar"
+cp backup/vcdb-final.sql "$VC_DELIVERY_DIR/"
+```
+
+#### 步骤17：打包项目配置
+
+`.env`中的实际凭据不得进入公开交付包。复制可公开配置、镜像清单并生成项目归档：
+
+```bash
+cp compose.yaml .env.example .gitignore "$VC_DELIVERY_DIR/"
+cp evidence/compose-images.txt "$VC_DELIVERY_DIR/image-manifest.txt"
+tar -czf "$VC_DELIVERY_DIR/vcstack-project.tar.gz" \
+  compose.yaml .env.example .gitignore evidence/compose-images.txt
+(cd "$VC_DELIVERY_DIR" && \
+  sha256sum vcstack-images.tar vcdb-final.sql vcstack-project.tar.gz \
+    compose.yaml .env.example .gitignore image-manifest.txt \
+    > SHA256SUMS && \
+  sha256sum -c SHA256SUMS)
+find "$VC_DELIVERY_DIR" -maxdepth 1 -type f -printf '%f\n' | sort
+unset VC_DELIVERY_DIR
+```
+
+交付清单必须说明`.env`或实际凭据由接收方安全提供，不包含在公开项目包中。此时`delivery`目录至少包含镜像归档、数据库备份、项目配置、镜像清单、项目归档和`SHA256SUMS`。
+
+### 任务八：在目标发行版恢复
+
+#### 步骤18：传输并校验
+
+把源主机的`~/vc-course/lab11/delivery/`目录完整复制到另一发行版的`~/vc-course/final-delivery/`。在目标主机执行：
+
+```bash
+cd ~/vc-course/final-delivery
+sha256sum -c SHA256SUMS
+sudo docker load -i vcstack-images.tar
+sudo docker image ls --digests
+```
+
+复制`.env.example`为`.env`并填入教师实验值：
+
+```bash
+cp .env.example .env
+chmod 600 .env
+vim .env
+```
+
+#### 步骤19：在目标主机启动
+
+```bash
+sudo docker compose --env-file .env config --quiet
+sudo docker compose --env-file .env up -d
+sudo docker compose --env-file .env ps
+curl --fail http://127.0.0.1:8088/health
+curl --fail http://127.0.0.1:8088/api/info
+```
+
+如果需要恢复源数据库数据，在目标MySQL健康后执行：
+
+```bash
+VC_DB_ROOT_PASSWORD_VALUE=$(awk -F= '$1=="VC_DB_ROOT_PASSWORD" {print substr($0,index($0,"=")+1)}' .env)
+sudo docker compose --env-file .env exec -T db \
+  mysql -uroot -p"$VC_DB_ROOT_PASSWORD_VALUE" \
+  < vcdb-final.sql
+unset VC_DB_ROOT_PASSWORD_VALUE
+curl --fail http://127.0.0.1:8088/api/info
+```
+
+从另一台主机访问目标地址，形成外部功能证据。
+
+> **验收点**：目标主机不访问Docker Hub也能导入全部镜像，Compose配置通过，四服务正常，数据库可恢复，客户端访问成功。
+
+### 任务九：综合故障排查与答辩
+
+#### 步骤20：教师随机注入故障
+
+故障从以下层次抽取3—5项：
+
+- Docker服务停止；
+- 缺少一个镜像或标签错误；
+- 8088端口冲突；
+- Compose变量缺失；
+- API不在后端网络；
+- MySQL或Redis认证错误；
+- 数据卷名称错误；
+- 健康检查路径错误；
+- 网关上游配置错误；
+- 离线包SHA256不一致；
+- Kubernetes镜像拉取失败、标签不匹配或Service selector错误。
+
+学生必须按以下顺序记录：
+
+```text
+用户现象
+→ 主机与Docker/Kubernetes状态
+→ 容器或Pod状态
+→ 端口、网络和Service
+→ 配置与变量
+→ 日志和事件
+→ 数据卷或数据库
+→ 根因
+→ 最小修复
+→ 原始客户端路径复测
+```
+
+#### 步骤21：个人答辩
+
+每人随机完成至少一项操作并回答问题：
+
+- 解释KVM虚拟机与Docker容器差异；
+- 从课程Registry或离线包恢复镜像；
+- 判断Compose服务所在网络；
+- 证明MySQL数据位于卷；
+- 查看容器健康和日志；
+- 解释Deployment、Pod和Service关系；
+- 在个人Namespace中完成扩缩容；
+- 根据错误现象定位一项故障。
+
+## 七、独立实践
+
+每位学生在小组项目中选择一项个人负责人任务：
+
+- 镜像与离线包负责人；
+- Compose与网络负责人；
+- 数据备份恢复负责人；
+- Kubernetes体验与证据负责人；
+- 故障排查与验证负责人。
+
+负责人不代表其他成员可以完全不操作。答辩会从非本人主责区域抽取一道基础操作。
+
+## 八、验收标准
+
+### Kubernetes体验
+
+- [ ] Context和Namespace正确，权限边界明确。
+- [ ] YAML包含Deployment和Service并通过dry-run。
+- [ ] 2个Pod Ready，Service具有后端EndpointSlice。
+- [ ] 通过端口转发访问`/health`成功。
+- [ ] 能查看Deployment、Pod、事件和日志。
+- [ ] 完成扩容、自愈观察和缩容。
+- [ ] 已清理个人应用资源，未删除Namespace和他人资源。
+
+### 综合交付
+
+- [ ] 源主机Compose项目功能正常并完成数据备份。
+- [ ] 全部镜像进入离线归档，镜像清单完整。
+- [ ] 镜像、数据库和项目包SHA256通过。
+- [ ] 目标主机完成镜像导入和Compose部署。
+- [ ] Rocky与Ubuntu至少完成一次跨发行版迁移。
+- [ ] Web、API、MySQL、Redis状态和功能均有证据。
+- [ ] 数据备份在目标环境完成恢复验证。
+- [ ] 完成3—5项故障的证据化排查。
+- [ ] 交付包不含密码、Token、私钥和kubeconfig。
+- [ ] 每位成员完成个人操作和个人答辩。
+
+## 九、成果提交
+
+```text
+lab11-组号/
+├── README.md
+├── architecture.png或.pdf
+├── compose.yaml
+├── .env.example
+├── image-manifest.txt
+├── SHA256SUMS
+├── deployment-guide.md
+├── backup-and-restore.md
+├── k8s/
+│   ├── vc-api.yaml
+│   └── k8s-result.txt
+├── faults/
+│   ├── fault-01.md
+│   ├── fault-02.md
+│   └── fault-03.md
+└── individual/
+    ├── 学号1.md
+    ├── 学号2.md
+    └── 学号3.md
+```
+
+大文件镜像归档和数据库备份放教师指定存储，只在提交目录记录位置与SHA256。
+
+## 十、常见问题
+
+### 1. kubectl无法连接集群
+
+```bash
+kubectl config current-context
+kubectl config view --minify
+kubectl cluster-info
+```
+
+检查教师地址、网络、证书有效期和kubeconfig权限，不公开文件内容。
+
+### 2. Pod为ImagePullBackOff
+
+```bash
+kubectl describe pod <POD_NAME>
+kubectl get events --sort-by=.metadata.creationTimestamp | tail -n 30
+```
+
+检查镜像完整名称、固定标签、集群到课程Registry的网络和教师预置拉取凭据。
+
+### 3. Pod Running但不Ready
+
+查看探针和应用日志：
+
+```bash
+kubectl describe pod <POD_NAME>
+kubectl logs <POD_NAME> --tail=100
+```
+
+Running只说明容器进程存在，不代表应用通过就绪检查。
+
+### 4. Service没有后端
+
+```bash
+kubectl get service vc-api -o yaml
+kubectl get pods --show-labels
+kubectl get endpointslice -l kubernetes.io/service-name=vc-api
+```
+
+重点比较Service selector与Pod label。
+
+### 5. 目标主机Compose启动失败
+
+先做离线清单和配置检查：
+
+```bash
+sha256sum -c SHA256SUMS
+sudo docker image ls --digests
+sudo docker compose --env-file .env config --quiet
+sudo docker compose --env-file .env config --images
+sudo docker compose --env-file .env ps -a
+sudo docker compose --env-file .env logs --tail 100
+```
+
+不要在目标主机临时改用公网镜像掩盖交付包缺失。
+
+### 6. 恢复数据库后数据不正确
+
+核对备份SHA256、目标数据库名称、导入日志和API查询。保留源数据，不在唯一卷上反复清空。
+
+## 十一、课后思考与拓展
+
+1. Kubernetes为什么管理Pod而不是直接把单个Docker容器作为最高层对象？
+2. 删除Pod后应用能够恢复，说明Deployment在做什么？
+3. OpenStack和Kubernetes分别更接近管理哪一层资源？
+4. 企业级项目运维课程可以在本项目上增加哪些监控、部署和CI/CD能力？
+5. AI应用如果要部署到云环境，本课程提供了哪些基础？
+
+## 十二、环境保留或清理
+
+- Kubernetes个人应用资源按文件删除，保留YAML和证据。
+- Compose项目、镜像、卷和交付包按教师要求保留到答辩结束。
+- 答辩完成后，先备份再清理明确项目：
+
+```bash
+cd ~/vc-course/final-delivery
+sudo docker compose --env-file .env down
+```
+
+- 默认不加`-v`，数据卷是否删除由教师统一决定。
+- 分别为Rocky和Ubuntu创建最终快照`VC-03-课程综合项目完成`。

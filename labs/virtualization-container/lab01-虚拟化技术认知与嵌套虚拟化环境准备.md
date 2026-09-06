@@ -1,0 +1,362 @@
+# 实验1：虚拟化技术认知与嵌套虚拟化环境准备
+
+> 所属模块：模块一 服务器虚拟化与云资源基础
+>
+> 建议学时：4学时
+>
+> 实验方式：个人
+>
+> 对应教材：《模块一 服务器虚拟化与云资源基础》第1章
+>
+> 前置实验：《Linux操作系统》实验20
+>
+> 项目成果：虚拟化层次图、宿主机能力检查表、Rocky/Ubuntu课程基线和可回退快照
+
+## 一、项目情境
+
+你将继续使用Linux课程留下的Rocky Linux服务器和Ubuntu Server客户端，进入虚拟化与容器课程。后续Rocky需要承担KVM宿主机和Docker环境A，Ubuntu需要承担Docker环境B。若不先核对CPU虚拟化、内存、磁盘、网络、SSH和快照，后面的KVM失败很难判断究竟是硬件、VMware还是Rocky配置造成的。
+
+本实验先建立可证明、可回退的课程基线，再在Rocky虚拟机中确认是否获得了嵌套虚拟化能力。
+
+## 二、实验目标
+
+### 1. 知识目标
+
+1. 区分物理机、宿主机、客户机、Hypervisor、虚拟机和容器。
+2. 说明Type 1与Type 2 Hypervisor的基本差异。
+3. 说明Windows、VMware、Rocky KVM宿主机和KVM客户机的嵌套层次。
+4. 说明VMware、KVM、QEMU、libvirt、OpenStack的基本关系。
+
+### 2. 能力目标
+
+1. 检查Windows和VMware中的硬件虚拟化条件。
+2. 核对并调整Rocky、Ubuntu虚拟机资源和网络基线。
+3. 在Rocky中检查CPU虚拟化标志和`/dev/kvm`条件。
+4. 建立清晰命名的课程快照和环境记录。
+
+### 3. 素质目标
+
+1. 先检查、再修改，避免把环境问题误判为命令问题。
+2. 形成资源预算、操作留痕和可恢复意识。
+3. 不随意删除Linux课程留下的实验成果。
+
+## 三、知识准备
+
+### 1. 本课程的虚拟化层次
+
+```text
+L0 Windows物理机
+└── VMware Workstation（桌面Hypervisor）
+    ├── L1 Rocky Linux虚拟机
+    │   ├── KVM/QEMU/libvirt
+    │   └── L2 KVM客户机
+    └── L1 Ubuntu Server虚拟机
+```
+
+嵌套虚拟化是指L1虚拟机继续充当Hypervisor运行L2虚拟机。它适合教学、开发和测试，性能与稳定性不能等同于裸机生产环境。
+
+### 2. 组件关系
+
+```text
+virsh / virt-install
+        ↓
+      libvirt
+        ↓
+       QEMU
+        ↓
+   KVM内核模块
+        ↓
+CPU硬件虚拟化能力
+```
+
+OpenStack不是另一种CPU虚拟化技术。它通过计算、镜像、网络等服务统一管理大量云资源，计算节点通常可以使用KVM和libvirt创建实例。
+
+### 3. 资源预算
+
+| 对象 | 建议资源 | 说明 |
+|---|---|---|
+| Rocky KVM宿主机 | 4 vCPU、6—8GB内存、至少30GB可用空间 | 做KVM实验时可暂时关闭Ubuntu |
+| Ubuntu Docker主机 | 2 vCPU、2—4GB内存、至少20GB可用空间 | 模块二再与Rocky同时开启 |
+| 单台KVM客户机 | 1 vCPU、1—2GB内存、4—8GB磁盘 | 使用教师轻量镜像 |
+
+实际配置以机房统一基线为准。宿主机总资源不足时不能简单把两台VM都调大。
+
+## 四、实验环境
+
+- Windows 10/11学生机，BIOS/UEFI已启用Intel VT-x或AMD-V。
+- VMware Workstation已安装。
+- Linux课程保留的Rocky Linux 9和Ubuntu Server 22.04虚拟机。
+- student账号具有sudo权限，两台Linux主机能够通过SSH互访。
+- 教师发布《机房资源与VMware设置表》。
+
+## 五、项目任务
+
+1. 绘制本机虚拟化层次图。
+2. 检查Windows与VMware环境。
+3. 核对Rocky和Ubuntu基线。
+4. 为Rocky启用嵌套虚拟化。
+5. 在Rocky内部确认CPU虚拟化标志。
+6. 建立课程基线快照和环境检查表。
+
+## 六、实验步骤
+
+### 任务一：识别现有环境
+
+#### 步骤1：记录Windows宿主机资源
+
+在Windows中打开“任务管理器 → 性能”，记录：
+
+- CPU型号、逻辑处理器数量；
+- 内存总量与当前可用量；
+- 磁盘剩余空间；
+- CPU页面中“虚拟化”是否显示“已启用”。
+
+如果显示“已禁用”，停止后续KVM实验并报告教师。BIOS/UEFI修改由教师或机房管理员统一处理。
+
+#### 步骤2：核对VMware虚拟机
+
+确认虚拟机列表中至少存在：
+
+```text
+Rocky-KVM-Docker
+Ubuntu-Docker
+```
+
+名称可以不同，但环境记录中必须写清对应关系。分别确认网络适配器仍使用Linux课程确定的VMnet，不要擅自切换NAT、桥接或仅主机模式。
+
+### 任务二：检查Rocky和Ubuntu基线
+
+#### 步骤3：在Rocky记录基线
+
+登录Rocky执行：
+
+```bash
+hostnamectl
+cat /etc/os-release
+uname -r
+lscpu | sed -n '1,25p'
+free -h
+df -hT /
+ip -brief address
+ip route
+systemctl is-active sshd
+getenforce
+```
+
+将结果保存：
+
+```bash
+mkdir -p ~/vc-course/evidence ~/vc-course/backup
+{
+  date -Is
+  hostnamectl
+  cat /etc/os-release
+  uname -r
+  lscpu
+  free -h
+  df -hT
+  ip -brief address
+  ip route
+  systemctl is-active sshd
+  getenforce
+} > ~/vc-course/evidence/lab01-rocky-baseline.txt
+```
+
+预期：系统为Rocky Linux 9，SSH为active，根文件系统空间满足后续镜像需要，SELinux保持Enforcing。
+
+#### 步骤4：在Ubuntu记录基线
+
+登录Ubuntu执行：
+
+```bash
+mkdir -p ~/vc-course/evidence ~/vc-course/backup
+{
+  date -Is
+  hostnamectl
+  cat /etc/os-release
+  uname -r
+  lscpu
+  free -h
+  df -hT
+  ip -brief address
+  ip route
+  systemctl is-active ssh
+} > ~/vc-course/evidence/lab01-ubuntu-baseline.txt
+```
+
+确认Ubuntu可以连接Rocky：
+
+```bash
+ping -c 3 <ROCKY_IP>
+ssh student@<ROCKY_IP> 'hostname; date -Is'
+```
+
+将`<ROCKY_IP>`替换为Rocky实际地址。
+
+> **验收点**：两台Linux主机基线文件均已生成，Ubuntu能够通过原有SSH路径连接Rocky。
+
+### 任务三：在VMware启用嵌套虚拟化
+
+#### 步骤5：安全关闭Rocky
+
+在Rocky执行：
+
+```bash
+sudo systemctl poweroff
+```
+
+等待VMware显示虚拟机已完全关闭。不能在挂起状态修改处理器虚拟化设置。
+
+#### 步骤6：调整Rocky虚拟机资源
+
+在VMware中打开Rocky虚拟机设置：
+
+1. 选择“处理器”。
+2. 根据机房表设置处理器数量和每个处理器核心数，总vCPU建议为4。
+3. 勾选名称类似“虚拟化Intel VT-x/EPT或AMD-V/RVI”的选项。
+4. 内存调整为机房统一值，建议6—8GB。
+5. 不修改原有虚拟网卡模式。
+
+不同VMware版本的中文名称可能不同，应以“向客户机暴露硬件辅助虚拟化能力”为判断标准。
+
+如果选项不可勾选或启动时报“VMware与Hyper-V不兼容”“不支持嵌套虚拟化”等错误，记录完整提示并使用教师准备的远程KVM环境，不自行删除虚拟机。
+
+#### 步骤7：启动Rocky并检查CPU标志
+
+启动后执行：
+
+```bash
+grep -Ewo 'vmx|svm' /proc/cpuinfo | sort -u
+lscpu | grep -E 'Virtualization|虚拟化' || true
+```
+
+Intel处理器通常应看到`vmx`，AMD处理器通常应看到`svm`。继续统计标志出现次数：
+
+```bash
+grep -Eoc '(vmx|svm)' /proc/cpuinfo
+```
+
+正常结果应大于0。如果为0，说明Rocky没有获得硬件虚拟化能力，后续即使安装软件包也不能正常使用KVM加速。
+
+#### 步骤8：检查内核设备准备状态
+
+当前尚未安装KVM软件包时，部分对象可能不存在，先记录：
+
+```bash
+ls -l /dev/kvm 2>/dev/null || echo '/dev/kvm 尚不存在'
+lsmod | grep '^kvm' || echo 'KVM模块尚未加载'
+```
+
+不要因为`/dev/kvm`暂时不存在就直接修改系统；实验2安装软件并加载模块后再次验证。
+
+### 任务四：建立可回退基线
+
+#### 步骤9：生成环境检查表
+
+在Rocky执行：
+
+```bash
+{
+  echo 'course=virtualization-container'
+  echo "checked_at=$(date -Is)"
+  echo "host=$(hostname)"
+  echo "arch=$(uname -m)"
+  echo "kernel=$(uname -r)"
+  echo "virtualization_flags=$(grep -Ewo 'vmx|svm' /proc/cpuinfo | sort -u | paste -sd, -)"
+  echo "memory=$(free -h | awk '/^Mem:/ {print $2}')"
+  echo "root_free=$(df -hP / | awk 'NR==2 {print $4}')"
+  echo "ipv4=$(ip -4 -brief address | awk '$1!="lo" {print $3}' | paste -sd, -)"
+} | tee ~/vc-course/evidence/lab01-environment-check.txt
+```
+
+打开文件核对，不能出现关键字段为空而不说明原因。
+
+#### 步骤10：创建VMware快照
+
+分别正常关闭Rocky和Ubuntu，在VMware中创建快照：
+
+```text
+VC-00-课程基线
+```
+
+快照说明至少写明：
+
+- 创建日期；
+- Rocky和Ubuntu版本；
+- 当前IP；
+- Linux课程成果是否保留；
+- Rocky已启用嵌套虚拟化；
+- Docker和KVM尚未安装或当前状态。
+
+重新启动Rocky，确认SSH和网络仍正常。
+
+## 七、独立实践
+
+不查看教师示例，用自己的环境绘制一张层次图，至少包含：
+
+```text
+Windows → VMware → Rocky → KVM/libvirt → KVM客户机
+Windows → VMware → Ubuntu → Docker
+```
+
+在图中标出哪一层是物理资源、哪一层是虚拟机、哪一层以后运行容器。
+
+## 八、验收标准
+
+- [ ] 能解释物理机、宿主机、客户机和Hypervisor。
+- [ ] Windows任务管理器显示虚拟化已启用，或已记录教师确认的替代环境。
+- [ ] Rocky和Ubuntu基线文件完整。
+- [ ] Ubuntu能够通过SSH连接Rocky。
+- [ ] Rocky的`vmx`或`svm`统计值大于0。
+- [ ] Rocky资源满足机房统一要求。
+- [ ] 两台VM均存在`VC-00-课程基线`快照。
+- [ ] 虚拟化层次图对象与上下层关系正确。
+
+## 九、成果提交
+
+```text
+lab01-学号-姓名/
+├── virtualization-layers.png或.pdf
+├── lab01-rocky-baseline.txt
+├── lab01-ubuntu-baseline.txt
+├── lab01-environment-check.txt
+├── vmware-settings.png
+└── snapshot-record.png
+```
+
+截图不得包含真实密码、私钥或其他学生信息。
+
+## 十、常见问题
+
+### 1. Rocky中没有`vmx`或`svm`
+
+按以下顺序检查：
+
+1. Windows任务管理器是否显示虚拟化已启用；
+2. Rocky是否完全关机后再修改设置；
+3. VMware处理器设置是否勾选嵌套虚拟化；
+4. Windows是否启用了与当前VMware版本冲突的Hyper-V/VBS功能；
+5. 机房是否提供远程KVM回退环境。
+
+不要在不清楚机房策略时自行关闭Windows安全功能。
+
+### 2. 分配资源后Windows非常卡
+
+关闭暂时不用的Ubuntu虚拟机，恢复教师规定的内存与vCPU值。分配给虚拟机的总内存不能接近或超过物理机可用内存。
+
+### 3. Ubuntu无法SSH连接Rocky
+
+依次检查Rocky地址、VMware网卡模式、两机地址与路由、`sshd`、22端口和防火墙，不因本课程开始而重新配置一套无关网络。
+
+## 十一、课后思考与拓展
+
+1. 为什么嵌套虚拟化适合教学，却通常不作为生产虚拟机的首选运行方式？
+2. KVM在Linux内核中工作，QEMU、libvirt和`virsh`分别承担什么职责？
+3. OpenStack为什么仍然需要底层Hypervisor？
+
+## 十二、环境保留或清理
+
+- 保留Rocky和Ubuntu及`VC-00-课程基线`快照。
+- 保留`~/vc-course/evidence`。
+- 不安装或删除KVM、Docker；安装从对应实验开始。
+
