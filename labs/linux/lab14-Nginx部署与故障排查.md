@@ -4,7 +4,9 @@
 > 建议学时：4学时  
 > 实验方式：个人  
 > 对应教材：《模块三 企业服务部署与综合运维》第25章  
-> 前置实验：实验13  
+> 知识前置：模块二的服务、端口、HTTP、firewalld、SELinux和排障方法\
+> 状态依赖：`Linux-L2`中的`rocky-web`静态网络、SSH和安全基线；不依赖实验13在`rocky-server`创建的临时服务\
+> 建议起点：`Linux-L2`\
 > 项目成果：TechCorp静态站点、虚拟主机、反向代理、访问日志及403/404/502故障记录
 
 ## 一、项目情境
@@ -106,7 +108,7 @@ sudo ss -lntp | grep ':80 '
 #### 步骤3：备份配置基线
 
 ```bash
-mkdir -p ~/m1-project/backup/nginx ~/m1-project/evidence
+mkdir -p ~/m1-project/backup/nginx ~/m1-project/evidence ~/m1-project/logs
 sudo cp -a /etc/nginx/. ~/m1-project/backup/nginx/
 sudo nginx -T > ~/m1-project/evidence/lab14-nginx-before.txt 2>&1
 ```

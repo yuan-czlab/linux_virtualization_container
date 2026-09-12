@@ -4,7 +4,9 @@
 > 建议学时：4学时  
 > 实验方式：个人，可两人互相验证  
 > 对应教材：《模块一 Linux基础运维》第7—9章  
-> 前置实验：实验3  
+> 知识前置：实验3及教材第7—9章中的文件、用户和权限概念\
+> 状态依赖：`rocky-server`普通管理账号；账号、组和共享目录由本实验创建\
+> 建议起点：`Linux-L0`或保留实验3成果的当前环境\
 > 项目成果：部门账号、用户组、共享目录、sudo最小授权和跨账号权限验证记录
 
 ## 一、项目情境
@@ -63,14 +65,28 @@ sudo不是共享root密码，而是根据规则授权指定用户执行指定命
 - 保留一个rocky-server管理员会话，另开终端完成用户切换测试。
 - 实验对象固定为`dev01`、`dev02`、`auditor`、`juniorops`、`project-dev`和`/srv/course-share`。
 
+开始前确认主机身份、sudo能力，并检查是否存在同名旧对象：
+
+```bash
+hostnamectl --static
+whoami
+sudo -v
+getent passwd dev01 dev02 auditor juniorops || true
+getent group project-dev project-audit || true
+sudo test -e /srv/course-share && sudo find /srv/course-share -maxdepth 2 -ls || true
+```
+
+主机名和用户名应均为`rocky-server`，`sudo -v`应成功。如果身份或sudo检查失败，停止实验并恢复`Linux-L0`。如果发现同名对象，先判断它们是否为前一次课程实验成果；不要重复创建，也不要直接删除未知账号或目录。
+
 ## 五、项目任务
 
 1. 建立项目组和四个岗位账号。
-2. 配置共享目录所有权、SGID和访问权限。
+2. 配置共享目录所有权、SGID、Sticky bit和访问权限。
 3. 验证开发人员协作、审计人员只读和无关用户拒绝访问。
 4. 检查umask对新文件默认权限的影响。
-5. 为初级运维人员授予查看Nginx状态的最小sudo权限。
-6. 锁定测试账号并保留审计证据。
+5. 验证共享成员不能删除其他成员拥有的文件。
+6. 为初级运维人员授予查询Nginx运行状态的最小sudo权限。
+7. 锁定测试账号并保留审计证据。
 
 ## 六、实验步骤
 
@@ -206,7 +222,25 @@ ls -l /srv/course-share/from-*.txt
 
 > **验收点**：能够说明为什么团队共享目录更适合组可写的默认权限。
 
-### 任务五：配置最小sudo授权
+### 任务五：防止成员误删他人文件
+
+共享目录允许组成员创建和修改目录项。只有SGID时，`dev02`也可能删除`dev01`创建的文件。为目录同时增加Sticky bit：
+
+```bash
+sudo chmod 3770 /srv/course-share
+ls -ld /srv/course-share
+sudo -u dev01 touch /srv/course-share/dev01-owned.txt
+sudo -u dev02 rm /srv/course-share/dev01-owned.txt
+printf 'delete_exit_code=%s\n' "$?"
+test -f /srv/course-share/dev01-owned.txt
+printf 'file_still_exists=%s\n' "$?"
+```
+
+权限数字`3`由SGID的`2`和Sticky bit的`1`组成。`dev02`应能够在目录中协作写入，但不能删除`dev01`拥有的文件；`delete_exit_code`应为非0，`file_still_exists`应为0。
+
+> **验收点**：目录同时显示SGID和Sticky bit，组成员不能删除其他成员拥有的文件。
+
+### 任务六：配置最小sudo授权
 
 #### 步骤10：确认命令绝对路径
 
@@ -225,7 +259,7 @@ sudo visudo -f /etc/sudoers.d/course-juniorops
 写入一行；若`systemctl`路径不同，应使用实际路径：
 
 ```text
-juniorops ALL=(root) NOPASSWD: /usr/bin/systemctl status nginx
+juniorops ALL=(root) NOPASSWD: /usr/bin/systemctl is-active nginx
 ```
 
 保存后检查：
@@ -236,23 +270,23 @@ sudo chmod 440 /etc/sudoers.d/course-juniorops
 sudo -l -U juniorops
 ```
 
-> **验收点**：语法检查通过，授权列表只包含查看Nginx状态的命令。
+> **验收点**：语法检查通过，授权列表只包含查询Nginx运行状态的命令。
 
 #### 步骤12：验证允许和拒绝
 
-如果尚未安装Nginx，`status nginx`可能显示单元不存在，但sudo授权本身仍可验证。
+如果尚未安装Nginx，`is-active nginx`可能输出`unknown`或`inactive`并返回非0；只要没有出现sudo拒绝信息，授权匹配仍可验证。
 
 ```bash
-sudo -u juniorops sudo /usr/bin/systemctl status nginx
+sudo -u juniorops sudo /usr/bin/systemctl is-active nginx
 sudo -u juniorops sudo /usr/bin/systemctl restart nginx
 printf 'restart_exit_code=%s\n' "$?"
 ```
 
-这里使用`NOPASSWD`只为便于在实验环境中验证这一条只读命令，不代表可以对任意命令免密授权。查看命令应被sudo规则允许，重启命令应被拒绝。
+这里使用`NOPASSWD`只为便于在实验环境中验证这一条精确查询命令，不代表可以对任意命令免密授权。`is-active nginx`应被sudo规则允许，重启命令应被拒绝。没有授权`systemctl status`，也避免免密命令进入交互式分页器。
 
 > **验收点**：提供一条允许证据和一条拒绝证据。
 
-### 任务六：锁定账号和保存证据
+### 任务七：锁定账号和保存证据
 
 #### 步骤13：锁定并检查juniorops
 
@@ -299,12 +333,13 @@ mkdir -p ~/m1-project/evidence
 - [ ] 四个项目账号和两个项目组符合设计。
 - [ ] dev01、dev02能协作写入共享目录。
 - [ ] SGID使新文件继承项目组。
+- [ ] Sticky bit阻止成员删除其他成员拥有的文件。
 - [ ] auditor能够读取但不能写入。
 - [ ] juniorops不能访问项目共享目录。
 - [ ] 能说明文件和目录上rwx含义的差异。
 - [ ] 能解释0022与0002对默认权限的影响。
 - [ ] sudoers文件通过`visudo -cf`检查。
-- [ ] juniorops只能执行被授权的查看命令，不能重启服务。
+- [ ] juniorops只能执行被授权的运行状态查询，不能重启服务。
 - [ ] 独立实践和证据文件完整。
 
 ## 九、成果提交
@@ -351,7 +386,7 @@ id <用户>
 
 ## 十二、环境保留与清理
 
-保留`/srv/course-share`供教师验收。实验全部完成后才执行：
+`dev01`、`dev02`、`auditor`、`juniorops`、`project-dev`、`project-audit`和`/srv/course-share`会继续用于模块一教材中的权限、ACL和sudo综合检查。实验4完成后不要立即删除。只有在整门Linux课程结束、或者明确要求重置环境时，才执行以下清理命令：
 
 ```bash
 sudo rm -f /etc/sudoers.d/course-juniorops

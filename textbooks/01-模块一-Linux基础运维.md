@@ -47,11 +47,49 @@ Linux是服务器、云计算平台、网络设备、容器平台和自动化运
 | 实验6（2学时） | 第11章 | systemd、journal和启动故障 | 状态—日志—根因—修复记录 |
 | 实验7（2学时） | 第12章 | CPU、内存、进程、磁盘和容量 | 系统状态与容量巡检表 |
 
-## 教材深度与课堂使用
+## 本册学习方式
 
-本册详细解释Linux基础对象和命令，但课堂不逐页朗读。20学时建议分配为：教材讲授与任务导入175分钟、教师关键演示115分钟、学生独立操作455分钟、排障验收155分钟。实验1安装任务最紧，ISO、VMware安装包和校验值必须课前准备，两台Rocky与Ubuntu Desktop应错峰安装并交叉利用等待时间。
+本册按照第1—12章顺序学习。每章先理解对象和原理，再完成本章中的短练习，最后进入对应实验。教材中的短练习用于验证单项知识；实验1—7把多项知识组合成三机环境、账号权限、服务故障和巡检成果。
 
-教材负责Linux历史、目录与权限模型、软件包、systemd和资源指标等机制；实验1—7负责把知识落实为三机环境、账号权限、服务故障和巡检成果。
+教材练习默认使用`~/course-practice/m1/chXX`等独立目录。练习会在首次使用前创建所需目录和文件，可以按章节说明清理。`~/m1-project`、`/srv/course-share`、实验账号、软件配置和服务状态属于贯穿项目成果，除非实验明确要求，不得因完成某一章练习而删除。
+
+学习每章时完成下面的闭环：
+
+```text
+明确问题 → 阅读必学知识 → 预测命令结果 → 完成短练习
+→ 使用命令验证 → 解释错误 → 进入对应实验 → 保存验收证据
+```
+
+正文用于建立完整知识体系；标为“拓展”的内容用于查阅，不作为为进入下一实验必须掌握的范围。实验中遇到路径、权限、服务或资源问题时，应返回对应章节按对象关系排查，而不是直接复制其他来源的修复命令。
+
+### 代码块与任务标记
+
+本册代码块分为三类：
+
+| 标记 | 是否执行 | 用途 |
+|---|---|---|
+| 观察命令 | 可以执行 | 查看系统现状，不依赖课程项目成果 |
+| 本章短练习 | 按顺序执行 | 使用`~/course-practice/m1/`中的独立对象，练习单项知识 |
+| 实验衔接 | 转入对应实验后执行 | 创建或修改`~/m1-project`、系统账号、`/srv`目录、软件包和需保留的系统服务 |
+
+没有标明“本章短练习”的代码块可能只是语法示例。先预测其作用和结果，再根据上下文决定是否执行，不应把教材中的每个代码块整段粘贴到终端。第11章会创建一个明确标记、完成后立即清理的临时服务；它不属于贯穿项目状态。
+
+### 第1—12章学练顺序
+
+| 章节 | 20—25分钟必学内容 | 本章短练习 | 对应实验 |
+|---|---|---|---|
+| 第1章 | 操作系统、内核、发行版、Shell与运维闭环 | 写出服务器交付八问 | 实验1任务导入 |
+| 第2章 | VMware层次、NAT/桥接/仅主机、VMnet8与快照 | 完成三机资源和网络模式规划 | 实验1 |
+| 第3章 | 命令格式、帮助、补全、引号与退出状态 | 查询命令类型并比较成功/失败退出码 | 实验2前半部分 |
+| 第4章 | Linux目录树、路径、创建、复制、移动与删除 | 在`ch04`整理一组交付文件 | 实验2 |
+| 第5章 | 查看、筛选、find、inode、链接与重定向 | 在`ch05`完成日志查找和链接验证 | 实验3前半部分 |
+| 第6章 | Vim模式、配置备份、tar与恢复验证 | 在`ch06`完成配置修改和归档恢复 | 实验3 |
+| 第7章 | UID/GID、主组、附加组、账号文件与密码 | 读取身份信息并设计账号矩阵 | 实验4前半部分 |
+| 第8章 | 文件/目录rwx、umask、SGID、Sticky bit与ACL | 在个人目录预测并验证权限 | 实验4中段 |
+| 第9章 | sudo、绝对命令路径、visudo与最小授权 | 阅读授权需求并写出规则草案 | 实验4后半部分 |
+| 第10章 | RPM/DNF、DEB/APT、仓库、签名与回退 | 查询软件来源并预演安装或卸载 | 实验5 |
+| 第11章 | 进程、Unit、active/enabled与journal | 创建并排查可清理的临时服务 | 实验6 |
+| 第12章 | CPU、负载、内存、进程、磁盘、inode与端口 | 生成只读系统状态摘要 | 实验7 |
 
 ## 贯穿项目：新业务服务器基础交付
 
@@ -66,9 +104,11 @@ Linux是服务器、云计算平台、网络设备、容器平台和自动化运
 ```text
 Rocky Linux基础环境（实验8再配置静态地址）
 ├── ~/m1-project              项目工作区和操作证据
-├── /srv/course-share         运维团队共享目录
-├── operator                  受限运维账号
-├── ops-team                  项目协作组
+├── /srv/course-share         项目协作与权限验证目录
+├── dev01、dev02              开发协作账号
+├── auditor                   审计只读账号
+├── juniorops                 初级运维受限sudo账号
+├── project-dev、project-audit 项目开发组与审计组
 ├── 软件源与基础软件记录
 ├── systemd服务操作记录
 ├── systemd服务操作与日志证据
@@ -203,7 +243,7 @@ Linux管理不是“背命令”，而是围绕对象和证据工作：
 
 本模块先建立单机Linux管理基础；后续模块继续学习网络与远程管理、基础防护、Nginx等企业服务、虚拟化、多机环境和Docker容器化。大二下册的云计算应用、网络安全基础和企业级综合实训会继续使用本课程形成的主机、网络、服务和排障记录。
 
-### 本章任务：定义交付标准
+### 本章短练习：定义交付标准
 
 此时Linux尚未安装，不执行Linux命令。先写出一台“可交付服务器”至少应回答的八个问题：当前用户是谁、主机名是什么、使用哪个发行版、内核版本是什么、CPU架构和核心数是多少、内存多大、磁盘如何组织、如何回退错误操作。第2章安装完成后将用真实命令填写这些信息。
 
@@ -361,7 +401,11 @@ ping -c 3 <实际NAT网关>
 机房不能稳定访问默认国外仓库，因此在安装其他工具前先切换到已验证的国内镜像。以下以阿里云Rocky镜像为例：
 
 ```bash
-sudo cp -a /etc/yum.repos.d /root/yum.repos.d.after-install
+ROCKY_REPO_BACKUP="/root/yum-repos-before-course-$(date +%F-%H%M%S)"
+sudo mkdir -p "$ROCKY_REPO_BACKUP"
+sudo cp -a /etc/yum.repos.d/. "$ROCKY_REPO_BACKUP/"
+printf '%s\n' "$ROCKY_REPO_BACKUP" | \
+  sudo tee /var/tmp/course-rocky-repo-backup.path
 sudo find /etc/yum.repos.d -maxdepth 1 -type f -iname 'rocky*.repo' \
   -exec sed -e 's|^mirrorlist=|#mirrorlist=|g' \
   -e 's|^#baseurl=http://dl.rockylinux.org/$contentdir|baseurl=https://mirrors.aliyun.com/rockylinux|g' \
@@ -369,6 +413,15 @@ sudo find /etc/yum.repos.d -maxdepth 1 -type f -iname 'rocky*.repo' \
 sudo dnf clean all
 sudo dnf makecache
 dnf repolist
+```
+
+`makecache`失败时不要继续安装。先查看错误并检查IP、默认路由、DNS和系统时间；若确认镜像配置不适用，读取刚才保存的路径并恢复：
+
+```bash
+ROCKY_REPO_BACKUP=$(cat /var/tmp/course-rocky-repo-backup.path)
+sudo cp -a "$ROCKY_REPO_BACKUP"/. /etc/yum.repos.d/
+sudo dnf clean all
+sudo dnf makecache
 ```
 
 如果课程统一使用清华镜像，应使用开课前已经实机验证的Rocky 9仓库配置。不能使用CentOS 7、Rocky 8或其他大版本的repo文件。
@@ -410,6 +463,27 @@ Ubuntu Desktop使用图形安装程序。核心步骤：
 登录后执行：
 
 ```bash
+. /etc/os-release
+printf 'version=%s codename=%s arch=%s\n' \
+  "$VERSION_ID" "$VERSION_CODENAME" "$(dpkg --print-architecture)"
+```
+
+只有结果为Ubuntu `22.04`、代号`jammy`且架构为`amd64`时，才使用下面的课程配置。先备份，再切换到开课前已验证的阿里云镜像：
+
+```bash
+UBUNTU_SOURCE_BACKUP="/etc/apt/sources.list.before-course.$(date +%F-%H%M%S)"
+sudo cp -a /etc/apt/sources.list "$UBUNTU_SOURCE_BACKUP"
+printf '%s\n' "$UBUNTU_SOURCE_BACKUP" | \
+  sudo tee /var/tmp/course-ubuntu-source-backup.path
+
+sudo tee /etc/apt/sources.list >/dev/null <<'EOF'
+deb https://mirrors.aliyun.com/ubuntu/ jammy main restricted universe multiverse
+deb https://mirrors.aliyun.com/ubuntu/ jammy-updates main restricted universe multiverse
+deb https://mirrors.aliyun.com/ubuntu/ jammy-backports main restricted universe multiverse
+deb https://mirrors.aliyun.com/ubuntu/ jammy-security main restricted universe multiverse
+EOF
+
+sudo apt clean
 sudo apt update
 sudo apt install -y open-vm-tools open-vm-tools-desktop openssh-server curl
 sudo systemctl enable --now ssh
@@ -418,7 +492,7 @@ ip -br addr
 ip route
 ```
 
-Ubuntu 22.04 Desktop的软件源通常配置在`/etc/apt/sources.list`。不要直接复制其他发行版或其他Ubuntu版本的软件源配置。
+Ubuntu 22.04 Desktop的软件源通常配置在`/etc/apt/sources.list`。不要直接复制其他发行版或其他Ubuntu版本的软件源配置。`apt update`失败时先排查网络、DNS、时间和镜像地址；需要回退时读取`/var/tmp/course-ubuntu-source-backup.path`中记录的实际文件名并恢复。
 
 ## 2.7 三机基础连通性验证
 
@@ -456,7 +530,22 @@ ping <UBUNTU_CLIENT_IP>
 | 任意两台虚拟机地址相同 | 立即关闭冲突机器并在实验8统一修正 |
 | 系统时间错误 | 时区、宿主机时间、时间同步服务 |
 
-### 实践验收
+### 本章短练习：完成三机规划表
+
+安装前先完成规划，避免边点击安装器边临时决定资源和网络。将以下内容记录到纸面或课程记录中：
+
+| 项目 | rocky-server | rocky-web | ubuntu-client |
+|---|---|---|---|
+| 操作系统版本 | Rocky Linux 9 | Rocky Linux 9 | Ubuntu 22.04 Desktop |
+| 主机名 |  |  |  |
+| VMware网络 |  |  |  |
+| vCPU/内存/磁盘 |  |  |  |
+| 初始地址来源 |  |  |  |
+| 主要用途 |  |  |  |
+
+同时记录VMnet8实际子网、掩码、网关和DHCP范围。地址不能照抄教材示例，规划中的静态地址必须避开网关和DHCP动态分配区；本章只规划，实验8才正式配置固定地址。
+
+### 实验衔接：实验1验收
 
 - [ ] Rocky Linux 9可以使用普通用户登录。
 - [ ] `rocky-server`和`rocky-web`分别能使用同名普通用户登录并使用sudo。
@@ -610,13 +699,29 @@ echo $?
 | 防火墙 | firewalld | ufw常见，也可使用nftables |
 | 网络管理 | NetworkManager/nmcli | netplan/systemd-networkd常见 |
 
-### 实践任务
+### 本章短练习：查询命令并验证退出状态
 
-1. 分别在Rocky和Ubuntu中查看`/etc/os-release`。
-2. 使用`type`判断`cd`、`ls`、`echo`是什么类型的命令。
-3. 使用`man`找到`ls`按修改时间排序的选项。
-4. 执行成功和失败命令，记录退出状态。
-5. 使用Tab补全进入`/etc/systemd/system`。
+在Rocky和Ubuntu中分别创建本章独立记录目录，然后按顺序执行：
+
+```bash
+mkdir -p ~/course-practice/m1/ch03
+{
+    printf '=== system ===\n'
+    grep -E '^(NAME|VERSION_ID)=' /etc/os-release
+    printf '\n=== command types ===\n'
+    type cd
+    type ls
+    type echo
+    printf '\n=== successful command ===\n'
+    ls /etc/passwd
+    printf 'success_exit_code=%s\n' "$?"
+    printf '\n=== failed command ===\n'
+    ls /path/not-exist
+    printf 'failure_exit_code=%s\n' "$?"
+} > ~/course-practice/m1/ch03/command-basics.txt 2>&1
+```
+
+继续完成两个不写入记录文件的交互任务：使用`man ls`找到按修改时间排序的选项；使用Tab补全进入`/etc/systemd/system`，再回到家目录。不要直接照抄完整路径来代替补全练习。
 
 ### 验收标准
 
@@ -624,6 +729,11 @@ echo $?
 - [ ] 会使用`--help`、`man`、`type`和历史搜索。
 - [ ] 能正确解释`$?`。
 - [ ] 能说出DNF与APT的基本对应关系。
+- [ ] `command-basics.txt`中成功命令退出码为0、失败命令退出码非0。
+
+### 实验衔接：实验2前半部分
+
+实验2会从命令解释和帮助查询转入真实文件目录工单。正式项目目录由实验2根据业务任务创建，不复制本章`ch03`记录目录。
 
 ---
 
@@ -727,7 +837,7 @@ cd -
 
 ## 4.3 创建文件和目录
 
-本章开始建立贯穿项目。业务部门交来了一组待整理文件，要求运维人员建立工作区、保留原始文件并形成清晰的交付目录。
+本章先在独立练习目录中操作。业务部门交来了一组待整理文件，要求运维人员建立工作区、保留原始文件并形成清晰的交付目录。实验2会使用新的业务数据建立正式项目`~/m1-project`。
 
 | 目录 | 用途 |
 |---|---|
@@ -739,11 +849,13 @@ cd -
 | `backup` | 初始配置和归档 |
 | `docs` | 说明、证据和交付文档 |
 
-先创建目录：
+### 本章短练习：准备交付文件
+
+练习目录固定为`~/course-practice/m1/ch04`。先创建目录：
 
 ```bash
-mkdir -p ~/m1-project/{incoming,config,data,logs,scripts,backup,docs}
-touch ~/m1-project/docs/directory-plan.md
+mkdir -p ~/course-practice/m1/ch04/{incoming,config,data,logs,scripts,backup,docs}
+touch ~/course-practice/m1/ch04/docs/directory-plan.md
 ```
 
 `mkdir -p`可以创建多级目录，已存在时不会因目录本身已经存在而报错。花括号会被Shell展开成多个路径。`touch`可以创建空文件，也可以更新已有文件的时间戳。
@@ -751,7 +863,7 @@ touch ~/m1-project/docs/directory-plan.md
 现在模拟业务部门交来的原始文件。后续复制、移动和删除都以这些真实文件为对象：
 
 ```bash
-cat > ~/m1-project/README.md <<'EOF'
+cat > ~/course-practice/m1/ch04/README.md <<'EOF'
 # 新业务服务器基础交付
 
 - 服务器：rocky-server
@@ -759,14 +871,14 @@ cat > ~/m1-project/README.md <<'EOF'
 - 状态：初始化中
 EOF
 
-cat > ~/m1-project/incoming/app.conf.sample <<'EOF'
+cat > ~/course-practice/m1/ch04/incoming/app.conf.sample <<'EOF'
 app_name=internal-demo
 listen_port=8080
 data_dir=/srv/internal-demo/data
 log_level=info
 EOF
 
-cat > ~/m1-project/incoming/server-list.csv <<'EOF'
+cat > ~/course-practice/m1/ch04/incoming/server-list.csv <<'EOF'
 hostname,role,ip
 rocky-server,data-and-ops,<ROCKY_SERVER_IP>
 rocky-web,web,<ROCKY_WEB_IP>
@@ -774,26 +886,26 @@ ubuntu-client,client,<UBUNTU_CLIENT_IP>
 EOF
 
 printf '该文件为过期临时说明，确认后删除。\n' \
-  > ~/m1-project/incoming/obsolete-note.tmp
+  > ~/course-practice/m1/ch04/incoming/obsolete-note.tmp
 
-cat > ~/m1-project/logs/app.log <<'EOF'
+cat > ~/course-practice/m1/ch04/logs/app.log <<'EOF'
 2026-07-05 09:00:01 INFO service preparation started
 2026-07-05 09:00:03 WARN configuration not deployed
 2026-07-05 09:00:05 ERROR sample connection failed
-2026-07-05 09:00:08 INFO waiting for operator
+2026-07-05 09:00:08 INFO waiting for dev01
 EOF
 
-cat > ~/m1-project/scripts/precheck.sh <<'EOF'
+cat > ~/course-practice/m1/ch04/scripts/precheck.sh <<'EOF'
 #!/bin/bash
 echo "host=$(hostname) time=$(date -Iseconds)"
 EOF
-chmod 750 ~/m1-project/scripts/precheck.sh
+chmod 750 ~/course-practice/m1/ch04/scripts/precheck.sh
 ```
 
 检查所有输入对象已经存在：
 
 ```bash
-find ~/m1-project -maxdepth 2 -printf '%y %p\n' | sort
+find ~/course-practice/m1/ch04 -maxdepth 2 -printf '%y %p\n' | sort
 ```
 
 其中`d`表示目录、`f`表示普通文件。只有这一步结果完整，才继续4.4节。
@@ -830,7 +942,7 @@ find 待删除路径 -maxdepth 2 -print
 
 不要在不理解路径展开结果时使用`rm -rf`。
 
-### 项目任务：整理业务部门交付文件
+### 练习工单：整理业务部门交付文件
 
 业务要求如下：
 
@@ -847,17 +959,17 @@ find 待删除路径 -maxdepth 2 -print
 <summary>参考实现：完成任务后展开</summary>
 
 ```bash
-cp -a ~/m1-project/incoming/app.conf.sample \
-  ~/m1-project/config/app.conf
+cp -a ~/course-practice/m1/ch04/incoming/app.conf.sample \
+  ~/course-practice/m1/ch04/config/app.conf
 
-cp -a ~/m1-project/config/app.conf \
-  ~/m1-project/backup/app.conf.initial
+cp -a ~/course-practice/m1/ch04/config/app.conf \
+  ~/course-practice/m1/ch04/backup/app.conf.initial
 
-mv ~/m1-project/incoming/server-list.csv \
-  ~/m1-project/docs/server-list.csv
+mv ~/course-practice/m1/ch04/incoming/server-list.csv \
+  ~/course-practice/m1/ch04/docs/server-list.csv
 
-cat ~/m1-project/incoming/obsolete-note.tmp
-rm -i ~/m1-project/incoming/obsolete-note.tmp
+cat ~/course-practice/m1/ch04/incoming/obsolete-note.tmp
+rm -i ~/course-practice/m1/ch04/incoming/obsolete-note.tmp
 ```
 
 </details>
@@ -865,11 +977,11 @@ rm -i ~/m1-project/incoming/obsolete-note.tmp
 逐项验证：
 
 ```bash
-test -f ~/m1-project/incoming/app.conf.sample && echo 'OK original sample'
-test -f ~/m1-project/config/app.conf && echo 'OK active config'
-test -f ~/m1-project/backup/app.conf.initial && echo 'OK initial backup'
-test -f ~/m1-project/docs/server-list.csv && echo 'OK server list'
-test ! -e ~/m1-project/incoming/obsolete-note.tmp && echo 'OK obsolete file removed'
+test -f ~/course-practice/m1/ch04/incoming/app.conf.sample && echo 'OK original sample'
+test -f ~/course-practice/m1/ch04/config/app.conf && echo 'OK active config'
+test -f ~/course-practice/m1/ch04/backup/app.conf.initial && echo 'OK initial backup'
+test -f ~/course-practice/m1/ch04/docs/server-list.csv && echo 'OK server list'
+test ! -e ~/course-practice/m1/ch04/incoming/obsolete-note.tmp && echo 'OK obsolete file removed'
 ```
 
 ## 4.5 隐藏文件和通配符
@@ -877,8 +989,8 @@ test ! -e ~/m1-project/incoming/obsolete-note.tmp && echo 'OK obsolete file remo
 以`.`开头的名称通常不会被普通`ls`显示：
 
 ```bash
-printf 'project_id=M1-BASELINE\n' > ~/m1-project/.project-meta
-ls -la ~/m1-project
+printf 'practice_id=M1-CH04\n' > ~/course-practice/m1/ch04/.practice-meta
+ls -la ~/course-practice/m1/ch04
 ```
 
 常用通配符：
@@ -895,14 +1007,14 @@ ls -la ~/m1-project
 在项目中创建三份文件，只复制扩展名为`.log`的日志：
 
 ```bash
-printf 'INFO day1\n' > ~/m1-project/logs/app-1.log
-printf 'INFO day2\n' > ~/m1-project/logs/app-2.log
-printf 'not a log file\n' > ~/m1-project/logs/readme.txt
-mkdir -p ~/m1-project/backup/logs
+printf 'INFO day1\n' > ~/course-practice/m1/ch04/logs/app-1.log
+printf 'INFO day2\n' > ~/course-practice/m1/ch04/logs/app-2.log
+printf 'not a log file\n' > ~/course-practice/m1/ch04/logs/readme.txt
+mkdir -p ~/course-practice/m1/ch04/backup/logs
 
-printf '%s\n' ~/m1-project/logs/*.log
-cp -a ~/m1-project/logs/*.log ~/m1-project/backup/logs/
-find ~/m1-project/backup/logs -maxdepth 1 -type f -print
+printf '%s\n' ~/course-practice/m1/ch04/logs/*.log
+cp -a ~/course-practice/m1/ch04/logs/*.log ~/course-practice/m1/ch04/backup/logs/
+find ~/course-practice/m1/ch04/backup/logs -maxdepth 1 -type f -print
 ```
 
 `readme.txt`不匹配`*.log`，因此不会被复制。
@@ -910,12 +1022,12 @@ find ~/m1-project/backup/logs -maxdepth 1 -type f -print
 ## 4.6 文件类型
 
 ```bash
-ls -l ~/m1-project/config/app.conf
+ls -l ~/course-practice/m1/ch04/config/app.conf
 file /bin/ls
-file ~/m1-project/config/app.conf
-file ~/m1-project/scripts/precheck.sh
+file ~/course-practice/m1/ch04/config/app.conf
+file ~/course-practice/m1/ch04/scripts/precheck.sh
 stat /etc/passwd
-stat ~/m1-project/config/app.conf
+stat ~/course-practice/m1/ch04/config/app.conf
 ```
 
 `ls -l`首字符常见含义：
@@ -930,13 +1042,13 @@ stat ~/m1-project/config/app.conf
 | `s` | Socket |
 | `p` | 命名管道 |
 
-### 本章项目验收
+### 本章练习验收
 
 最终目录至少应包含：
 
 ```text
-m1-project
-├── .project-meta
+ch04
+├── .practice-meta
 ├── README.md
 ├── backup/app.conf.initial
 ├── backup/logs/
@@ -954,25 +1066,52 @@ m1-project
 执行验收：
 
 ```bash
-find ~/m1-project -maxdepth 3 -printf '%M %u:%g %p\n' | sort
-~/m1-project/scripts/precheck.sh
+find ~/course-practice/m1/ch04 -maxdepth 3 -printf '%M %u:%g %p\n' | sort
+~/course-practice/m1/ch04/scripts/precheck.sh
 ```
 
-`docs/directory-plan.md`已经作为待编写交付文档创建。第6章学习vim后，用自己的语言补充各目录用途，并解释为什么原始配置、正式配置和备份配置不能只保留一份。
+`docs/directory-plan.md`已经作为待编写练习文档创建。用自己的语言补充各目录用途，并解释为什么原始配置、正式配置和备份配置不能只保留一份。
+
+### 实验衔接：实验2
+
+进入实验2后，不复制本练习目录。根据实验2的新业务工单，从空白状态建立`~/m1-project`并保存正式成果。这里练习的是单项文件操作，实验2验收的是能否根据业务要求独立组织文件。
 
 ---
 
 # 第5章 文件查看、查找与链接
 
+### 本章短练习准备
+
+本章使用独立目录并一次性创建日志、文档和链接练习所需的输入：
+
+```bash
+mkdir -p ~/course-practice/m1/ch05/{logs,docs,data/link-lab}
+cat > ~/course-practice/m1/ch05/logs/app.log <<'EOF'
+2026-07-05 09:00:01 INFO service preparation started
+2026-07-05 09:00:03 WARN configuration not deployed
+2026-07-05 09:00:05 ERROR sample connection failed
+2026-07-05 09:00:08 INFO waiting for operator
+EOF
+```
+
+验证输入存在：
+
+```bash
+test -s ~/course-practice/m1/ch05/logs/app.log
+echo "log_check=$?"
+```
+
+只有`log_check=0`时才继续。
+
 ## 5.1 查看文本文件
 
 ```bash
 cat /etc/os-release
-cat ~/m1-project/logs/app.log
-less ~/m1-project/logs/app.log
+cat ~/course-practice/m1/ch05/logs/app.log
+less ~/course-practice/m1/ch05/logs/app.log
 head -n 20 /etc/passwd
-tail -n 3 ~/m1-project/logs/app.log
-tail -f ~/m1-project/logs/app.log
+tail -n 3 ~/course-practice/m1/ch05/logs/app.log
+tail -f ~/course-practice/m1/ch05/logs/app.log
 ```
 
 `tail -f`会持续等待新内容，按`Ctrl+C`结束。Rocky系统若存在`/var/log/messages`，通常需要使用`sudo less /var/log/messages`或`sudo tail /var/log/messages`读取；部分最小化环境主要使用systemd journal，第11章将专门练习。
@@ -999,7 +1138,7 @@ tail -f ~/m1-project/logs/app.log
 
 ```bash
 grep 'bash$' /etc/passwd
-grep -n -i 'error' ~/m1-project/logs/app.log
+grep -n -i 'error' ~/course-practice/m1/ch05/logs/app.log
 wc -l /etc/passwd
 cut -d: -f7 /etc/passwd
 cut -d: -f7 /etc/passwd | sort | uniq -c | sort -nr
@@ -1026,7 +1165,7 @@ find /etc -name '*.conf'
 find /var/log -type f
 find /var -type f -size +100M 2>/dev/null
 find /tmp -type f -mtime -1
-find ~/m1-project -maxdepth 2 -print
+find ~/course-practice/m1/ch05 -maxdepth 2 -print
 ```
 
 常用条件：
@@ -1044,7 +1183,7 @@ find ~/m1-project -maxdepth 2 -print
 对查找结果执行操作前先打印确认。相比拼接字符串，`-exec`能够更安全地处理空格：
 
 ```bash
-find ~/m1-project -type f -name '*.log' -exec ls -lh {} \;
+find ~/course-practice/m1/ch05 -type f -name '*.log' -exec ls -lh {} \;
 ```
 
 ## 5.4 查找命令位置
@@ -1065,14 +1204,15 @@ whereis ls
 文件名是目录中的记录，inode保存文件类型、权限、所有者、时间和数据块位置等元数据。
 
 ```bash
-mkdir -p ~/m1-project/data/link-lab
-echo 'important project data' > ~/m1-project/data/link-lab/origin.txt
-ls -li ~/m1-project/data/link-lab/origin.txt
+mkdir -p ~/course-practice/m1/ch05/data/link-lab
+rm -f ~/course-practice/m1/ch05/data/link-lab/{origin,hard-link,soft-link}.txt
+echo 'important practice data' > ~/course-practice/m1/ch05/data/link-lab/origin.txt
+ls -li ~/course-practice/m1/ch05/data/link-lab/origin.txt
 
-ln ~/m1-project/data/link-lab/origin.txt \
-  ~/m1-project/data/link-lab/hard-link.txt
-ln -s origin.txt ~/m1-project/data/link-lab/soft-link.txt
-ls -li ~/m1-project/data/link-lab/*.txt
+ln ~/course-practice/m1/ch05/data/link-lab/origin.txt \
+  ~/course-practice/m1/ch05/data/link-lab/hard-link.txt
+ln -s origin.txt ~/course-practice/m1/ch05/data/link-lab/soft-link.txt
+ls -li ~/course-practice/m1/ch05/data/link-lab/*.txt
 ```
 
 | 特性 | 硬链接 | 符号链接 |
@@ -1086,9 +1226,9 @@ ls -li ~/m1-project/data/link-lab/*.txt
 验证：
 
 ```bash
-rm ~/m1-project/data/link-lab/origin.txt
-cat ~/m1-project/data/link-lab/hard-link.txt
-cat ~/m1-project/data/link-lab/soft-link.txt
+rm ~/course-practice/m1/ch05/data/link-lab/origin.txt
+cat ~/course-practice/m1/ch05/data/link-lab/hard-link.txt
+cat ~/course-practice/m1/ch05/data/link-lab/soft-link.txt
 ```
 
 符号链接适合把稳定路径指向不同版本，例如`current -> releases/v2`。硬链接不能替代备份，因为对同一inode的内容修改会同时体现。
@@ -1098,9 +1238,9 @@ cat ~/m1-project/data/link-lab/soft-link.txt
 ```bash
 ps aux | less
 find /var/log -type f | wc -l
-ls -lah ~/m1-project > ~/m1-project/docs/files.txt
-date >> ~/m1-project/docs/files.txt
-ls /not-exist 2> ~/m1-project/logs/command-error.log
+ls -lah ~/course-practice/m1/ch05 > ~/course-practice/m1/ch05/docs/files.txt
+date >> ~/course-practice/m1/ch05/docs/files.txt
+ls /not-exist 2> ~/course-practice/m1/ch05/logs/command-error.log
 ```
 
 | 符号 | 含义 |
@@ -1110,7 +1250,7 @@ ls /not-exist 2> ~/m1-project/logs/command-error.log
 | `>>` | 追加写入文件 |
 | `2>` | 重定向标准错误 |
 
-### 实践任务
+### 本章短练习：提交文件审计结果
 
 项目经理要求提交一次文件审计：
 
@@ -1118,19 +1258,49 @@ ls /not-exist 2> ~/m1-project/logs/command-error.log
 2. 找出`/var`下大于10MiB的文件，不显示权限错误。
 3. 从项目日志中提取包含`WARN`或`ERROR`的行。
 4. 解释删除源文件后硬链接仍可读、软链接失效的原因。
-5. 将以上查找命令和结果整理到`~/m1-project/docs/find-result.txt`。
+5. 将以上查找命令和结果整理到`~/course-practice/m1/ch05/docs/find-result.txt`。
 
 验收：
 
 ```bash
-test -s ~/m1-project/docs/find-result.txt
-grep -E 'WARN|ERROR' ~/m1-project/logs/app.log
-ls -l ~/m1-project/data/link-lab
+test -s ~/course-practice/m1/ch05/docs/find-result.txt
+grep -E 'WARN|ERROR' ~/course-practice/m1/ch05/logs/app.log
+ls -l ~/course-practice/m1/ch05/data/link-lab
 ```
+
+### 实验衔接：实验3前半部分
+
+实验3会使用实验2保留的`~/m1-project/config/app.conf`完成真实配置查找和链接任务。本章短练习目录只用于掌握方法，不复制到正式项目。
 
 ---
 
 # 第6章 vim与归档恢复
+
+### 本章短练习准备
+
+本章不修改实验2的正式项目，先建立可重复练习的配置和文档：
+
+```bash
+mkdir -p ~/course-practice/m1/ch06/{config,backup,docs}
+cat > ~/course-practice/m1/ch06/README.md <<'EOF'
+# 配置归档练习
+
+- 主机：rocky-server
+- 状态：初始化中
+EOF
+cat > ~/course-practice/m1/ch06/config/app.conf <<'EOF'
+server_name=training.local
+port=8080
+mode=development
+EOF
+touch ~/course-practice/m1/ch06/docs/directory-plan.md
+```
+
+验证三个输入文件均已创建：
+
+```bash
+find ~/course-practice/m1/ch06 -maxdepth 2 -type f -printf '%P\n' | sort
+```
 
 ## 6.1 为什么需要文本编辑器
 
@@ -1167,7 +1337,7 @@ vim具有模式概念：
 打开文件：
 
 ```bash
-vim ~/m1-project/README.md
+vim ~/course-practice/m1/ch06/README.md
 ```
 
 普通模式常用操作：
@@ -1212,9 +1382,9 @@ n
 编辑配置文件前先备份。项目配置使用时间戳保留修改前版本：
 
 ```bash
-cp -a ~/m1-project/config/app.conf \
-  ~/m1-project/backup/app.conf.before-vim.$(date +%F-%H%M%S)
-vim ~/m1-project/config/app.conf
+cp -a ~/course-practice/m1/ch06/config/app.conf \
+  ~/course-practice/m1/ch06/backup/app.conf.before-vim.$(date +%F-%H%M%S)
+vim ~/course-practice/m1/ch06/config/app.conf
 ```
 
 ## 6.3 归档与压缩
@@ -1222,11 +1392,11 @@ vim ~/m1-project/config/app.conf
 归档是把多个文件组合成一个文件，压缩是减少数据体积。`tar`常把两者结合：
 
 ```bash
-archive="$HOME/m1-project-$(date +%F-%H%M%S).tar.gz"
-restore_dir=$(mktemp -d "$HOME/m1-restore.XXXXXX")
-printf '%s\n' "$archive" > ~/m1-project/docs/last-archive.txt
-printf '%s\n' "$restore_dir" > ~/m1-project/docs/last-restore-dir.txt
-tar -C "$HOME" -czf "$archive" m1-project
+archive="$HOME/course-practice/m1/ch06-$(date +%F-%H%M%S).tar.gz"
+restore_dir=$(mktemp -d "$HOME/course-practice/m1/ch06-restore.XXXXXX")
+printf '%s\n' "$archive" > ~/course-practice/m1/ch06/docs/last-archive.txt
+printf '%s\n' "$restore_dir" > ~/course-practice/m1/ch06/docs/last-restore-dir.txt
+tar -C "$HOME/course-practice/m1" -czf "$archive" ch06
 echo "$archive"
 ```
 
@@ -1245,8 +1415,8 @@ echo "$archive"
 先检查再恢复：
 
 ```bash
-archive=$(cat ~/m1-project/docs/last-archive.txt)
-restore_dir=$(cat ~/m1-project/docs/last-restore-dir.txt)
+archive=$(cat ~/course-practice/m1/ch06/docs/last-archive.txt)
+restore_dir=$(cat ~/course-practice/m1/ch06/docs/last-restore-dir.txt)
 tar -tzf "$archive" | head
 tar -xzf "$archive" -C "$restore_dir"
 find "$restore_dir" -maxdepth 3 -print
@@ -1258,10 +1428,10 @@ find "$restore_dir" -maxdepth 3 -print
 
 ```bash
 sudo dnf install -y zip unzip
-(cd "$HOME" && zip -r "$HOME/m1-project.zip" m1-project)
-unzip -l "$HOME/m1-project.zip"
-zip_restore=$(mktemp -d "$HOME/m1-zip-restore.XXXXXX")
-unzip "$HOME/m1-project.zip" -d "$zip_restore"
+(cd "$HOME/course-practice/m1" && zip -r "$HOME/course-practice/m1/ch06.zip" ch06)
+unzip -l "$HOME/course-practice/m1/ch06.zip"
+zip_restore=$(mktemp -d "$HOME/course-practice/m1/ch06-zip-restore.XXXXXX")
+unzip "$HOME/course-practice/m1/ch06.zip" -d "$zip_restore"
 echo "$zip_restore"
 ```
 
@@ -1279,24 +1449,53 @@ echo "$zip_restore"
 ```
 
 ```bash
-restore_dir=$(cat ~/m1-project/docs/last-restore-dir.txt)
-diff -ru "$HOME/m1-project" "$restore_dir/m1-project"
+restore_dir=$(cat ~/course-practice/m1/ch06/docs/last-restore-dir.txt)
+diff -ru "$HOME/course-practice/m1/ch06" "$restore_dir/ch06"
 ```
 
-归档路径和恢复目录分别记录在项目`docs`中，因此重新登录后也可以继续验证。示例使用`tar -C "$HOME"`归档相对路径，恢复结果不依赖具体用户名。
+归档路径和恢复目录分别记录在练习目录的`docs`中，因此重新登录后也可以继续验证。示例使用`tar -C`归档相对路径，恢复结果不依赖具体用户名。
 
-### 实践任务
+### 本章短练习：修改配置并完成恢复验证
 
 项目工单要求：
 
 1. 使用vim把`README.md`中的状态改为“基础文件已整理”。
 2. 使用vim完成`docs/directory-plan.md`。
-3. 创建`docs/initialization-record.md`，至少记录固定IP、网关、DNS、目录规划和当前日期。
+3. 创建`docs/initialization-record.md`，至少记录当前DHCP地址、网关、DNS、目录规划和当前日期；固定IP将在实验8配置。
 4. 使用搜索与替换确认文档中的主机名统一为`rocky-server`。
-5. 将`~/m1-project`归档并记录归档路径。
-6. 恢复到新目录，使用`diff -ru`验证。
+5. 修改完成后重新创建一份新归档，不复用6.3节修改前的演示归档。
+6. 把新归档恢复到新的空目录，使用`diff -ru`验证。
+
+完成第1—4项后执行下面的交付命令：
+
+```bash
+archive="$HOME/course-practice/m1/ch06-final-$(date +%F-%H%M%S).tar.gz"
+restore_dir=$(mktemp -d "$HOME/course-practice/m1/ch06-final-restore.XXXXXX")
+printf '%s\n' "$archive" > ~/course-practice/m1/ch06/docs/last-archive.txt
+printf '%s\n' "$restore_dir" > ~/course-practice/m1/ch06/docs/last-restore-dir.txt
+tar -C "$HOME/course-practice/m1" -czf "$archive" ch06
+tar -tzf "$archive" | sed -n '1,30p'
+tar -xzf "$archive" -C "$restore_dir"
+```
 
 `diff`无输出且退出状态为0，表示当前项目内容与恢复内容一致。
+
+完成后检查：
+
+```bash
+test -s ~/course-practice/m1/ch06/docs/initialization-record.md
+archive=$(cat ~/course-practice/m1/ch06/docs/last-archive.txt)
+test -s "$archive"
+restore_dir=$(cat ~/course-practice/m1/ch06/docs/last-restore-dir.txt)
+diff -ru "$HOME/course-practice/m1/ch06" "$restore_dir/ch06"
+echo "restore_compare=$?"
+```
+
+`restore_compare=0`才表示当前练习目录和恢复目录一致。
+
+### 实验衔接：实验3
+
+实验3会检查实验2创建的`~/m1-project/config/app.conf`。进入实验前先执行实验3的起点检查；文件缺失时恢复实验2成果，不使用本章`ch06`练习文件冒充正式项目文件。
 
 ---
 
@@ -1348,10 +1547,12 @@ getent group wheel
 
 ## 7.3 用户管理
 
+下面是用户管理命令的语法示例。它们会改变系统账号，不属于本章短练习；真实项目账号统一在实验4中创建。
+
 ```bash
 sudo useradd -m -s /bin/bash demo-user
 sudo passwd demo-user
-sudo usermod -c "Demo Operator" demo-user
+sudo usermod -c "Demo User" demo-user
 sudo usermod -L demo-user       # 锁定密码
 sudo usermod -U demo-user       # 解锁密码
 id demo-user
@@ -1367,6 +1568,8 @@ sudo find / -xdev -user demo-user 2>/dev/null
 `userdel -r`会尝试删除家目录和邮件目录，执行前必须确认数据已备份或允许删除。
 
 ## 7.4 用户组管理
+
+下面的命令接续上一节假设的`demo-user`，用于说明组管理语法，不应在没有该账号时直接执行：
 
 ```bash
 sudo groupadd web-team
@@ -1394,7 +1597,7 @@ sudo chage -d 0 demo-user
 
 课程实验密码不能用于真实生产系统。真实密码应足够长、唯一，并按组织策略管理。
 
-检查无误后清理演示账号和演示组：
+如果为了额外练习而实际创建了`demo-user`和`web-team`，检查无误后再清理；未创建则跳过：
 
 ```bash
 ps -u demo-user
@@ -1403,36 +1606,45 @@ sudo userdel -r demo-user
 sudo groupdel web-team
 ```
 
-### 项目工单：建立运维协作团队
+### 本章短练习：读取身份并设计账号矩阵
 
-项目需要两种角色：
+本练习不创建系统账号。先建立独立练习目录并保存当前身份信息：
+
+```bash
+mkdir -p ~/course-practice/m1/ch07
+{
+    printf 'current_user=%s\n' "$(whoami)"
+    id
+    getent passwd "$(whoami)"
+    getent group "$(id -gn)"
+} > ~/course-practice/m1/ch07/current-identity.txt
+```
+
+然后使用vim创建`~/course-practice/m1/ch07/account-plan.md`，按下表写出四类账号的职责、组要求和禁止事项：
+
+项目需要四类角色：
 
 | 账号 | 职责 | 组要求 |
 |---|---|---|
-| `operator` | 执行日常服务检查和受控运维操作 | 加入`ops-team` |
-| `appdev` | 提交应用文件，但没有系统管理权限 | 加入`ops-team` |
+| `dev01` | 开发人员，创建并维护项目文件 | 加入`project-dev` |
+| `dev02` | 开发人员，协作修改项目文件 | 加入`project-dev` |
+| `auditor` | 审计人员，只读查看项目文件 | 后续加入`project-audit` |
+| `juniorops` | 初级运维人员，只能执行获批的管理命令 | 不加入`wheel` |
 
-约束：练习账号必须相互独立，不能共享课程主账号或root密码；创建后必须通过`id`和`getent`验证。
-
-<details>
-<summary>参考实现：完成工单后展开</summary>
+账号设计必须满足：一人一账号、不共享root密码；开发、审计和初级运维权限彼此分离；所有创建结果都能用`id`和`getent`验证。
 
 ```bash
-sudo groupadd ops-team
-sudo useradd -m -s /bin/bash operator
-sudo useradd -m -s /bin/bash appdev
-sudo passwd operator
-sudo passwd appdev
-sudo usermod -aG ops-team operator
-sudo usermod -aG ops-team appdev
-id operator
-id appdev
-getent group ops-team
+test -s ~/course-practice/m1/ch07/current-identity.txt
+test -s ~/course-practice/m1/ch07/account-plan.md
+grep -E 'dev01|dev02|auditor|juniorops' \
+  ~/course-practice/m1/ch07/account-plan.md
 ```
 
-</details>
+验收时应能解释UID与用户名、GID与组名、主组与附加组的区别，并指出为什么`juniorops`不能加入`wheel`。
 
-这些账号、家目录和`ops-team`将在第8、9章以及模块综合交付中继续使用，不要在本章删除。
+### 实验衔接：实验4任务一
+
+进入实验4后，根据本章账号矩阵创建`project-dev`、`dev01`、`dev02`、`auditor`和`juniorops`，并以实验手册中的起点检查、创建顺序和验收命令为准。不要在教材练习中提前创建同名账号。
 
 ---
 
@@ -1440,28 +1652,10 @@ getent group ops-team
 
 ## 8.1 rwx权限模型
 
-项目要求在`/srv/course-share`建立协作目录。`operator`和`appdev`都能创建文件，新文件应自动属于`ops-team`，但任何人都不能随意删除其他成员的文件。
-
-先建立SGID共享目录并创建一份真实报告：
-
-```bash
-sudo mkdir -p /srv/course-share
-sudo chown root:ops-team /srv/course-share
-sudo chmod 2770 /srv/course-share
-sudo -u operator bash -c \
-  'echo "operator baseline report" > /srv/course-share/operator-report.txt'
-ls -ld /srv/course-share
-ls -l /srv/course-share/operator-report.txt
-```
-
-```bash
-ls -l /srv/course-share/operator-report.txt
-```
-
-示例：
+实验4要求在`/srv/course-share`建立协作目录：`dev01`和`dev02`可以协作，`auditor`只读，`juniorops`无权访问。先学会读取一个文件的传统权限。下面是实验完成后可能看到的输出示例，不要求此时已经存在该文件：
 
 ```text
--rw-r--r-- 1 operator ops-team 25 Jul 5 10:00 operator-report.txt
+-rw-rw-r-- 1 dev01 project-dev 11 Jul 5 10:00 project.conf
 ```
 
 拆分：
@@ -1492,19 +1686,23 @@ w = 2
 x = 1
 ```
 
-```bash
-mkdir -p ~/m1-project/permissions/public-dir
-touch ~/m1-project/permissions/private.txt
-cp ~/m1-project/config/app.conf ~/m1-project/permissions/config.ini
-printf '<h1>status</h1>\n' > ~/m1-project/permissions/index.html
-cp ~/m1-project/scripts/precheck.sh ~/m1-project/permissions/check.sh
+### 本章短练习准备
 
-chmod 600 ~/m1-project/permissions/private.txt
-chmod 640 ~/m1-project/permissions/config.ini
-chmod 644 ~/m1-project/permissions/index.html
-chmod 750 ~/m1-project/permissions/check.sh
-chmod 755 ~/m1-project/permissions/public-dir
-ls -l ~/m1-project/permissions
+下面的对象全部位于个人练习目录中。命令会创建输入文件并统一设置初始权限，可以按顺序执行：
+
+```bash
+mkdir -p ~/course-practice/m1/ch08/public-dir
+printf 'token=practice-only\n' > ~/course-practice/m1/ch08/private.txt
+printf 'listen=8080\n' > ~/course-practice/m1/ch08/config.ini
+printf '<h1>status</h1>\n' > ~/course-practice/m1/ch08/index.html
+printf '#!/bin/bash\necho permission-check\n' > ~/course-practice/m1/ch08/check.sh
+
+chmod 600 ~/course-practice/m1/ch08/private.txt
+chmod 640 ~/course-practice/m1/ch08/config.ini
+chmod 644 ~/course-practice/m1/ch08/index.html
+chmod 750 ~/course-practice/m1/ch08/check.sh
+chmod 755 ~/course-practice/m1/ch08/public-dir
+ls -l ~/course-practice/m1/ch08
 ```
 
 不要用`chmod 777`掩盖权限设计问题。权限过宽会让无关用户修改程序、配置或数据。
@@ -1512,22 +1710,27 @@ ls -l ~/m1-project/permissions
 ## 8.4 chmod符号法
 
 ```bash
-touch ~/m1-project/permissions/shared.txt ~/m1-project/permissions/secret.txt
-chmod u+x ~/m1-project/permissions/check.sh
-chmod g+w ~/m1-project/permissions/shared.txt
-chmod o-r ~/m1-project/permissions/secret.txt
-chmod u=rw,g=r,o= ~/m1-project/permissions/config.ini
+touch ~/course-practice/m1/ch08/shared.txt \
+  ~/course-practice/m1/ch08/secret.txt
+chmod u-x ~/course-practice/m1/ch08/check.sh
+stat -c '%A %a %n' ~/course-practice/m1/ch08/check.sh
+chmod u+x ~/course-practice/m1/ch08/check.sh
+chmod g+w ~/course-practice/m1/ch08/shared.txt
+chmod o-r ~/course-practice/m1/ch08/secret.txt
+chmod u=rw,g=r,o= ~/course-practice/m1/ch08/config.ini
+stat -c '%A %a %n' ~/course-practice/m1/ch08/{check.sh,shared.txt,secret.txt,config.ini}
 ```
 
 对象：`u`所有者、`g`组、`o`其他、`a`全部。
 
 ## 8.5 所有者与所属组
 
+`chown`和`chgrp`的基本格式如下。真实项目文件的所有者和组由实验4设置；不要对不明来源的系统目录递归执行这些命令。
+
 ```bash
-sudo chown operator /srv/course-share/operator-report.txt
-sudo chgrp ops-team /srv/course-share/operator-report.txt
-sudo chown operator:ops-team /srv/course-share/operator-report.txt
-ls -l /srv/course-share/operator-report.txt
+chown 用户名 文件
+chgrp 组名 文件
+chown 用户名:组名 文件
 ```
 
 递归修改前使用`find`或`ls -lR`确认范围，避免把系统目录所有者整体改错。
@@ -1540,10 +1743,10 @@ ls -l /srv/course-share/operator-report.txt
 old_umask=$(umask)
 echo "old_umask=$old_umask"
 umask 0022
-touch ~/m1-project/permissions/umask-file
-mkdir ~/m1-project/permissions/umask-dir
-ls -ld ~/m1-project/permissions/umask-file \
-  ~/m1-project/permissions/umask-dir
+touch ~/course-practice/m1/ch08/umask-file
+mkdir -p ~/course-practice/m1/ch08/umask-dir
+ls -ld ~/course-practice/m1/ch08/umask-file \
+  ~/course-practice/m1/ch08/umask-dir
 umask "$old_umask"
 ```
 
@@ -1555,14 +1758,37 @@ umask "$old_umask"
 | `0002` | `664` | `775` | 同组协作 |
 | `0077` | `600` | `700` | 私密数据 |
 
+### 本章短练习：预测并验证个人目录权限
+
+完成前面的`ch08`对象准备后，先不要再次执行`chmod`，在纸面或`permission-plan.md`中预测以下权限：
+
+1. `private.txt`为什么应为`600`。
+2. `config.ini`的所有者、所属组、其他用户分别能做什么。
+3. `check.sh`为什么需要执行位，而普通配置文件通常不需要。
+4. 在`umask 0022`下，新文件和新目录通常得到什么权限。
+
+然后执行并核对实际结果：
+
+```bash
+stat -c '%A %a %U:%G %n' ~/course-practice/m1/ch08/*
+test "$(stat -c %a ~/course-practice/m1/ch08/private.txt)" = 600
+echo "private_mode_check=$?"
+test -x ~/course-practice/m1/ch08/check.sh
+echo "script_execute_check=$?"
+```
+
+两个检查结果都应为0。若预测与实际结果不同，应根据文件/目录语义以及u、g、o三组权限重新解释，而不是改成`777`。
+
 ## 8.7 特殊权限
+
+本节的SGID、Sticky bit和ACL需要多个真实账号共同验证，属于实验4内容。先理解设计目标和命令含义，再进入实验执行；不要在本章短练习中提前创建`/srv/course-share`。
 
 ### SGID目录
 
 目录设置SGID后，其中新建文件通常继承目录所属组：
 
 ```bash
-sudo chown root:ops-team /srv/course-share
+sudo chown root:project-dev /srv/course-share
 sudo chmod 2770 /srv/course-share
 ls -ld /srv/course-share
 ```
@@ -1577,6 +1803,21 @@ sudo chmod 3770 /srv/course-share
 
 这里`3`同时包含SGID（2）和Sticky（1）。
 
+### ACL
+
+传统权限只能表达“所有者、所属组、其他用户”三类权限。当同一目录同时需要“开发组可写、审计组只读、其他用户禁止访问”时，可以使用ACL增加更细的访问规则：
+
+```bash
+command -v setfacl || sudo dnf install -y acl
+sudo groupadd project-audit
+sudo usermod -aG project-audit auditor
+sudo setfacl -m g:project-audit:rx /srv/course-share
+sudo setfacl -m g:project-audit:r-- /srv/course-share/project.conf
+getfacl /srv/course-share /srv/course-share/project.conf
+```
+
+ACL输出中的`group:project-audit`表示额外授予审计组权限。设置ACL后仍要用实际账号验证，不能只看配置文件。
+
 ### SUID
 
 SUID可使可执行文件以文件所有者的有效身份运行，风险较高。本模块只要求识别：
@@ -1587,23 +1828,27 @@ find /usr/bin -perm -4000 -type f 2>/dev/null
 
 不要随意给自编程序设置SUID。
 
-## 8.8 验证共享目录
+## 8.8 实验衔接：实验4任务二至五
+
+实验4会先创建账号和共享目录，再按以下思路完成跨账号验证。下面的命令依赖实验4已经创建的对象，只在实验4对应步骤执行：
 
 ```bash
-sudo chown root:ops-team /srv/course-share
+sudo chown root:project-dev /srv/course-share
 sudo chmod 3770 /srv/course-share
 
-sudo -u operator bash -c \
-  'echo operator > /srv/course-share/operator.txt'
-sudo -u appdev bash -c \
-  'echo appdev > /srv/course-share/appdev.txt'
+sudo -u dev01 bash -c \
+  'umask 0002; echo dev01 > /srv/course-share/dev01.txt'
+sudo -u dev02 bash -c \
+  'umask 0002; echo dev02 > /srv/course-share/dev02.txt'
 ls -l /srv/course-share
 
-sudo -u appdev cat /srv/course-share/operator.txt
-sudo -u appdev rm /srv/course-share/operator.txt
+sudo -u dev02 cat /srv/course-share/dev01.txt
+sudo -u dev02 rm /srv/course-share/dev01.txt
+sudo -u auditor cat /srv/course-share/project.conf
+sudo -u juniorops cat /srv/course-share/project.conf
 ```
 
-最后一条应因Sticky bit而失败。验证权限时必须切换到实际目标用户，不能只看`ls -l`后凭感觉判断。
+`dev02`删除`dev01.txt`应因Sticky bit而失败；`auditor`读取`project.conf`应成功；`juniorops`读取`project.conf`应失败。验证权限时必须切换到实际目标用户，不能只看`ls -l`后凭感觉判断。
 
 ### 权限排障顺序
 
@@ -1616,21 +1861,25 @@ sudo -u appdev rm /srv/course-share/operator.txt
 → 后续再检查SELinux
 ```
 
-### 本章项目验收
+### 实验4验收要点
 
-- `ls -ld /srv/course-share`显示组为`ops-team`，并具有SGID和Sticky bit。
-- `operator`和`appdev`都能创建文件。
-- 新文件自动继承`ops-team`组。
-- `appdev`可以读取团队文件，但不能删除`operator`拥有的文件。
+- `ls -ld /srv/course-share`显示组为`project-dev`，并具有SGID和Sticky bit。
+- `dev01`和`dev02`都能创建文件。
+- 新文件自动继承`project-dev`组。
+- `dev02`可以读取团队文件，但不能删除`dev01`拥有的文件。
+- `auditor`通过ACL只读访问，`juniorops`不能访问项目共享目录。
 
 ```bash
 ls -ld /srv/course-share
 find /srv/course-share -maxdepth 1 -printf '%M %u:%g %p\n'
-sudo -u operator test -w /srv/course-share && echo 'operator can write'
-sudo -u appdev test -w /srv/course-share && echo 'appdev can write'
+getfacl /srv/course-share /srv/course-share/project.conf
+sudo -u dev01 test -w /srv/course-share && echo 'dev01 can write'
+sudo -u dev02 test -w /srv/course-share && echo 'dev02 can write'
+sudo -u auditor test -r /srv/course-share/project.conf && echo 'auditor can read'
+sudo -u juniorops test -r /srv/course-share/project.conf || echo 'juniorops cannot read'
 ```
 
-`/srv/course-share`、`operator`、`appdev`和`ops-team`都是贯穿项目资产，后续章节继续使用，不在此处清理。
+`/srv/course-share`、`dev01`、`dev02`、`auditor`、`juniorops`、`project-dev`和`project-audit`都由实验4创建并作为贯穿项目资产保留。若这些对象不存在，应回到实验4的起点检查和任务一，不能只创建一个同名空目录绕过依赖。
 
 ---
 
@@ -1669,7 +1918,7 @@ Ubuntu常使用`sudo`组：
 sudo usermod -aG sudo 用户名
 ```
 
-以上两条是命令格式，不要把中文占位符直接复制到终端。本项目不能把`operator`加入`wheel`或`sudo`组，否则它会获得通用管理权限，无法验证最小授权。
+以上两条是命令格式，不要把中文占位符直接复制到终端。本项目不能把`juniorops`加入`wheel`或`sudo`组，否则它会获得通用管理权限，无法验证最小授权。
 
 ## 9.3 使用visudo
 
@@ -1679,50 +1928,59 @@ sudo usermod -aG sudo 用户名
 sudo visudo -c
 ```
 
-### 项目工单：只授权operator管理时间同步服务
+### 本章短练习：编写最小授权草案
 
-`operator`需要查看和重启`chronyd`，但不允许创建用户、安装软件或执行任意root命令。使用`/etc/sudoers.d/`独立文件实现：
-
-```bash
-sudo visudo -f /etc/sudoers.d/operator-chronyd
-```
-
-写入：
-
-```sudoers
-operator ALL=(root) /usr/bin/systemctl status chronyd, /usr/bin/systemctl restart chronyd
-```
-
-设置正确权限：
+假设`juniorops`需要查询Nginx是否正在运行，但不允许查看任意服务详情、重启服务、创建用户、安装软件或执行任意root命令。本练习只在个人目录编写草案，不修改`/etc/sudoers.d/`。
 
 ```bash
-sudo chmod 440 /etc/sudoers.d/operator-chronyd
-sudo visudo -cf /etc/sudoers.d/operator-chronyd
+mkdir -p ~/course-practice/m1/ch09
+command -v systemctl
+printf '%s\n' \
+  'juniorops ALL=(root) NOPASSWD: /usr/bin/systemctl is-active nginx' \
+  > ~/course-practice/m1/ch09/course-juniorops.draft
+cat ~/course-practice/m1/ch09/course-juniorops.draft
 ```
 
-切换到operator验证：
+草案使用绝对命令路径，是因为sudo要匹配被授权的具体程序。若`command -v systemctl`显示的路径不同，应将草案中的路径改为实际结果。回答下面三个问题：
+
+1. 规则中的主体用户、目标身份、程序和参数分别是什么？
+2. 为什么不能把`status nginx`写成任意参数？
+3. 为什么不能直接授予`ALL`？
+
+检查草案非空且只包含一条授权规则：
 
 ```bash
-su - operator
-sudo -l
-sudo systemctl status chronyd
-sudo systemctl restart chronyd
-sudo useradd should-fail
-exit
+test -s ~/course-practice/m1/ch09/course-juniorops.draft
+echo "draft_nonempty_check=$?"
+wc -l ~/course-practice/m1/ch09/course-juniorops.draft
 ```
 
-`sudo useradd should-fail`必须被拒绝。`exit`返回课程主账号`rocky-server`，后面的日志检查由该账号执行。
+`draft_nonempty_check=0`且`wc -l`结果为1，表示练习对象完整；它还不代表sudoers语法已经通过系统检查。
+
+### 实验衔接：实验4任务六
+
+实验4会在账号已存在的前提下，使用`sudo visudo -f /etc/sudoers.d/course-juniorops`写入正式规则，再设置`440`权限并执行语法、允许和拒绝测试。以下是实验中需要形成的验证闭环：
+
+```bash
+sudo visudo -cf /etc/sudoers.d/course-juniorops
+sudo -l -U juniorops
+sudo -u juniorops sudo /usr/bin/systemctl is-active nginx
+sudo -u juniorops sudo /usr/bin/systemctl restart nginx
+printf 'restart_exit_code=%s\n' "$?"
+```
+
+如果尚未安装Nginx，`is-active nginx`可能输出`unknown`或`inactive`并返回非0，但命令没有出现sudo拒绝信息，说明授权匹配；`restart nginx`必须被sudo拒绝。使用`is-active`还避免把可能调用交互式分页器的`status`命令纳入免密授权。
 
 ## 9.4 NOPASSWD风险
 
 ```sudoers
-operator ALL=(root) NOPASSWD: /usr/bin/systemctl restart chronyd
+juniorops ALL=(root) NOPASSWD: /usr/bin/systemctl restart nginx
 ```
 
 `NOPASSWD`适合明确且受控的自动化命令，但会降低再次认证保护。不要写成：
 
 ```sudoers
-operator ALL=(ALL) NOPASSWD: ALL
+juniorops ALL=(ALL) NOPASSWD: ALL
 ```
 
 ## 9.5 sudo日志
@@ -1736,18 +1994,18 @@ fi
 
 不同发行版日志位置可能不同。Ubuntu认证日志常见于`/var/log/auth.log`。
 
-### 实践验收
+### 实验4验收要点
 
-- [ ] `operator`只能查看和重启chronyd。
+- [ ] `juniorops`只能查询Nginx是否运行，不能重启服务。
 - [ ] sudoers独立文件语法检查通过。
 - [ ] 未授权命令被拒绝。
 - [ ] 能从日志中找到sudo操作记录。
 
-`operator`、`ops-team`、`/srv/course-share`和sudoers文件是模块综合交付的验收对象，当前不要清理。保存证据：
+`juniorops`、`project-dev`、`project-audit`、`/srv/course-share`和sudoers文件都是实验4创建的模块综合交付对象。保存证据的命令也在实验4中执行，不在本章短练习中提前写入正式项目：
 
 ```bash
-sudo -l -U operator > ~/m1-project/docs/operator-sudo.txt
-sudo visudo -cf /etc/sudoers.d/operator-chronyd
+sudo -l -U juniorops > ~/m1-project/docs/juniorops-sudo.txt
+sudo visudo -cf /etc/sudoers.d/course-juniorops
 ```
 
 ---
@@ -1854,6 +2112,8 @@ Ubuntu 22.04 Desktop的软件源通常位于`/etc/apt/sources.list`，APT操作�
 交互操作可以使用`apt`；非交互脚本通常更适合使用`apt-get`，并明确处理失败状态。
 
 ## 10.4 配置国内镜像源并验证回退
+
+本节涉及系统软件源修改，用于解释“备份—修改—刷新—验证—回退”的完整方法。课堂短练习只做查询和事务预演；实际换源必须在教师确认镜像地址与机房网络可用后，按实验1或实验5执行，不能把不同版本的仓库配置混用。
 
 第2章为了保证后续命令可安装，已经完成一次国内镜像初始化。本节从包管理角度重新检查其原理、配置、验证和回退，不要求重复创建另一套仓库。镜像源不是“复制一段命令就结束”，完整操作必须包含版本确认、原配置备份、修改、刷新缓存、安装验证和回退验证。以下以阿里云公开镜像为例；若课程环境统一使用清华镜像，应使用镜像站针对当前发行版生成的配置，不能混用其他版本代号。
 
@@ -1976,18 +2236,45 @@ sudo apt update
 | GPG检查失败 | 包来源、系统时间、密钥，不能直接长期关闭验证 |
 | 磁盘空间不足 | `df -h`、`df -i`、包缓存 |
 
-### 实践任务
+### 本章短练习：查询软件来源并预演事务
 
-在Rocky和Ubuntu中分别完成：
+本练习不安装、卸载或换源。分别在Rocky和Ubuntu上建立独立记录目录：
 
-1. 搜索`tree`。
-2. 查看软件详情和来源。
-3. 安装并验证命令。
-4. 查询命令文件属于哪个包。
-5. 卸载并确认结果。
-6. 找到相应的包管理日志或历史。
-7. 选择Rocky或Ubuntu完成一次“备份—换源—刷新—安装验证—回退”闭环，并保留终端记录。
-8. 如果实验中卸载了`tree`，结束前重新安装；模块综合验收要求Rocky保留`tree`和`vim-enhanced`。
+Rocky：
+
+```bash
+mkdir -p ~/course-practice/m1/ch10
+{
+    printf '=== enabled repositories ===\n'
+    dnf repolist --enabled
+    printf '\n=== tree information ===\n'
+    dnf info tree
+    printf '\n=== owner of /usr/bin/ls ===\n'
+    rpm -qf /usr/bin/ls
+} > ~/course-practice/m1/ch10/rocky-package-query.txt
+sudo dnf install tree --assumeno
+```
+
+Ubuntu：
+
+```bash
+mkdir -p ~/course-practice/m1/ch10
+{
+    printf '=== configured sources ===\n'
+    grep -RhE '^[[:space:]]*deb ' /etc/apt/sources.list /etc/apt/sources.list.d 2>/dev/null
+    printf '\n=== tree policy ===\n'
+    apt-cache policy tree
+    printf '\n=== owner of bash ===\n'
+    dpkg -S /bin/bash
+} > ~/course-practice/m1/ch10/ubuntu-package-query.txt
+apt-get -s install tree
+```
+
+`--assumeno`和`apt-get -s`只展示计划，不提交安装事务。完成后检查两个记录文件非空，并说明“仓库中可获得”“本机已安装”“命令可执行”三种状态为什么不同。
+
+### 实验衔接：实验5
+
+实验5在`rocky-server`上完成仓库基线、配置备份、元数据刷新、`tree`和`jq`安装、包文件查询、受控卸载与DNF历史留证。所有系统修改和`~/m1-project/evidence`成果以实验5步骤为准；Ubuntu换源仍以实验1建立的课程镜像基线为准。
 
 ---
 
@@ -2094,6 +2381,18 @@ journalctl -u chronyd -f
 
 ## 11.6 创建简单服务
 
+### 本章短练习：创建、排错并清理临时服务
+
+本练习使用独立名称`course-heartbeat.service`，不依赖实验6的`course-demo.service`。开始前检查是否有上次未清理的同名对象：
+
+```bash
+systemctl status course-heartbeat.service --no-pager
+ls -l /usr/local/bin/course-heartbeat.sh \
+  /etc/systemd/system/course-heartbeat.service
+```
+
+两个对象都不存在时可以继续；若存在，应先确认它们是上次本章练习的残留，再执行本节末尾的清理步骤。不要覆盖来源不明的同名服务。
+
 创建脚本：
 
 ```bash
@@ -2162,7 +2461,10 @@ sudo systemctl disable --now course-heartbeat
 sudo rm -f /etc/systemd/system/course-heartbeat.service
 sudo rm -f /usr/local/bin/course-heartbeat.sh
 sudo systemctl daemon-reload
+systemctl status course-heartbeat.service --no-pager
 ```
+
+最后一次`status`应提示找不到该Unit或返回非0，两个文件也应不存在。本练习不向`~/m1-project`写入成果。
 
 ### 服务排障流程
 
@@ -2174,6 +2476,10 @@ systemctl status
 → 修复后restart/reload
 → is-active和实际功能验证
 ```
+
+### 实验衔接：实验6
+
+实验6使用新的`course-demo.service`完成更完整的项目任务：先建立脚本与Unit，再比较active/enabled，制造`ExecStart`路径错误，保存日志证据并恢复。不要把已经清理的`course-heartbeat.service`当作实验6成果。
 
 ---
 
@@ -2344,12 +2650,58 @@ ss -tan state established
 
 监听所有接口意味着可能被外部访问，但实际仍受路由、防火墙和上层认证控制。
 
-## 12.7 编写系统巡检脚本
+## 12.7 生成只读系统状态摘要
+
+### 本章短练习：采集并解释系统状态
+
+本练习只采集状态，不制造负载、不终止进程，也不修改服务。先创建本章独立目录，再生成摘要：
+
+```bash
+mkdir -p ~/course-practice/m1/ch12
+{
+    printf '=== identity ===\n'
+    date -Iseconds
+    hostname
+    printf '\n=== load and memory ===\n'
+    uptime
+    nproc
+    free -h
+    printf '\n=== top processes ===\n'
+    ps -eo pid,user,stat,%cpu,%mem,comm --sort=-%cpu | head -10
+    printf '\n=== storage ===\n'
+    lsblk -o NAME,TYPE,SIZE,FSTYPE,MOUNTPOINTS
+    df -hT
+    df -i
+    printf '\n=== failed services ===\n'
+    systemctl --failed --no-pager
+    printf '\n=== listening ports ===\n'
+    ss -lntup
+} > ~/course-practice/m1/ch12/status-summary.txt
+```
+
+检查文件非空，并用vim在末尾补充三条结论：当前CPU/负载、内存、磁盘是否存在明显风险，以及判断依据。
+
+```bash
+test -s ~/course-practice/m1/ch12/status-summary.txt
+echo "summary_nonempty_check=$?"
+sed -n '1,120p' ~/course-practice/m1/ch12/status-summary.txt
+```
+
+`summary_nonempty_check=0`只表示记录已生成，不表示系统一定健康；最终结论必须结合数值、时间点和业务背景。
+
+### 实验衔接：实验7
+
+实验7从保留的`~/m1-project`起步，增加一个可控CPU异常的“制造—定位—终止—复测”过程，并把正式报告写入`~/m1-project/evidence/lab07-health-report.txt`。本章摘要不能复制后改名冒充实验报告。
+
+## 12.8 拓展阅读：把巡检固化为脚本
+
+下面的脚本用于展示条件判断、循环和退出码怎样把人工检查固化。Shell脚本的完整项目实践安排在实验19；本节可作为学有余力的拓展，不是实验7的起点依赖。
 
 创建脚本：
 
 ```bash
-cat > ~/m1-project/scripts/m1-health-check.sh <<'SCRIPT'
+mkdir -p ~/course-practice/m1/ch12
+cat > ~/course-practice/m1/ch12/m1-health-check.sh <<'SCRIPT'
 #!/bin/bash
 set -u
 
@@ -2398,8 +2750,8 @@ echo "result=$status"
 exit "$status"
 SCRIPT
 
-chmod +x ~/m1-project/scripts/m1-health-check.sh
-~/m1-project/scripts/m1-health-check.sh
+chmod +x ~/course-practice/m1/ch12/m1-health-check.sh
+~/course-practice/m1/ch12/m1-health-check.sh
 echo "exit_code=$?"
 ```
 
@@ -2418,7 +2770,7 @@ echo "exit_code=$?"
 
 脚本将结果展示给人，同时用退出状态告诉自动化工具是否发现磁盘、关键服务或失败Unit问题。该版本按Rocky主线环境检查`sshd`和`chronyd`；迁移到Ubuntu前，应先用`systemctl list-unit-files`确认对应Unit名称。后续Python自动化运维课程可以通过SSH批量执行这类脚本。
 
-## 12.8 系统状态排障案例
+## 12.9 系统状态排障案例
 
 ### 案例1：根分区使用率过高
 
@@ -2465,12 +2817,12 @@ uptime/nproc
 
 1. 主机名保持为`rocky-server`；若尚未进入实验8，保留当前DHCP地址并记录，完成实验8后再使用教师分配的稳定静态地址。
 2. 保留普通账号`rocky-server`，不得日常共用root。
-3. 确认`ops-team`组以及`operator`、`appdev`账号符合第7章角色矩阵。
-4. 确认`/srv/course-share`只允许`ops-team`成员协作，新文件继承组且成员不能删除他人文件。
-5. 保留sudoers独立文件，只允许`operator`查看和重启`chronyd`。
+3. 确认`project-dev`、`project-audit`组以及`dev01`、`dev02`、`auditor`、`juniorops`账号符合第7章角色矩阵。
+4. 确认`/srv/course-share`允许`project-dev`成员协作，新文件继承组；`auditor`只读；`juniorops`不能访问项目共享目录。
+5. 保留sudoers独立文件，只允许`juniorops`执行`systemctl is-active nginx`。
 6. 验证DNF软件源，安装`tree`和`vim-enhanced`。
 7. 确认`chronyd`和`sshd`运行且开机自启。
-8. 运行`~/m1-project/scripts/m1-health-check.sh`，不存在未解释的失败项。
+8. 检查`~/m1-project/evidence/lab07-health-report.txt`，确认报告包含资源数据、失败服务和基于证据的结论。
 9. 归档`~/m1-project`并完成恢复验证。
 10. 提交服务器基线报告。
 
@@ -2504,7 +2856,7 @@ uptime/nproc
 - 磁盘使用率：
 - inode使用率：
 - 失败服务：
-- 巡检脚本退出码：
+- 巡检报告结论与证据：
 
 ## 6. 备份恢复
 - 归档文件：
@@ -2522,11 +2874,15 @@ cat /etc/os-release
 ip -br addr
 ip route
 id rocky-server
-id operator
-id appdev
-getent group ops-team
+id dev01
+id dev02
+id auditor
+id juniorops
+getent group project-dev
+getent group project-audit
 ls -ld /srv/course-share
-sudo -l -U operator
+getfacl /srv/course-share /srv/course-share/project.conf
+sudo -l -U juniorops
 dnf repolist
 rpm -q tree vim-enhanced
 systemctl is-active chronyd sshd
@@ -2534,7 +2890,8 @@ systemctl is-enabled chronyd sshd
 systemctl --failed
 df -h
 df -i
-~/m1-project/scripts/m1-health-check.sh
+test -s ~/m1-project/evidence/lab07-health-report.txt
+sed -n '1,80p' ~/m1-project/evidence/lab07-health-report.txt
 ```
 
 ---
@@ -2594,7 +2951,7 @@ CPU/内存/磁盘/进程/端口
 
 ## 拓展练习
 
-1. 为`~/m1-project/scripts/m1-health-check.sh`增加JSON输出模式。
+1. 为`~/course-practice/m1/ch12/m1-health-check.sh`增加JSON输出模式。
 2. 使用systemd timer代替cron每小时运行一次巡检脚本。
 3. 比较Rocky和Ubuntu中SSH服务Unit名称、日志位置和网络配置方式。
 4. 查找系统中的SUID文件，分析其中三个程序为什么需要SUID。

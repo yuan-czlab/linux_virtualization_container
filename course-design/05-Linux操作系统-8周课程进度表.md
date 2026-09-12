@@ -19,7 +19,7 @@
 | 第3周第1次课 | 实验6：进程与服务，systemctl启停、自启和状态，journalctl日志，服务启动故障定位 | 2 | 故障导向、教师演示、学生排障 | 提交一次服务启动失败的“状态—日志—原因—修复”记录 |
 | 第3周第2次课 | 实验7：CPU、负载、内存、进程、磁盘、文件系统和容量巡检；实验8前半部分：IP、前缀、网关、DNS、网卡、连接和路由 | 4 | 巡检实践、理论讲授、教师演示 | 提交基础巡检表；完成实验网络地址规划 |
 | 第3周第3次课 | 完成实验8：两台Rocky和Ubuntu Desktop使用NetworkManager配置静态IP、网关、DNS与hosts，完成三机互通矩阵和网络故障恢复 | 2 | 分层排障、学生操作、结果复测 | 完成三机网络配置、互通矩阵和一次IP或DNS故障记录 |
-| 第4周第1次课 | 实验9：TCP/UDP、进程、Socket、监听地址和端口，hosts与DNS客户端，dig/nslookup/getent；从Ubuntu验证Rocky的HTTP/HTTPS、状态码和自签名证书 | 2 | 问题导向、双机验证、操作实践 | 提交Ubuntu名称解析、端口及HTTP/HTTPS访问验证记录 |
+| 第4周第1次课 | 实验9：TCP/UDP、进程、Socket、监听地址和端口，hosts与DNS客户端，dig/nslookup/getent；从Ubuntu验证Rocky的HTTP/HTTPS、状态码和自签名证书 | 2 | 问题导向、客户端—服务器验证、操作实践 | 提交Ubuntu名称解析、端口及HTTP/HTTPS访问验证记录 |
 | 第4周第2次课 | 实验10：sshd服务、SSH主机密钥；从`ubuntu-client`分别连接`rocky-server`和`rocky-web`，完成Ed25519密钥认证、客户端别名、scp/sftp和故障排查 | 4 | 三机实训、任务驱动、故障排查 | 完成客户端到两台Rocky的SSH密钥登录和远程传输 |
 | 第4周第3次课 | 实验11：rsync首次同步与增量同步，源目录斜杠，dry-run，crontab，日志重定向，模拟误删和恢复验证 | 2 | 项目任务、实践操作、恢复验证 | 建立定时备份任务并完成一次文件恢复 |
 | 第5周第1次课 | 实验12前半部分：firewalld、zone、service、port、运行时规则、永久规则和端口最小开放 | 2 | 案例教学、教师演示、学生配置 | 根据业务需求设计端口开放清单并完成运行时规则验证 |

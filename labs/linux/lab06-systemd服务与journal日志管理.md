@@ -4,7 +4,9 @@
 > 建议学时：2学时  
 > 实验方式：个人  
 > 对应教材：《模块一 Linux基础运维》第11章  
-> 前置实验：实验5  
+> 知识前置：实验5中的软件安装与文件来源；教材第11章的服务和日志\
+> 状态依赖：用户名和主机名均为`rocky-server`；实验服务、脚本和Unit由本实验创建\
+> 建议起点：`Linux-L0`或当前连续实验环境\
 > 项目成果：服务生命周期管理记录和一次启动故障的日志证据链
 
 ## 一、项目情境
@@ -57,6 +59,26 @@ enabled不代表当前一定运行，active也不代表一定开机自启。
 - 使用本实验自建的`course-demo.service`，避免破坏关键系统服务。
 - 工作文件位于`~/m1-project/systemd`和`/etc/systemd/system/course-demo.service`。
 
+Unit中的`ExecStart`使用课程固定路径，开始前必须确认身份：
+
+```bash
+whoami
+hostnamectl --static
+sudo -v
+```
+
+用户名和主机名都必须为`rocky-server`，`sudo -v`必须成功。否则停止实验并恢复正确课程环境；不能直接照抄后续Unit中的固定路径。
+
+继续检查本实验对象是否被旧任务占用：
+
+```bash
+systemctl status course-demo.service --no-pager
+ls -l /etc/systemd/system/course-demo.service \
+  "$HOME/m1-project/systemd/course-demo.sh"
+```
+
+新实验环境中应提示这些对象不存在。若存在，先确认它们是否为已经验收的实验6成果；需要从头重做时执行文末清理并恢复适当起点，不覆盖来源不明的同名Unit或脚本。
+
 ## 五、项目任务
 
 1. 检查systemd和现有服务状态。
@@ -83,7 +105,7 @@ systemctl list-unit-files --type=service | sed -n '1,30p'
 #### 步骤1：创建脚本
 
 ```bash
-mkdir -p ~/m1-project/systemd ~/m1-project/logs
+mkdir -p ~/m1-project/systemd ~/m1-project/logs ~/m1-project/evidence
 cat > ~/m1-project/systemd/course-demo.sh <<'SCRIPT'
 #!/bin/bash
 while true; do

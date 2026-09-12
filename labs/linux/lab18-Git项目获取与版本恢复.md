@@ -4,7 +4,9 @@
 > 建议学时：2学时  
 > 实验方式：个人  
 > 对应教材：《模块三 企业服务部署与综合运维》第29章  
-> 前置实验：实验17  
+> 知识前置：教材第29章以及文件、文本和版本恢复概念\
+> 状态依赖：`rocky-server`和可用软件源；仓库及全部练习文件由本实验创建，不依赖Redis数据\
+> 建议起点：`Linux-L2`或当前连续实验环境\
 > 项目成果：一个本地运维仓库、一个裸仓库、一个克隆副本、至少两次有效提交和一次版本恢复记录
 
 ## 一、项目情境
@@ -84,7 +86,7 @@ test "$(hostnamectl --static)" = 'rocky-server' && echo HOST_PASS || echo HOST_F
 ```bash
 sudo dnf install -y git
 git --version
-mkdir -p ~/m1-project/evidence ~/m1-project/git-lab
+mkdir -p ~/m1-project/evidence ~/m1-project/backup ~/m1-project/git-lab
 ```
 
 只在当前实验仓库内设置身份，避免修改其他课程仓库的全局配置：

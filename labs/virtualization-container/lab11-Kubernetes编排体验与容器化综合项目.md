@@ -8,7 +8,11 @@
 >
 > 对应教材：《模块二 Docker容器化应用构建与交付》第11章
 >
-> 前置实验：实验10
+> 知识前置：实验6—10全部容器能力和教材第11章Kubernetes对象
+>
+> 状态依赖：实验10的`~/vc-course/lab10/techcorp-stack`、应用镜像、Compose运行证据和数据库备份；另需教师预建Kubernetes环境
+>
+> 建议起点：`VC-V3`
 >
 > 项目成果：Kubernetes Deployment/Service基础操作、Rocky/Ubuntu跨环境部署、离线交付包、故障报告和答辩材料
 

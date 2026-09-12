@@ -4,7 +4,9 @@
 > 建议学时：4学时  
 > 实验方式：个人  
 > 对应教材：《模块二 网络、远程管理与基础防护》第21—23章  
-> 前置实验：实验11  
+> 知识前置：实验8—10中的地址、端口、服务和客户端验证；教材第21—23章\
+> 状态依赖：实验8交付的三机网络，`rocky-server`的firewalld与SELinux保持正常基线；不依赖实验11的备份任务\
+> 建议起点：`Linux-L1`并保留实验8网络成果\
 > 项目成果：最小端口开放、运行时与永久规则、来源限制、SELinux上下文和规则回滚记录
 
 ## 一、项目情境
@@ -69,7 +71,7 @@
 ### 任务一：保存安全基线
 
 ```bash
-mkdir -p ~/m1-project/evidence ~/m1-project/backup/security
+mkdir -p ~/m1-project/evidence ~/m1-project/logs ~/m1-project/backup/security
 {
     systemctl is-active firewalld
     firewall-cmd --get-active-zones
@@ -326,9 +328,10 @@ sudo firewall-cmd --permanent --remove-port=8080/tcp 2>/dev/null || true
 sudo firewall-cmd --reload
 ```
 
-保留`/srv/selinux-lab`及持久上下文规则供实验14使用。若教师要求彻底清理：
+`/srv/selinux-lab`只用于本实验验证持久上下文，实验14会在`rocky-web`创建独立的`/srv/techcorp`规则，两者没有状态依赖。完成截图和证据保存后，先核对对象，再清理本实验路径和规则，避免后续误认为它是Nginx站点：
 
 ```bash
+sudo find /srv/selinux-lab -maxdepth 2 -ls
 sudo semanage fcontext -d '/srv/selinux-lab(/.*)?'
 sudo rm -rf /srv/selinux-lab
 ```

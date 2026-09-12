@@ -4,7 +4,9 @@
 > 建议学时：2学时  
 > 实验方式：个人  
 > 对应教材：《模块二 网络、远程管理与基础防护》第14—16章  
-> 前置实验：实验8  
+> 知识前置：实验8中的IP、路由和名称解析；教材第14—16章\
+> 状态依赖：实验8交付的三机静态地址、网关、DNS和互通基线\
+> 建议起点：`Linux-L1`并保留实验8网络成果\
 > 项目成果：`rocky-server`临时HTTP/HTTPS测试服务、端口监听，以及`ubuntu-client`名称解析和访问验证记录
 
 ## 一、项目情境
@@ -85,7 +87,7 @@ sudo ss -lntp | sed -n '1,30p'
 #### 步骤1：准备站点
 
 ```bash
-mkdir -p ~/m1-project/http-test
+mkdir -p ~/m1-project/{http-test,logs,backup}
 printf '<h1>Linux HTTP Test</h1>\n' > ~/m1-project/http-test/index.html
 ```
 

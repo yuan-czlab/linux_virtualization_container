@@ -8,7 +8,11 @@
 >
 > 对应教材：《模块二 Docker容器化应用构建与交付》第10章
 >
-> 前置实验：实验9
+> 知识前置：实验8—9中的网络、卷、Dockerfile和应用镜像构建
+>
+> 状态依赖：实验9保留的`vc-course-api:v2-optimized`或课程等价固定镜像，以及MySQL、Redis和Nginx课程镜像
+>
+> 建议起点：`VC-V2`并保留实验9成果
 >
 > 项目成果：Web、API、MySQL、Redis多服务Compose项目、健康检查、配置、日志和故障修复记录
 

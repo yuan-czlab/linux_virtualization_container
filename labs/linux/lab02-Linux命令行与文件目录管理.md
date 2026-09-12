@@ -4,7 +4,9 @@
 > 建议学时：4学时  
 > 实验方式：个人  
 > 对应教材：《模块一 Linux基础运维》第3—4章  
-> 前置实验：实验1  
+> 知识前置：实验1中的Linux登录、终端和三机角色\
+> 状态依赖：实验1交付的`rocky-server`，普通账号及sudo可用\
+> 建议起点：`Linux-L0`\
 > 项目成果：规范的企业运维项目目录，以及文件整理和验证记录
 
 ## 一、项目情境
@@ -103,9 +105,13 @@ whoami
 hostname
 pwd
 df -h ~
+test ! -e "$HOME/m1-project"
+echo "project_name_available=$?"
 ```
 
-> **验收点**：当前用户为rocky-server，家目录可写，磁盘空间满足实验需要。
+> **验收点**：当前用户为rocky-server，家目录可写，磁盘空间满足实验需要，`project_name_available=0`。
+
+如果`project_name_available`不是0，先执行`find "$HOME/m1-project" -maxdepth 2 -print`确认来源。它若是已经验收的实验2成果，应保留并直接进入后续实验；若要从头重做，应恢复`Linux-L0`。不要让旧文件混入本次结果，也不要直接删除来源不明的目录。
 
 ## 五、项目任务
 
@@ -238,6 +244,8 @@ less ~/m1-project/logs/deploy.log
 
 `cat`适合短文件，`less`适合分页查看较长文件，`head`和`tail`用于查看开头和结尾。
 
+`less`进入分页界面后按`q`返回Shell，再继续后续步骤。
+
 > **验收点**：能说明五个查看命令分别适合什么场景。
 
 #### 步骤7：练习追加和覆盖重定向
@@ -283,6 +291,15 @@ find ~/m1-project -maxdepth 2 -type f -printf '%P\n' | sort
 ### 任务六：批量整理和安全删除
 
 #### 步骤10：创建并筛选测试文件
+
+先确认本实验临时名称未被占用：
+
+```bash
+test ! -e /tmp/lab02-sort
+echo "temp_name_available=$?"
+```
+
+只有`temp_name_available=0`时才继续。若目录是上次未完成的实验残留，先核对内容，再按本实验末尾的清理步骤处理。
 
 ```bash
 mkdir -p /tmp/lab02-sort

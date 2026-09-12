@@ -4,7 +4,9 @@
 > 建议学时：2学时  
 > 实验方式：个人  
 > 对应教材：《模块一 Linux基础运维》第5—6章  
-> 前置实验：实验2  
+> 知识前置：实验2中的路径、文件和目录操作\
+> 状态依赖：实验2创建的`~/m1-project/config/app.conf`及项目目录树\
+> 建议起点：`Linux-L0`并保留实验2成果\
 > 项目成果：修改后的配置文件、文件查找记录、归档文件和恢复验证记录
 
 ## 一、项目情境
@@ -15,7 +17,7 @@
 
 ### 1. 知识目标
 
-1. 说明V中普通模式、插入模式和命令行模式的作用。
+1. 说明Vim中普通模式、插入模式和命令行模式的作用。
 2. 区分文件名、inode、硬链接和软链接。
 3. 区分归档和压缩，说明备份必须进行恢复验证的原因。
 
@@ -65,11 +67,17 @@
 - 确认配置存在：
 
 ```bash
-test -f ~/m1-project/config/app.conf
-echo $?
+test -f "$HOME/m1-project/config/app.conf"
+echo "app_conf_check=$?"
 ```
 
-退出码应为0。
+`app_conf_check=0`才表示文件存在。若结果不是0，停止实验并恢复实验2成果，不要创建同名空文件代替。检查通过后再查看项目文件：
+
+```bash
+find "$HOME/m1-project" -maxdepth 2 -type f -printf '%P\n' | sort
+```
+
+必须能够看到`config/app.conf`以及实验2保留的项目文件。
 
 ## 五、项目任务
 
@@ -197,7 +205,7 @@ cat ~/m1-project/links/app.conf.soft
 
 ```bash
 mkdir -p ~/m1-project/backup/archives
-ARCHIVE=~/m1-project/backup/archives/m1-project-$(date +%Y%m%d-%H%M).tar.gz
+ARCHIVE=~/m1-project/backup/archives/m1-project-$(date +%Y%m%d-%H%M%S).tar.gz
 tar --exclude='m1-project/backup/archives' -czf "$ARCHIVE" -C ~ m1-project
 printf 'archive=%s\n' "$ARCHIVE"
 ls -lh "$ARCHIVE"
@@ -212,7 +220,13 @@ tar -tzf "$ARCHIVE" | sed -n '1,30p'
 
 ```bash
 RESTORE_DIR=/tmp/lab03-restore
-test ! -e "$RESTORE_DIR" || { printf 'restore directory already exists\n'; exit 1; }
+test ! -e "$RESTORE_DIR"
+echo "restore_name_available=$?"
+```
+
+只有`restore_name_available=0`时才继续。若目录已存在，不要在当前登录Shell中使用`exit`；先确认它是上次本实验的残留，再按文末清理步骤删除，或者改用一个新的、已确认不存在的恢复目录。确认后执行：
+
+```bash
 mkdir -p "$RESTORE_DIR"
 tar -xzf "$ARCHIVE" -C "$RESTORE_DIR"
 find "$RESTORE_DIR/m1-project" -maxdepth 2 -type f -printf '%P\n' | sort

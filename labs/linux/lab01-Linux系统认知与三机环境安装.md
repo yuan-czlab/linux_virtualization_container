@@ -4,7 +4,9 @@
 > 建议学时：4学时  
 > 实验方式：个人  
 > 对应教材：《模块一 Linux基础运维》第1—2章  
-> 前置实验：无  
+> 知识前置：计算机组成原理基础、IP地址基本概念\
+> 状态依赖：无，使用具备虚拟化能力的Windows宿主机\
+> 建议起点：干净宿主机与教师发布的ISO资源\
 > 项目成果：两台Rocky Linux 9服务器、一台Ubuntu 22.04图形客户端、三机基线表和初始快照
 
 ## 一、项目情境
@@ -116,9 +118,9 @@ VMware Workstation运行在Windows之上，属于Type 2虚拟化软件。本课�
 
 Rocky-server后续承担数据库、KVM和Docker，可在相应模块开始前增加内存、vCPU和磁盘；第一次课不必直接分配到最大规格。
 
-## 六、课堂组织建议
+## 六、实验时间参考
 
-本实验共180分钟。教师必须提前下发安装程序和ISO，不在课堂等待公网下载。
+本实验共180分钟。安装程序、ISO和校验值应在实验开始前从课程共享目录取得，不在课堂等待公网下载。
 
 | 时间 | 教学与操作安排 |
 |---:|---|
@@ -128,7 +130,7 @@ Rocky-server后续承担数据库、KVM和Docker，可在相应模块开始前�
 | 120—155分钟 | 三机首次登录、身份、sudo、网络和基础工具检查 |
 | 155—180分钟 | 快照、三机基线、互访预检和验收 |
 
-三台虚拟机不是要求学生重复观看三遍相同演示。教师完整演示`rocky-server`，学生依据参数表独立完成`rocky-web`；Ubuntu只讲与Rocky不同的图形安装界面和账号配置。
+先完整完成`rocky-server`，再依据统一参数独立完成`rocky-web`；Ubuntu部分重点关注图形安装界面、软件源和账号配置与Rocky的差异。
 
 ## 七、实验步骤
 
@@ -306,9 +308,50 @@ systemctl --failed
 sudo timedatectl set-timezone Asia/Shanghai
 ```
 
-#### 步骤12：安装课程基础工具
+#### 步骤12：配置课程软件源并安装基础工具
 
-两台Rocky分别执行：
+两台Rocky分别确认版本、架构、地址、路由和DNS：
+
+```bash
+cat /etc/rocky-release
+uname -m
+ip -brief address
+ip route
+cat /etc/resolv.conf
+```
+
+只有系统为Rocky Linux 9 x86_64且基础网络正常时才继续。先备份仓库配置并记录实际备份位置：
+
+```bash
+ROCKY_REPO_BACKUP="/root/yum-repos-before-course-$(date +%F-%H%M%S)"
+sudo mkdir -p "$ROCKY_REPO_BACKUP"
+sudo cp -a /etc/yum.repos.d/. "$ROCKY_REPO_BACKUP/"
+printf '%s\n' "$ROCKY_REPO_BACKUP" | \
+  sudo tee /var/tmp/course-rocky-repo-backup.path
+```
+
+使用开课前已验证的阿里云Rocky镜像配置：
+
+```bash
+sudo find /etc/yum.repos.d -maxdepth 1 -type f -iname 'rocky*.repo' \
+  -exec sed -e 's|^mirrorlist=|#mirrorlist=|g' \
+  -e 's|^#baseurl=http://dl.rockylinux.org/$contentdir|baseurl=https://mirrors.aliyun.com/rockylinux|g' \
+  -i.bak '{}' +
+sudo dnf clean all
+sudo dnf makecache
+dnf repolist
+```
+
+如果`makecache`失败，停止安装，保留报错并检查地址、路由、DNS、系统时间和镜像配置。需要回退时执行：
+
+```bash
+ROCKY_REPO_BACKUP=$(cat /var/tmp/course-rocky-repo-backup.path)
+sudo cp -a "$ROCKY_REPO_BACKUP"/. /etc/yum.repos.d/
+sudo dnf clean all
+sudo dnf makecache
+```
+
+仓库刷新成功后安装基础工具：
 
 ```bash
 sudo dnf install -y \
@@ -349,8 +392,36 @@ ip route
 
 #### 步骤14：安装客户端工具
 
+先确认Ubuntu版本、代号和架构：
+
 ```bash
+. /etc/os-release
+printf 'version=%s codename=%s arch=%s\n' \
+  "$VERSION_ID" "$VERSION_CODENAME" "$(dpkg --print-architecture)"
+```
+
+只有结果为`22.04`、`jammy`、`amd64`时才执行下面的课程源配置：
+
+```bash
+UBUNTU_SOURCE_BACKUP="/etc/apt/sources.list.before-course.$(date +%F-%H%M%S)"
+sudo cp -a /etc/apt/sources.list "$UBUNTU_SOURCE_BACKUP"
+printf '%s\n' "$UBUNTU_SOURCE_BACKUP" | \
+  sudo tee /var/tmp/course-ubuntu-source-backup.path
+
+sudo tee /etc/apt/sources.list >/dev/null <<'EOF'
+deb https://mirrors.aliyun.com/ubuntu/ jammy main restricted universe multiverse
+deb https://mirrors.aliyun.com/ubuntu/ jammy-updates main restricted universe multiverse
+deb https://mirrors.aliyun.com/ubuntu/ jammy-backports main restricted universe multiverse
+deb https://mirrors.aliyun.com/ubuntu/ jammy-security main restricted universe multiverse
+EOF
+
+sudo apt clean
 sudo apt update
+```
+
+`apt update`失败时停止安装，检查网络、DNS、时间和镜像配置。需要回退时读取`/var/tmp/course-ubuntu-source-backup.path`并恢复原文件。索引刷新成功后安装：
+
+```bash
 sudo apt install -y \
   open-vm-tools open-vm-tools-desktop \
   openssh-client openssh-server curl wget git vim
