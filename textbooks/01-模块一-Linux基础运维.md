@@ -281,9 +281,9 @@ VMware VMnet8（实际网段以本机为准）
 
 到实验8时，教师统一公布网段、网关、DNS和每位学生的静态地址，学生再完成持久配置与回退验证。
 
-> **[截图占位 M1-01：桥接、NAT、仅主机模式关系图]**
+> <img src="./images/桥接、NAT、仅主机模式关系图.png" width="600">
 
-> **[截图占位 M1-02：VMware虚拟网络编辑器中的VMnet8实际参数]**
+> **<img src="./images/VMware虚拟网络编辑器中的VMnet8实际参数.png" width="600">**
 
 ## 2.4 创建Rocky Linux虚拟机
 
@@ -299,7 +299,7 @@ VMware VMnet8（实际网段以本机为准）
 | 网络 | NAT，对应VMnet8 |
 | ISO | Rocky Linux 9 Minimal ISO |
 
-> **[截图占位 M1-03：VMware新建Rocky虚拟机向导、NAT网卡和硬件配置]**
+> <img src="./images/rocky-server虚拟机的硬件配置.png" width="600">
 
 虚拟磁盘只是宿主机中的文件。安装程序中的分区操作只应作用于本实验虚拟磁盘，不会修改Windows真实磁盘，但仍须核对虚拟机名称、磁盘容量和安装目标。
 
@@ -320,7 +320,6 @@ VMware VMnet8（实际网段以本机为准）
 > **[截图占位 M1-04：Rocky安装器中网卡已启用并通过DHCP获得地址]**
 
 > **[截图占位 M1-05：两台Rocky安装摘要、角色主机名和同名管理员账号]**
-
 第一次登录后检查：
 
 ```bash
@@ -494,7 +493,7 @@ ping <UBUNTU_CLIENT_IP>
 ## 3.2 命令的基本格式
 
 ```text
-命令 [选项] [参数]
+命令 [选项] [参数对象]
 ```
 
 例如：
