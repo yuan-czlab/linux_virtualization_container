@@ -58,7 +58,7 @@ TechCorp服务器已经部署了多项服务。管理员需要记录站点说明
 
 ## 四、实验环境
 
-- Rocky Linux 9。
+- `rocky-server`运行Rocky Linux 9，本实验回到数据与运维服务器完成。
 - 普通用户具有`sudo`权限。
 - 使用目录`~/m1-project/git-lab`。
 - 本实验不要求注册外部代码托管账号。
@@ -76,6 +76,10 @@ TechCorp服务器已经部署了多项服务。管理员需要记录站点说明
 ## 六、实验步骤
 
 ### 任务一：安装并检查Git
+
+```bash
+test "$(hostnamectl --static)" = 'rocky-server' && echo HOST_PASS || echo HOST_FAIL
+```
 
 ```bash
 sudo dnf install -y git

@@ -59,8 +59,8 @@ sudo不是共享root密码，而是根据规则授权指定用户执行指定命
 
 ## 四、实验环境
 
-- Rocky Linux 9，student具备sudo权限。
-- 保留一个student管理员会话，另开终端完成用户切换测试。
+- Rocky Linux 9，rocky-server具备sudo权限。
+- 保留一个rocky-server管理员会话，另开终端完成用户切换测试。
 - 实验对象固定为`dev01`、`dev02`、`auditor`、`juniorops`、`project-dev`和`/srv/course-share`。
 
 ## 五、项目任务

@@ -48,7 +48,7 @@
 
 ## 四、实验环境
 
-- Rocky Linux 9，student登录。
+- Rocky Linux 9，rocky-server登录。
 - 异常进程只使用`yes > /dev/null`，实验后必须终止。
 - 不创建大文件，不在根文件系统执行写满实验。
 

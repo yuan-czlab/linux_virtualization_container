@@ -8,7 +8,7 @@
 >
 > 学时口径：1学时为45分钟
 >
-> 主线环境：Windows 10/11 + VMware Workstation + Rocky Linux 9 + Ubuntu Server 22.04
+> 主线环境：Windows 10/11 + VMware Workstation + `rocky-server` + `rocky-web` + Ubuntu 22.04 Desktop `ubuntu-client`
 
 ## 当前课程结构
 
@@ -25,9 +25,9 @@
 
 | 模块 | 学时 | 实验 | 核心能力 |
 |---|---:|---|---|
-| Linux基础运维 | 20 | 实验1—7 | 安装、操作和管理Rocky与Ubuntu基础环境 |
+| Linux基础运维 | 20 | 实验1—7 | 建立三机环境并在`rocky-server`完成基础运维 |
 | 网络、远程管理与基础防护 | 20 | 实验8—13 | 网络、SSH、备份、防护与分层排障 |
-| 企业服务部署与综合运维 | 24 | 实验14—20 | Nginx、MySQL、MongoDB、Redis、Git、Shell与综合交付 |
+| 企业服务部署与综合运维 | 24 | 实验14—20 | `rocky-web`部署Nginx，`rocky-server`部署数据库并完成三机交付 |
 | **合计** | **64** | **20个实验** |  |
 
 资料使用顺序：`course-design/04`实验项目索引 → `05`课程进度表 → `labs/linux/`实验手册 → `textbooks/01—03`模块教材 → `06`知识图谱。
@@ -42,7 +42,7 @@
 
 资料使用顺序：`course-design/07`实验项目索引 → `08`课程进度表 → `labs/virtualization-container/`实验手册 → `textbooks/04—05`模块教材 → `09`知识图谱。
 
-KVM由学生在VMware中的Rocky虚拟机内真实操作。Docker同时安装在Rocky和Ubuntu中，后续通过同一镜像和项目验证跨发行版迁移。OpenStack和Kubernetes使用教师预建平台完成必做基础操作，不在本课程部署集群。
+KVM由学生在`rocky-server`内真实操作。Docker同时安装在`rocky-server`和`ubuntu-client`中，后续通过同一镜像和项目验证跨发行版迁移。OpenStack和Kubernetes使用教师预建平台完成必做基础操作，不在本课程部署集群。
 
 ## 镜像与离线教学策略
 

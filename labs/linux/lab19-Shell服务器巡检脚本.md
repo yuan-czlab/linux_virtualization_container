@@ -9,7 +9,7 @@
 
 ## 一、项目情境
 
-TechCorp服务器上已经运行Nginx、MySQL、MongoDB和Redis。每天逐条输入命令容易遗漏，管理员希望用一个Shell脚本统一检查系统资源、服务状态和监听端口，并通过退出码让其他程序判断巡检结果。
+TechCorp的`rocky-server`上已经运行MySQL、MongoDB和Redis，`rocky-web`提供Nginx健康页。每天逐条输入命令容易遗漏，管理员希望在`rocky-server`用一个Shell脚本检查本机资源、服务和监听端口，同时验证外部Web入口，并通过退出码让其他程序判断巡检结果。
 
 本实验强调“把已经会做的检查固化为脚本”，不追求复杂Shell语法。脚本只采集和判断，不自动重启服务，不修改防火墙，也不保存数据库密码。
 
@@ -59,6 +59,9 @@ TechCorp服务器上已经运行Nginx、MySQL、MongoDB和Redis。每天逐条�
 
 ## 四、实验环境
 
+- 在`rocky-server`完成巡检脚本编写与异常验证。
+- 脚本应能把主机名写入报告，避免把`rocky-web`结果误作数据库服务器结果。
+
 - 已完成实验14—17，相关服务已安装。
 - Bash、`systemctl`、`ss`、`df`、`awk`和`curl`可用。
 - 项目目录：`~/m1-project/git-lab`。
@@ -69,8 +72,8 @@ TechCorp服务器上已经运行Nginx、MySQL、MongoDB和Redis。每天逐条�
 1. 设计巡检对象、阈值和退出码。
 2. 编写`server-health.sh`。
 3. 检查语法、权限和正常输出。
-4. 停止Nginx制造受控故障，验证严重异常退出码。
-5. 恢复Nginx并再次验证。
+4. 停止Redis制造受控故障，验证严重异常退出码。
+5. 恢复Redis并再次验证。
 6. 将脚本和使用说明提交Git。
 
 ## 六、实验步骤
@@ -78,11 +81,16 @@ TechCorp服务器上已经运行Nginx、MySQL、MongoDB和Redis。每天逐条�
 ### 任务一：确认巡检基线
 
 ```bash
+test "$(hostnamectl --static)" = 'rocky-server' && echo HOST_PASS || echo HOST_FAIL
+```
+
+```bash
 mkdir -p ~/m1-project/git-lab/scripts ~/m1-project/logs ~/m1-project/evidence
-for service in nginx mysqld mongod redis sshd; do
+for service in mysqld mongod redis sshd; do
     printf '%-10s %s\n' "$service" "$(systemctl is-active "$service" 2>/dev/null || true)"
 done
-sudo ss -lntp | grep -E ':(22|80|3306|27017|6379)\b' || true
+sudo ss -lntp | grep -E ':(22|3306|27017|6379)\b' || true
+curl --fail -H 'Host: techcorp.local' http://rocky-web/health
 df -h /
 free -h
 ```
@@ -111,8 +119,8 @@ MEM_AVAILABLE_WARN=15
 LOAD_WARN_FACTOR=2
 STATUS=0
 
-SERVICES=(nginx mysqld mongod redis sshd)
-PORTS=(22 80 3306 27017 6379)
+SERVICES=(mysqld mongod redis sshd)
+PORTS=(22 3306 27017 6379)
 
 ok() {
     printf '[OK]   %s\n' "$1"
@@ -198,10 +206,10 @@ check_ports() {
 
 check_web() {
     if curl --silent --show-error --fail --max-time 3 \
-        -H 'Host: techcorp.local' http://127.0.0.1/health >/dev/null; then
-        ok 'Nginx健康检查返回成功'
+        -H 'Host: techcorp.local' http://rocky-web/health >/dev/null; then
+        ok 'rocky-web的Nginx健康检查返回成功'
     else
-        crit 'Nginx健康检查失败'
+        crit 'rocky-web的Nginx健康检查失败'
     fi
 }
 
@@ -250,10 +258,11 @@ echo $?
 
 ### 任务三：执行正常巡检
 
-实验14已配置`/health`。先手工验证该地址，再执行巡检：
+实验14已在`rocky-web`配置`/health`。先从`rocky-server`手工验证该地址，再执行巡检：
 
 ```bash
-curl --fail -H 'Host: techcorp.local' http://127.0.0.1/health
+getent hosts rocky-web
+curl --fail -H 'Host: techcorp.local' http://rocky-web/health
 ```
 
 ```bash
@@ -280,13 +289,13 @@ wc -l ~/m1-project/logs/health.stdout.log ~/m1-project/logs/health.stderr.log
 
 ### 任务四：制造并验证受控故障
 
-本任务只停止Nginx，完成后必须立即恢复。先保存原状态：
+本任务只在`rocky-server`停止Redis，完成后必须立即恢复。先保存原状态：
 
 ```bash
-NGINX_BEFORE=$(systemctl is-active nginx 2>/dev/null || true)
-printf 'nginx_before=%s\n' "$NGINX_BEFORE"
-sudo systemctl stop nginx
-systemctl is-active nginx || true
+REDIS_BEFORE=$(systemctl is-active redis 2>/dev/null || true)
+printf 'redis_before=%s\n' "$REDIS_BEFORE"
+sudo systemctl stop redis
+systemctl is-active redis || true
 ```
 
 执行脚本并单独保存退出码：
@@ -300,24 +309,25 @@ printf 'fault_exit_code=%s\n' "$FAULT_CODE"
 
 预期至少出现：
 
-- Nginx服务状态为严重异常；
-- 80端口未监听；
-- Web健康检查失败；
+- Redis服务状态为严重异常；
+- 6379端口未监听；
+- `rocky-web`健康检查仍成功，证明故障影响范围不是全部服务；
 - 最终退出码为2。
 
 立即恢复并再次验证：
 
 ```bash
-sudo systemctl start nginx
-systemctl is-active nginx
-curl --fail -H 'Host: techcorp.local' http://127.0.0.1/health
+sudo systemctl start redis
+systemctl is-active redis
+sudo ss -lntp | grep ':6379'
+curl --fail -H 'Host: techcorp.local' http://rocky-web/health
 ./scripts/server-health.sh > ~/m1-project/logs/health-recovered.log 2>&1
 RECOVERED_CODE=$?
 cat ~/m1-project/logs/health-recovered.log
 printf 'recovered_exit_code=%s\n' "$RECOVERED_CODE"
 ```
 
-> **验收点**：异常时退出码为2；恢复后Nginx、80端口和健康检查均正常。
+> **验收点**：异常时退出码为2；恢复后Redis、6379端口和远程Web健康检查均正常。
 
 ### 任务五：为脚本编写说明并提交Git
 
@@ -328,7 +338,7 @@ cat > docs/server-health.md <<'EOF'
 
 ## 用途
 
-检查根分区、可用内存、系统负载、Nginx/MySQL/MongoDB/Redis/SSH服务、常用端口和Web健康页。
+检查`rocky-server`的根分区、可用内存、系统负载、MySQL/MongoDB/Redis/SSH服务及常用端口，并访问`rocky-web`健康页。
 
 ## 使用
 
@@ -416,7 +426,7 @@ bash -n scripts/server-health.sh
 ### 故障3：某服务显示unknown
 
 ```bash
-systemctl list-unit-files | grep -E 'nginx|mysql|mongo|redis|ssh'
+systemctl list-unit-files | grep -E 'mysql|mongo|redis|ssh'
 ```
 
 确认实际单元名，再修改`SERVICES`数组。不要仅为了通过检查而删除业务必需项。
@@ -439,7 +449,7 @@ ss -lntH
 |---|---:|---|
 | 脚本结构 | 20 | Shebang、变量、函数、循环和主函数清楚 |
 | 系统检查 | 20 | 磁盘、内存和负载判断正确 |
-| 服务与端口 | 20 | 五项服务、五个端口及Web健康页均被检查 |
+| 服务与端口 | 20 | 四项本机服务、四个端口及`rocky-web`健康页均被检查 |
 | 输出与退出码 | 15 | OK/WARN/CRIT清楚，0/1/2符合约定 |
 | 故障验证 | 15 | 有异常、恢复和退出码证据 |
 | 文档与版本 | 10 | 使用说明完整，Git提交合理，无日志和秘密 |

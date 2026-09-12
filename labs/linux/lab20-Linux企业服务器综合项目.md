@@ -5,11 +5,11 @@
 > 实验方式：个人为主，可两人互相验收  
 > 对应教材：《模块三 企业服务部署与综合运维》第31章  
 > 前置实验：实验1—19  
-> 项目成果：一台可由Ubuntu客户端验收的TechCorp Linux服务器、部署资料、备份、巡检结果、Git版本和故障排查记录
+> 项目成果：由`ubuntu-client`、`rocky-web`和`rocky-server`组成的TechCorp三机交付环境，以及部署资料、备份、巡检结果、Git版本和故障排查记录
 
 ## 一、项目情境
 
-TechCorp需要交付一台小型Linux业务服务器。服务器使用Nginx提供网站和反向代理入口，使用一个由systemd托管的本地后端进程提供健康数据，MySQL保存关系型业务数据，MongoDB保存文档数据，Redis保存访问计数。管理员通过SSH维护服务器，并使用防火墙、SELinux、备份、Git和巡检脚本保障运行。
+TechCorp需要交付一套小型Linux业务环境。`rocky-web`使用Nginx提供网站和反向代理入口，`rocky-server`运行由systemd托管的后端进程，并保留MySQL、MongoDB、Redis、备份、Git和巡检成果；`ubuntu-client`承担SSH管理和外部访问验收。三台虚拟机共同形成“客户端—Web入口—业务服务器”的完整链路。
 
 你已经在实验1—19分别完成这些能力。本实验不要求从零重装所有软件，而是要求检查、整合、修正、验证和交付。最终结果必须能被另一名同学按照交付文档复核。
 
@@ -23,9 +23,9 @@ TechCorp需要交付一台小型Linux业务服务器。服务器使用Nginx提�
 
 ### 2. 能力目标
 
-1. 整合Nginx、MySQL、MongoDB、Redis和本地后端服务。
+1. 按角色整合Nginx、后端服务、MySQL、MongoDB和Redis。
 2. 使用systemd管理自建服务，并通过日志排查启动失败。
-3. 配置对外端口和本地数据库监听边界。
+3. 配置跨主机反向代理、来源受限端口和本地数据库监听边界。
 4. 完成配置语法、认证、数据读写、备份恢复和健康检查。
 5. 使用Git管理脱敏配置，使用Shell脚本完成服务器巡检。
 6. 独立完成至少三项跨层故障诊断并恢复。
@@ -40,32 +40,35 @@ TechCorp需要交付一台小型Linux业务服务器。服务器使用Nginx提�
 ## 三、交付架构
 
 ```text
-Ubuntu客户端 ── SSH/22 ─────────────────────────┐
-                                                ↓
-Ubuntu客户端 ── HTTP/80 ──> Nginx ──> 静态站点  Rocky服务器
-                           └──> 127.0.0.1:5000 ──> techcorp-api
+ubuntu-client
+  ├── SSH/22 ───────────────> rocky-web
+  ├── SSH/22 ───────────────> rocky-server
+  └── HTTP/80 ──────────────> rocky-web：Nginx + 静态站点
+                                      │
+                                      └── HTTP/5000（仅允许rocky-web来源）
+                                                   ↓
+                                          rocky-server：techcorp-api
+                                                        MySQL 127.0.0.1:3306
+                                                        MongoDB 127.0.0.1:27017
+                                                        Redis 127.0.0.1:6379
 
-服务器本机：
-  MySQL    127.0.0.1:3306   关系型数据
-  MongoDB  127.0.0.1:27017  文档数据
-  Redis    127.0.0.1:6379   计数和临时状态
-
-运维保障：systemd + journal + firewalld + SELinux
-          rsync/备份 + Git + server-health.sh
+运维保障：两台Rocky均使用systemd、journal、firewalld和SELinux；
+          rocky-server集中保留数据库备份、Git版本和巡检证据。
 ```
 
 ### 端口验收基线
 
-| 端口 | 服务 | 期望监听 | firewalld |
-|---:|---|---|---|
-| 22 | SSH | 实验网络地址 | 放行ssh |
-| 80 | Nginx | 所需网络地址 | 放行http |
-| 5000 | techcorp-api | 仅127.0.0.1 | 不放行 |
-| 3306 | MySQL | 仅127.0.0.1 | 不放行 |
-| 27017 | MongoDB | 仅127.0.0.1 | 不放行 |
-| 6379 | Redis | 仅127.0.0.1/::1 | 不放行 |
+| 主机 | 端口 | 服务 | 期望监听 | firewalld |
+|---|---:|---|---|---|
+| `rocky-web` | 22 | SSH | 实验网络地址 | 放行ssh |
+| `rocky-web` | 80 | Nginx | 实验网络地址 | 放行http |
+| `rocky-server` | 22 | SSH | 实验网络地址 | 放行ssh |
+| `rocky-server` | 5000 | techcorp-api | `rocky-server`实验地址 | 仅允许`rocky-web`来源 |
+| `rocky-server` | 3306 | MySQL | 仅127.0.0.1 | 不放行 |
+| `rocky-server` | 27017 | MongoDB | 仅127.0.0.1 | 不放行 |
+| `rocky-server` | 6379 | Redis | 仅127.0.0.1/::1 | 不放行 |
 
-> 如果教师安排了“双虚拟机远程数据库”扩展场景，应按指定源地址开放；未安排时以仅本机监听为最终状态。
+> 实验15—17中为远程验证临时开放过数据库端口时，应先撤销临时规则。最终项目不要求Ubuntu直接访问数据库。
 
 ## 四、时间安排建议
 
@@ -73,8 +76,8 @@ Ubuntu客户端 ── HTTP/80 ──> Nginx ──> 静态站点  Rocky服务�
 
 | 用时 | 工作内容 |
 |---:|---|
-| 约45分钟 | 阅读需求、检查基线、整理目录和备份 |
-| 约75分钟 | 建立站点、后端systemd服务和Nginx入口 |
+| 约45分钟 | 阅读需求、检查三机基线、整理目录和备份 |
+| 约75分钟 | 在两台Rocky上建立站点、后端systemd服务和Nginx入口 |
 | 约45分钟 | 验证三类数据服务和安全边界 |
 | 约30分钟 | 备份、Git和巡检整合 |
 | 约45分钟 | 抽取故障卡、定位并恢复 |
@@ -84,17 +87,27 @@ Ubuntu客户端 ── HTTP/80 ──> Nginx ──> 静态站点  Rocky服务�
 
 ## 五、项目约束
 
-1. 使用实验1创建的Rocky Linux虚拟机，不重新安装操作系统。
+1. 使用实验1创建的三台虚拟机，不重新安装操作系统，不交换主机角色。
 2. 复用实验14—19的服务和成果，缺失项回到对应实验补齐。
-3. 最终只对外提供课程要求的SSH和HTTP。
+3. `rocky-web`只对外提供SSH和HTTP；`rocky-server`对外提供SSH，并仅向`rocky-web`开放5000端口。
 4. 真实密码只在交互式客户端输入，不写入脚本、截图或Git。
 5. 修改系统配置前保留带时间标识的备份。
 6. 每项故障必须写出“现象、假设、证据、修复、复测”。
-7. 使用实验1、8保留的Ubuntu Server作为正式外部客户端；Windows宿主机浏览器只作可选展示。
+7. `ubuntu-client`是正式外部客户端；Windows宿主机浏览器只作可选展示。
+
+### 操作位置约定
+
+本实验所有命令都必须在标题指定的虚拟机中执行。没有标注时，默认在`rocky-server`执行；不要因为两个Rocky账号密码相同就忽略终端提示符。每次切换终端先执行：
+
+```bash
+printf 'host=%s user=%s\n' "$(hostname)" "$(whoami)"
+```
 
 ## 六、项目准备
 
-### 任务一：建立交付目录
+### 任务一：建立交付目录（两台Rocky）
+
+在`rocky-server`执行：
 
 ```bash
 mkdir -p ~/m1-project/final/{evidence,report,backup}
@@ -102,7 +115,16 @@ mkdir -p ~/m1-project/git-lab/{docs,templates,scripts}
 date '+project_start=%F %T %z' | tee ~/m1-project/final/evidence/project-start.txt
 ```
 
-### 任务二：检查而不是猜测当前状态
+在`rocky-web`执行：
+
+```bash
+mkdir -p ~/m1-project/final/{evidence,report,backup}
+date '+project_start=%F %T %z' | tee ~/m1-project/final/evidence/project-start.txt
+```
+
+### 任务二：检查而不是猜测当前状态（两台Rocky）
+
+先在`rocky-server`执行，结果保存为`baseline-rocky-server.txt`：
 
 ```bash
 {
@@ -113,7 +135,7 @@ date '+project_start=%F %T %z' | tee ~/m1-project/final/evidence/project-start.t
     printf '\n=== routes ===\n'
     ip route
     printf '\n=== services ===\n'
-    for service in sshd nginx mysqld mongod redis; do
+    for service in sshd techcorp-api mysqld mongod redis; do
         printf '%-10s %s\n' "$service" "$(systemctl is-active "$service" 2>/dev/null || true)"
     done
     printf '\n=== listening ===\n'
@@ -123,7 +145,18 @@ date '+project_start=%F %T %z' | tee ~/m1-project/final/evidence/project-start.t
     sudo firewall-cmd --list-all
     printf '\n=== selinux ===\n'
     getenforce
-} | tee ~/m1-project/final/evidence/baseline.txt
+} | tee ~/m1-project/final/evidence/baseline-rocky-server.txt
+```
+
+再在`rocky-web`执行同类检查，但服务循环只检查`sshd nginx`，结果保存为`baseline-rocky-web.txt`。最后在`ubuntu-client`执行以下命令，确认能够解析并到达两台服务器：
+
+```bash
+hostnamectl --static
+ip -brief address
+ip route
+getent hosts rocky-server rocky-web
+ping -c 2 rocky-server
+ping -c 2 rocky-web
 ```
 
 根据结果填写：
@@ -135,7 +168,7 @@ date '+project_start=%F %T %z' | tee ~/m1-project/final/evidence/project-start.t
 | 默认路由 |  |  |  |
 | DNS解析 |  |  |  |
 | SSH |  |  |  |
-| Nginx |  |  |  |
+| `rocky-web`上的Nginx |  |  |  |
 | MySQL |  |  |  |
 | MongoDB |  |  |  |
 | Redis |  |  |  |
@@ -143,14 +176,15 @@ date '+project_start=%F %T %z' | tee ~/m1-project/final/evidence/project-start.t
 
 > **停止点**：如果磁盘已满、网络不通或软件源不可用，先按实验7、8、13排查，不应继续叠加服务配置。
 
-### 任务三：备份关键配置
+### 任务三：备份关键配置（按主机分别执行）
+
+在`rocky-server`执行：
 
 ```bash
 STAMP=$(date +%Y%m%d-%H%M%S)
 FINAL_BACKUP="$HOME/m1-project/final/backup/$STAMP"
 mkdir -p "$FINAL_BACKUP"
 
-sudo cp -a /etc/nginx "$FINAL_BACKUP/nginx" 2>/dev/null || true
 sudo cp -a /etc/my.cnf "$FINAL_BACKUP/my.cnf" 2>/dev/null || true
 sudo cp -a /etc/my.cnf.d "$FINAL_BACKUP/my.cnf.d" 2>/dev/null || true
 sudo cp -a /etc/mongod.conf "$FINAL_BACKUP/mongod.conf" 2>/dev/null || true
@@ -164,11 +198,25 @@ sudo chown -R "$USER:$USER" "$FINAL_BACKUP"
 find "$FINAL_BACKUP" -maxdepth 2 -type f -ls | tee ~/m1-project/final/evidence/config-backup.txt
 ```
 
+在`rocky-web`执行：
+
+```bash
+STAMP=$(date +%Y%m%d-%H%M%S)
+FINAL_BACKUP="$HOME/m1-project/final/backup/$STAMP"
+mkdir -p "$FINAL_BACKUP"
+sudo cp -a /etc/nginx "$FINAL_BACKUP/nginx" 2>/dev/null || true
+sudo chown -R "$USER:$USER" "$FINAL_BACKUP"
+find "$FINAL_BACKUP" -maxdepth 2 -type f -ls \
+    | tee ~/m1-project/final/evidence/config-backup.txt
+```
+
 配置备份可能含密码，只存放在本机受控目录，不提交Git。
 
 ## 七、实验步骤
 
-### 任务一：创建最小权限的后端服务账户
+### 任务一：创建最小权限服务账户（两台Rocky）
+
+先在`rocky-server`创建后端账户和目录：
 
 检查是否已有账户：
 
@@ -183,15 +231,27 @@ sudo useradd --system --home-dir /srv/techcorp --shell /sbin/nologin techcorp
 getent passwd techcorp
 ```
 
-建立目录：
+建立后端目录：
 
 ```bash
-sudo mkdir -p /srv/techcorp/{www,backend}
+sudo mkdir -p /srv/techcorp/backend
 sudo chown -R techcorp:techcorp /srv/techcorp
-sudo chmod 755 /srv/techcorp /srv/techcorp/www /srv/techcorp/backend
+sudo chmod 755 /srv/techcorp /srv/techcorp/backend
 ```
 
-### 任务二：准备网站与后端数据
+再在`rocky-web`执行同样的账户检查与创建命令，然后只建立站点目录：
+
+```bash
+getent passwd techcorp >/dev/null || \
+    sudo useradd --system --home-dir /srv/techcorp --shell /sbin/nologin techcorp
+sudo mkdir -p /srv/techcorp/www
+sudo chown -R techcorp:techcorp /srv/techcorp
+sudo chmod 755 /srv/techcorp /srv/techcorp/www
+```
+
+### 任务二：准备网站与后端数据（按主机执行）
+
+在`rocky-web`创建网站：
 
 ```bash
 sudo tee /srv/techcorp/www/index.html >/dev/null <<'EOF'
@@ -213,6 +273,14 @@ sudo tee /srv/techcorp/www/index.html >/dev/null <<'EOF'
 </html>
 EOF
 
+sudo chown -R techcorp:techcorp /srv/techcorp/www
+sudo find /srv/techcorp/www -type f -exec chmod 644 {} \;
+find /srv/techcorp/www -maxdepth 2 -printf '%M %u:%g %p\n'
+```
+
+在`rocky-server`创建后端健康数据：
+
+```bash
 sudo tee /srv/techcorp/backend/health.json >/dev/null <<'EOF'
 {
   "service": "techcorp-api",
@@ -221,18 +289,12 @@ sudo tee /srv/techcorp/backend/health.json >/dev/null <<'EOF'
 }
 EOF
 
-sudo chown -R techcorp:techcorp /srv/techcorp
-sudo find /srv/techcorp -type f -exec chmod 644 {} \;
-```
-
-验证文件内容和权限：
-
-```bash
-find /srv/techcorp -maxdepth 2 -printf '%M %u:%g %p\n'
+sudo chown -R techcorp:techcorp /srv/techcorp/backend
+sudo find /srv/techcorp/backend -type f -exec chmod 644 {} \;
 sed -n '1,20p' /srv/techcorp/backend/health.json
 ```
 
-### 任务三：把后端程序交给systemd
+### 任务三：在`rocky-server`把后端程序交给systemd
 
 确认Python可用：
 
@@ -254,7 +316,7 @@ Type=simple
 User=techcorp
 Group=techcorp
 WorkingDirectory=/srv/techcorp/backend
-ExecStart=/usr/bin/python3 -m http.server 5000 --bind 127.0.0.1
+ExecStart=/usr/bin/python3 -m http.server 5000 --bind <ROCKY_SERVER_IP>
 Restart=on-failure
 RestartSec=3
 NoNewPrivileges=true
@@ -269,18 +331,37 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now techcorp-api
 systemctl status techcorp-api --no-pager
 sudo ss -lntp | grep ':5000'
-curl --fail http://127.0.0.1:5000/health.json
+curl --fail http://<ROCKY_SERVER_IP>:5000/health.json
 ```
 
-最终必须监听`127.0.0.1:5000`，不能是`0.0.0.0:5000`。
+创建单元文件时，必须把两处`<ROCKY_SERVER_IP>`替换为实验8记录的`rocky-server`静态IPv4地址，禁止使用`0.0.0.0`。随后在`rocky-server`上仅允许`rocky-web`访问5000端口，将占位符换成实际地址：
 
-> **验收点**：后端由独立低权限账户运行，systemd状态为active，重启策略明确，5000端口仅本机监听。
+```bash
+sudo firewall-cmd --permanent --zone=public \
+  --add-rich-rule='rule family="ipv4" source address="<ROCKY_WEB_IP>/32" port port="5000" protocol="tcp" accept'
+sudo firewall-cmd --reload
+sudo firewall-cmd --zone=public --list-rich-rules
+```
 
-### 任务四：配置Nginx统一入口
+在`rocky-web`确认名称解析和后端访问：
+
+```bash
+getent hosts rocky-server
+curl --fail http://rocky-server:5000/health.json
+```
+
+在`ubuntu-client`直接访问`http://rocky-server:5000/health.json`应失败。此失败是安全边界的验收结果，不要为方便而向整个网段放行5000。
+
+> **验收点**：后端由独立低权限账户运行，systemd状态为active；5000端口绑定`rocky-server`地址，但防火墙只允许`rocky-web`来源。
+
+### 任务四：在`rocky-web`配置Nginx统一入口
 
 备份同名旧配置：
 
 ```bash
+FINAL_BACKUP=$(find "$HOME/m1-project/final/backup" \
+  -mindepth 1 -maxdepth 1 -type d | sort | tail -1)
+test -n "$FINAL_BACKUP" || { echo '未找到rocky-web配置备份目录'; exit 1; }
 if [[ -f /etc/nginx/conf.d/techcorp.conf ]]; then
     sudo cp -p /etc/nginx/conf.d/techcorp.conf \
         "$FINAL_BACKUP/techcorp.conf.before-final"
@@ -306,7 +387,7 @@ server {
     }
 
     location /api/ {
-        proxy_pass http://127.0.0.1:5000/;
+        proxy_pass http://rocky-server:5000/;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_connect_timeout 3s;
@@ -316,7 +397,7 @@ server {
 EOF
 ```
 
-处理SELinux文件标签并允许Nginx连接本机后端：
+处理SELinux文件标签并允许Nginx连接远程后端：
 
 ```bash
 sudo dnf install -y policycoreutils-python-utils
@@ -340,14 +421,14 @@ curl --fail -H 'Host: techcorp.local' http://127.0.0.1/health
 curl --fail -H 'Host: techcorp.local' http://127.0.0.1/api/health.json
 ```
 
-在Ubuntu客户端确认`/etc/hosts`包含Rocky服务器实际地址。没有记录时添加：
+在`ubuntu-client`确认`/etc/hosts`包含`rocky-web`实际地址。没有记录时添加：
 
 ```bash
-echo '<ROCKY_IP> techcorp.local' | sudo tee -a /etc/hosts
+echo '<ROCKY_WEB_IP> techcorp.local' | sudo tee -a /etc/hosts
 getent hosts techcorp.local
 ```
 
-将`<ROCKY_IP>`替换为实验8配置的Rocky静态地址，然后从Ubuntu执行：
+将`<ROCKY_WEB_IP>`替换为实验8配置的`rocky-web`静态地址，然后从`ubuntu-client`执行：
 
 ```bash
 curl --fail http://techcorp.local/
@@ -362,13 +443,13 @@ http://techcorp.local/
 http://techcorp.local/api/health.json
 ```
 
-此时按实验14在Windows hosts文件中加入`<Rocky服务器IPv4地址> techcorp.local`，但Windows结果不替代Ubuntu命令行证据。
+此时按实验14在Windows hosts文件中加入`<rocky-web的IPv4地址> techcorp.local`，但Windows结果不替代Ubuntu命令行证据。
 
-> **验收点**：Ubuntu客户端能够解析`techcorp.local`，静态首页、Nginx健康页和反向代理后端均能访问，访问日志中出现Ubuntu客户端地址。
+> **验收点**：`ubuntu-client`能够解析`techcorp.local`，静态首页、Nginx健康页和跨主机反向代理后端均能访问，访问日志中出现Ubuntu客户端地址。
 
-### 任务五：落实网络暴露边界
+### 任务五：在两台Rocky落实网络暴露边界
 
-确认活动zone和接口：
+先在`rocky-web`确认活动zone和接口：
 
 ```bash
 sudo firewall-cmd --get-active-zones
@@ -383,24 +464,28 @@ sudo firewall-cmd --reload
 sudo firewall-cmd --zone=public --list-all
 ```
 
-检查监听地址：
+检查`rocky-web`监听地址：
 
 ```bash
-sudo ss -lntp | grep -E ':(22|80|5000|3306|27017|6379)\b'
+sudo ss -lntp | grep -E ':(22|80)\b'
 ```
 
-检查数据库服务和端口未被防火墙显式开放：
+再在`rocky-server`检查监听地址、普通规则和来源受限规则：
 
 ```bash
+sudo ss -lntp | grep -E ':(22|5000|3306|27017|6379)\b'
 sudo firewall-cmd --zone=public --list-services
 sudo firewall-cmd --zone=public --list-ports
+sudo firewall-cmd --zone=public --list-rich-rules
 ```
 
-确认服务列表中只有课程需要的`ssh`和`http`等项目，端口列表中没有`3306/tcp`、`27017/tcp`或`6379/tcp`。如果这些数据库端口由先前实验临时开放，应在确认无远程实验需求后删除对应规则，再重载。不要删除不认识的其他业务规则。
+确认`rocky-server`的普通服务列表不含HTTP，普通端口列表不含`5000/tcp`、`3306/tcp`、`27017/tcp`或`6379/tcp`，5000只出现在限定`rocky-web`源地址的rich rule中。如果数据库端口由先前实验临时开放，应先确认规则的准确写法再删除并重载；不要删除不认识的其他业务规则。
 
-> **验收点**：22和80按要求可达；5000、3306、27017和6379不直接对外提供。
+最后从`ubuntu-client`验证80可达、5000不可直达，再从`rocky-web`验证5000可达。
 
-### 任务六：验证MySQL
+> **验收点**：SSH按要求可达，80只由`rocky-web`提供；5000只允许`rocky-web`访问，三种数据库端口不对外提供。
+
+### 任务六：在`rocky-server`验证MySQL
 
 ```bash
 systemctl is-active mysqld
@@ -442,7 +527,7 @@ EXIT;
 
 查询应成功，创建新数据库应因权限不足而失败。若测试库意外创建成功，说明授权范围过大，应返回实验15检查`SHOW GRANTS`并整改。
 
-### 任务七：验证MongoDB
+### 任务七：在`rocky-server`验证MongoDB
 
 ```bash
 systemctl is-active mongod
@@ -470,7 +555,7 @@ exit
 
 未认证读取应被拒绝，认证后才能访问授权数据。
 
-### 任务八：验证Redis
+### 任务八：在`rocky-server`验证Redis
 
 ```bash
 REDIS_CONF=$(rpm -ql redis | grep '/redis.conf$' | head -1)
@@ -499,9 +584,9 @@ EXIT
 
 > **验收点**：三类数据服务均通过“服务—监听—认证—数据”四层验证。
 
-### 任务九：完成备份与恢复抽查
+### 任务九：在两台Rocky完成备份与恢复抽查
 
-#### 1. 站点和脱敏配置备份
+#### 1. 在`rocky-web`备份站点和配置
 
 ```bash
 mkdir -p ~/m1-project/final/backup/files
@@ -511,7 +596,25 @@ sudo cp -p /etc/nginx/conf.d/techcorp.conf \
 sudo chown -R "$USER:$USER" ~/m1-project/final/backup/files
 ```
 
-#### 2. MySQL逻辑备份
+先在`rocky-web`本机完成网站恢复抽查，不覆盖运行目录：
+
+```bash
+mkdir -p ~/m1-project/final/restore-test/www
+rsync -av ~/m1-project/final/backup/files/www/ \
+    ~/m1-project/final/restore-test/www/
+diff -ru /srv/techcorp/www ~/m1-project/final/restore-test/www
+```
+
+再将站点备份汇总到`rocky-server`。以下命令在`rocky-web`执行：
+
+```bash
+rsync -av ~/m1-project/final/backup/files/ \
+    rocky-server:~/m1-project/final/backup/web-files/
+```
+
+在`rocky-server`执行`find ~/m1-project/final/backup/web-files -type f -ls`确认已经收到文件。
+
+#### 2. 在`rocky-server`完成MySQL逻辑备份
 
 密码在提示符中输入：
 
@@ -522,7 +625,7 @@ mysqldump -u root -p --single-transaction \
 test -s ~/m1-project/final/backup/company_db.sql
 ```
 
-#### 3. MongoDB逻辑备份
+#### 3. 在`rocky-server`完成MongoDB逻辑备份
 
 ```bash
 mongodump --host 127.0.0.1 --port 27017 \
@@ -533,20 +636,11 @@ mongodump --host 127.0.0.1 --port 27017 \
 find ~/m1-project/final/backup/mongodb -type f -ls
 ```
 
-#### 4. 恢复抽查
-
-网站恢复抽查不覆盖生产目录：
-
-```bash
-mkdir -p ~/m1-project/final/restore-test/www
-rsync -av ~/m1-project/final/backup/files/www/ \
-    ~/m1-project/final/restore-test/www/
-diff -ru /srv/techcorp/www ~/m1-project/final/restore-test/www
-```
+#### 4. 数据库恢复抽查
 
 数据库备份需至少完成“文件非空、工具可读、恢复命令说明”三项检查。若教师安排独立测试库，可按实验15、16执行真实恢复；不得在最终业务库上直接覆盖测试。
 
-### 任务十：同步Git版本
+### 任务十：在`rocky-server`同步Git版本
 
 复制脱敏模板，不复制含真实认证信息的完整配置：
 
@@ -560,12 +654,13 @@ sed -n '1,120p' templates/techcorp-final.conf.example
 
 ````bash
 cat > docs/final-architecture.md <<'EOF'
-# TechCorp Linux服务器交付架构
+# TechCorp Linux三机交付架构
 
-- 对外入口：SSH/22、Nginx/80。
-- 本地后端：techcorp-api，监听127.0.0.1:5000。
-- 本地数据：MySQL/3306、MongoDB/27017、Redis/6379。
-- 运维保障：systemd、journal、firewalld、SELinux、备份、Git、巡检脚本。
+- 客户端：ubuntu-client，负责SSH和HTTP验收。
+- Web入口：rocky-web，提供SSH/22和Nginx/80。
+- 业务服务器：rocky-server，提供SSH/22和techcorp-api/5000；5000只允许rocky-web访问。
+- 本地数据：rocky-server上的MySQL/3306、MongoDB/27017、Redis/6379，均不对外开放。
+- 运维保障：systemd、journal、firewalld、SELinux、跨机备份、Git、巡检脚本。
 - 机密边界：密码、私钥、真实数据库转储和日志不进入Git。
 EOF
 
@@ -583,7 +678,7 @@ git push origin main
 git restore --staged <文件路径>
 ```
 
-### 任务十一：运行统一巡检
+### 任务十一：在`rocky-server`运行统一巡检
 
 ```bash
 cd ~/m1-project/git-lab
@@ -595,11 +690,11 @@ cat ~/m1-project/final/evidence/health-final.log
 printf 'health_exit_code=%s\n' "$HEALTH_CODE"
 ```
 
-实验19脚本尚未检查5000端口和`techcorp-api`服务。将它们分别加入数组：
+实验19脚本运行于`rocky-server`，不应检查只存在于`rocky-web`的Nginx和80端口。将服务和端口数组调整为：
 
 ```bash
-SERVICES=(nginx techcorp-api mysqld mongod redis sshd)
-PORTS=(22 80 5000 3306 27017 6379)
+SERVICES=(techcorp-api mysqld mongod redis sshd)
+PORTS=(22 5000 3306 27017 6379)
 ```
 
 修改后再次执行语法检查、运行和Git提交：
@@ -635,7 +730,7 @@ git push origin main
 
 ### 故障卡A：Nginx配置语法错误
 
-设置者在实验配置中制造一处缺少分号或括号错误。排查者应使用：
+本卡在`rocky-web`执行。设置者在实验配置中制造一处缺少分号或括号错误。排查者应使用：
 
 ```bash
 sudo nginx -t
@@ -647,7 +742,7 @@ sudo journalctl -u nginx -n 50 --no-pager
 
 ### 故障卡B：后端服务工作目录错误
 
-设置者先备份单元文件，再把`WorkingDirectory`改为不存在目录并重启。排查者应使用：
+本卡在`rocky-server`执行。设置者先备份单元文件，再把`WorkingDirectory`改为不存在目录并重启。排查者应使用：
 
 ```bash
 systemctl status techcorp-api --no-pager
@@ -659,7 +754,7 @@ sudo systemd-analyze verify /etc/systemd/system/techcorp-api.service
 
 ### 故障卡C：SELinux阻止Nginx连接后端
 
-设置者记录并临时关闭布尔值：
+本卡在`rocky-web`执行。设置者记录并临时关闭布尔值：
 
 ```bash
 sudo setsebool httpd_can_network_connect off
@@ -678,7 +773,7 @@ sudo ausearch -m AVC -ts recent | tail -n 30
 
 ### 故障卡D：MySQL停止或监听异常
 
-排查顺序：
+本卡在`rocky-server`执行，排查顺序如下：
 
 ```bash
 systemctl status mysqld --no-pager
@@ -691,6 +786,8 @@ sudo grep -Rns '^[[:space:]]*bind-address' /etc/my.cnf /etc/my.cnf.d 2>/dev/null
 
 ### 故障卡E：MongoDB认证或配置缩进错误
 
+本卡在`rocky-server`执行。
+
 ```bash
 systemctl status mongod --no-pager
 sudo journalctl -u mongod -n 50 --no-pager
@@ -701,6 +798,8 @@ mongosh --host 127.0.0.1 --port 27017
 区分服务未启动、认证数据库选择错误、用户名错误和YAML缩进错误。
 
 ### 故障卡F：Redis未认证或监听范围错误
+
+本卡在`rocky-server`执行。
 
 ```bash
 systemctl status redis --no-pager
@@ -713,15 +812,19 @@ redis-cli
 
 ### 故障卡G：防火墙未开放HTTP
 
+本卡在`rocky-web`执行。
+
 ```bash
 curl --fail -H 'Host: techcorp.local' http://127.0.0.1/health
 sudo firewall-cmd --get-active-zones
 sudo firewall-cmd --zone=public --list-all
 ```
 
-本机访问正常而Ubuntu客户端访问失败时，再检查Ubuntu地址与路由、Rocky活动zone、接口归属和HTTP服务规则。
+`rocky-web`本机访问正常而`ubuntu-client`访问失败时，再检查客户端地址与路由、`rocky-web`活动zone、接口归属和HTTP服务规则。
 
 ### 故障卡H：站点文件标签或权限错误
+
+本卡在`rocky-web`执行。
 
 ```bash
 namei -l /srv/techcorp/www/index.html
@@ -736,9 +839,10 @@ sudo ausearch -m AVC -ts recent | tail -n 30
 
 ### 1. 自动检查
 
-创建验收脚本：
+在`ubuntu-client`创建验收脚本。实验10建立的`rocky-web`和`rocky-server`SSH别名及密钥必须可用：
 
 ```bash
+mkdir -p ~/m1-project/final/evidence
 vim ~/m1-project/final/acceptance.sh
 ```
 
@@ -753,48 +857,76 @@ fail=0
 pass() { printf '[PASS] %s\n' "$1"; }
 fail() { printf '[FAIL] %s\n' "$1" >&2; fail=$((fail + 1)); }
 
-for service in sshd nginx techcorp-api mysqld mongod redis; do
-    if systemctl is-active --quiet "$service"; then
-        pass "service ${service} active"
+check_service() {
+    local host="$1" service="$2"
+    if ssh -o BatchMode=yes -o ConnectTimeout=3 "$host" \
+        systemctl is-active --quiet "$service"; then
+        pass "${host}: service ${service} active"
     else
-        fail "service ${service} not active"
+        fail "${host}: service ${service} not active"
     fi
+}
+
+check_port() {
+    local host="$1" port="$2"
+    if ssh -o BatchMode=yes -o ConnectTimeout=3 "$host" \
+        "ss -lntH 'sport = :${port}' | grep -q ."; then
+        pass "${host}: tcp ${port} listening"
+    else
+        fail "${host}: tcp ${port} not listening"
+    fi
+}
+
+for service in sshd nginx; do check_service rocky-web "$service"; done
+for service in sshd techcorp-api mysqld mongod redis; do
+    check_service rocky-server "$service"
 done
 
-for port in 22 80 5000 3306 27017 6379; do
-    if ss -lntH | awk '{print $4}' | grep -Eq "(^|:|\\])${port}$"; then
-        pass "tcp ${port} listening"
-    else
-        fail "tcp ${port} not listening"
-    fi
+for port in 22 80; do check_port rocky-web "$port"; done
+for port in 22 5000 3306 27017 6379; do
+    check_port rocky-server "$port"
 done
 
 for url in \
-    http://127.0.0.1/ \
-    http://127.0.0.1/health \
-    http://127.0.0.1/api/health.json; do
-    if curl --silent --fail --max-time 3 \
-        -H 'Host: techcorp.local' "$url" >/dev/null; then
+    http://techcorp.local/ \
+    http://techcorp.local/health \
+    http://techcorp.local/api/health.json; do
+    if curl --silent --fail --max-time 3 "$url" >/dev/null; then
         pass "url ${url}"
     else
         fail "url ${url}"
     fi
 done
 
-if [[ -s "$HOME/m1-project/final/backup/company_db.sql" ]]; then
+if curl --silent --fail --max-time 3 \
+    http://rocky-server:5000/health.json >/dev/null; then
+    fail 'ubuntu-client can directly access rocky-server:5000'
+else
+    pass 'rocky-server:5000 rejects ubuntu-client as expected'
+fi
+
+if ssh rocky-web curl --silent --fail --max-time 3 \
+    http://rocky-server:5000/health.json >/dev/null; then
+    pass 'rocky-web can access rocky-server:5000'
+else
+    fail 'rocky-web cannot access rocky-server:5000'
+fi
+
+if ssh rocky-server 'test -s "$HOME/m1-project/final/backup/company_db.sql"'; then
     pass 'MySQL backup exists and is not empty'
 else
     fail 'MySQL backup missing or empty'
 fi
 
-if find "$HOME/m1-project/final/backup/mongodb" -type f -print -quit 2>/dev/null | grep -q .; then
+if ssh rocky-server \
+    "find ~/m1-project/final/backup/mongodb -type f -print -quit 2>/dev/null | grep -q ."; then
     pass 'MongoDB backup files exist'
 else
     fail 'MongoDB backup files missing'
 fi
 
-if git -C "$HOME/m1-project/git-lab" diff --quiet && \
-   git -C "$HOME/m1-project/git-lab" diff --cached --quiet; then
+if ssh rocky-server \
+    "git -C ~/m1-project/git-lab diff --quiet && git -C ~/m1-project/git-lab diff --cached --quiet"; then
     pass 'Git tracked working tree clean'
 else
     fail 'Git tracked working tree has uncommitted changes'
@@ -804,7 +936,7 @@ printf 'failed_checks=%d\n' "$fail"
 (( fail == 0 ))
 ```
 
-运行并保留结果：
+运行并保留结果，然后汇总到`rocky-server`：
 
 ```bash
 chmod 750 ~/m1-project/final/acceptance.sh
@@ -814,23 +946,25 @@ bash -n ~/m1-project/final/acceptance.sh
 ACCEPT_CODE=$?
 cat ~/m1-project/final/evidence/acceptance-final.log
 printf 'acceptance_exit_code=%s\n' "$ACCEPT_CODE"
+scp ~/m1-project/final/evidence/acceptance-final.log \
+    rocky-server:~/m1-project/final/evidence/
 ```
 
 自动检查不包含数据库密码和业务数据内容，因此还必须完成以下人工验收。
 
 ### 2. 人工验收清单
 
-- [ ] 能说明当前主机名、IPv4地址、默认路由和DNS。
-- [ ] 能从Ubuntu客户端通过SSH登录Rocky服务器。
-- [ ] 能从Ubuntu客户端访问首页、Nginx健康页和API健康数据。
-- [ ] 5000、3306、27017、6379未直接对外开放。
-- [ ] SELinux为Enforcing，Nginx反向代理仍可用。
+- [ ] 能说明三台虚拟机的主机名、IPv4地址、默认路由、DNS和各自角色。
+- [ ] 能从`ubuntu-client`通过SSH登录两台Rocky。
+- [ ] 能从`ubuntu-client`访问`rocky-web`上的首页、Nginx健康页和跨主机API健康数据。
+- [ ] 5000只允许`rocky-web`访问，3306、27017和6379未直接对外开放。
+- [ ] 两台Rocky的SELinux均为Enforcing，Nginx跨主机反向代理仍可用。
 - [ ] MySQL认证后能查询关系型数据。
 - [ ] MongoDB未认证访问被拒绝，认证后能查询文档。
 - [ ] Redis未认证业务命令被拒绝，认证后能读写键值。
 - [ ] MySQL和MongoDB备份存在，网站恢复抽查无差异。
 - [ ] Git仓库没有真实密码、私钥、日志和数据库转储。
-- [ ] 巡检脚本能检查系统、服务、端口和Web健康页。
+- [ ] `rocky-server`巡检脚本能检查本机系统、服务和端口，三机验收脚本能检查完整访问链路。
 - [ ] 至少三项故障有完整证据链和恢复验证。
 
 ### 3. 交付材料

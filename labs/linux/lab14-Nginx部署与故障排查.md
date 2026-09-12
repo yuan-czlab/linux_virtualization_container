@@ -9,7 +9,7 @@
 
 ## 一、项目情境
 
-TechCorp需要在Rocky Linux服务器发布企业官网，并由Nginx把`/api/`请求转发给本机应用。你需要完成安装、站点目录、虚拟主机、防火墙、SELinux和反向代理配置，并通过访问日志和错误日志识别403、404和502。
+TechCorp需要在专用Web服务器`rocky-web`发布企业官网，并由Nginx把`/api/`请求转发给测试应用。你需要把此前在`rocky-server`学到的网络、SSH、systemd、firewalld和SELinux方法迁移到Web角色，再完成配置和故障排查。
 
 ## 二、实验目标
 
@@ -52,8 +52,8 @@ TechCorp需要在Rocky Linux服务器发布企业官网，并由Nginx把`/api/`�
 
 ## 四、实验环境
 
-- Rocky Linux 9，student具备sudo权限。
-- 实验1、8准备的Ubuntu Server客户端，能够访问Rocky服务器静态IP。
+- `rocky-web`运行Rocky Linux 9，使用同名用户登录并具备sudo权限。
+- 实验1、8准备的`ubuntu-client`，能够解析并访问`rocky-web`。
 - 使用教师验证过的软件源或离线RPM。
 - 端口80用于Nginx，5000用于仅本机访问的测试后端。
 - firewalld保持启用，SELinux保持Enforcing。
@@ -61,12 +61,13 @@ TechCorp需要在Rocky Linux服务器发布企业官网，并由Nginx把`/api/`�
 
 ## 五、项目任务
 
-1. 安装并检查Nginx。
-2. 建立TechCorp站点和正确SELinux上下文。
-3. 配置虚拟主机并从Rocky本机和Ubuntu客户端验证。
-4. 启动本地后端并配置`/api/`反向代理。
-5. 制造和识别403、404、502。
-6. 保存配置、日志证据和故障报告。
+1. 核对当前机器确实是`rocky-web`，复查网络、SSH、防火墙和SELinux基线。
+2. 安装并检查Nginx。
+3. 建立TechCorp站点和正确SELinux上下文。
+4. 配置虚拟主机并从`rocky-web`本机和`ubuntu-client`验证。
+5. 启动本地后端并配置`/api/`反向代理。
+6. 制造和识别403、404、502。
+7. 保存配置、日志证据和故障报告。
 
 ## 六、实验步骤
 
@@ -75,6 +76,10 @@ TechCorp需要在Rocky Linux服务器发布企业官网，并由Nginx把`/api/`�
 #### 步骤1：确认端口和旧环境
 
 ```bash
+test "$(whoami)" = 'rocky-web' && echo USER_PASS || echo USER_FAIL
+test "$(hostnamectl --static)" = 'rocky-web' && echo HOST_PASS || echo HOST_FAIL
+ip -brief address
+getenforce
 rpm -q nginx || true
 sudo ss -lntp | grep ':80 ' || true
 test -d /etc/nginx && sudo find /etc/nginx -maxdepth 2 -type f -print || true
@@ -205,14 +210,14 @@ sudo firewall-cmd --reload
 sudo firewall-cmd --query-service=http
 ```
 
-在Ubuntu客户端先直接携带Host头验证：
+在`ubuntu-client`先直接携带Host头验证：
 
 ```bash
 curl -i -H 'Host: techcorp.local' http://<ROCKY_IP>/
 curl --fail -H 'Host: techcorp.local' http://<ROCKY_IP>/health
 ```
 
-再编辑Ubuntu的hosts文件：
+再检查`ubuntu-client`的hosts文件中`rocky-web`和`techcorp.local`是否指向同一地址：
 
 ```bash
 sudo vim /etc/hosts
@@ -234,7 +239,7 @@ curl --fail http://techcorp.local/health
 
 若教师需要图形浏览器展示，也可以在Windows宿主机配置同名hosts记录后访问，但Ubuntu命令行结果是本实验的正式客户端证据。
 
-> **验收点**：Ubuntu客户端能够访问TechCorp页面和`/health`，Nginx访问日志出现Ubuntu客户端地址。
+> **验收点**：`ubuntu-client`能够访问TechCorp页面和`/health`，Nginx访问日志出现客户端地址。
 
 ### 任务四：配置反向代理
 
@@ -358,7 +363,7 @@ curl -s -H 'Host: techcorp.local' http://127.0.0.1/api/
 - [ ] 修改前已保存完整配置基线。
 - [ ] TechCorp站点目录、权限和SELinux上下文正确。
 - [ ] 配置通过`nginx -t`后才重载。
-- [ ] Rocky本机和Ubuntu客户端均能访问虚拟主机与健康页。
+- [ ] `rocky-web`本机和`ubuntu-client`均能访问虚拟主机与健康页。
 - [ ] 5000端口只监听127.0.0.1。
 - [ ] `/api/`反向代理返回`BACKEND_OK`。
 - [ ] 403、404和502均有状态与日志证据。

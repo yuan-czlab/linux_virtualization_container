@@ -93,7 +93,7 @@ Shell会先展开通配符，再把匹配结果交给命令。删除前必须先
 ## 四、实验环境
 
 - 使用实验1保留的Rocky Linux 9虚拟机。
-- 使用`student`普通用户登录。
+- 使用`rocky-server`普通用户登录。
 - 所有可删除内容限制在`~/m1-project`和`/tmp/lab02-*`。
 
 开始前执行：
@@ -105,7 +105,7 @@ pwd
 df -h ~
 ```
 
-> **验收点**：当前用户为student，家目录可写，磁盘空间满足实验需要。
+> **验收点**：当前用户为rocky-server，家目录可写，磁盘空间满足实验需要。
 
 ## 五、项目任务
 
@@ -382,7 +382,7 @@ ls -ld <目标的父目录>
 
 ### Q2：提示Permission denied
 
-先用`whoami`确认用户，再用`ls -ld`查看目录权限。本实验工作区位于student家目录，通常不需要sudo。不要为了消除错误直接使用`chmod 777`。
+先用`whoami`确认用户，再用`ls -ld`查看目录权限。本实验工作区位于rocky-server家目录，通常不需要sudo。不要为了消除错误直接使用`chmod 777`。
 
 ### Q3：复制目录时提示omitting directory
 

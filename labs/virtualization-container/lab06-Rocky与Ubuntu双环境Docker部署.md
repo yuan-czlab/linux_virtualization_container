@@ -14,7 +14,7 @@
 
 ## 一、项目情境
 
-TechCorp同时使用RHEL系服务器和Ubuntu云主机。你需要在Linux课程保留的Rocky与Ubuntu虚拟机中分别部署Docker Engine，比较DNF与APT安装流程、服务状态、存储驱动、安全机制和网络条件，并用同一个课程验证镜像证明两套环境都能运行容器。
+TechCorp同时使用RHEL系服务器和Ubuntu云主机。你需要在Linux课程保留的`rocky-server`与`ubuntu-client`中分别部署Docker Engine，比较DNF与APT安装流程、服务状态、存储驱动、安全机制和网络条件，并用同一个课程验证镜像证明两套环境都能运行容器。`rocky-web`保留但默认关机，不在其上重复安装Docker。
 
 Windows宿主机不具备统一WSL环境，因此Docker Desktop不是本课程必需条件。正式实验全部在Linux虚拟机中完成。
 
@@ -60,26 +60,26 @@ docker命令
 
 | 环境 | 本课程用途 | 需要特别关注 |
 |---|---|---|
-| Rocky Linux 9 | Docker环境A、RHEL系服务器实践 | DNF、SELinux、firewalld、Podman冲突检查 |
-| Ubuntu Server 22.04 | Docker环境B、主要Compose目标 | APT、UFW/iptables规则、云环境常见路径 |
+| `rocky-server`（Rocky Linux 9） | Docker环境A、RHEL系服务器实践 | DNF、SELinux、firewalld、Podman冲突检查 |
+| `ubuntu-client`（Ubuntu 22.04 Desktop） | Docker环境B、主要Compose目标 | APT、UFW/iptables规则、云环境常见路径 |
 
 ### 3. 权限提醒
 
-Docker守护进程通常以root权限运行。能够访问Docker Socket的用户可以挂载宿主机目录、创建高权限容器，因此加入`docker`组并不等于普通低权限授权。本课程默认使用`sudo docker`，教师确认后才可将student加入Docker组。
+Docker守护进程通常以root权限运行。能够访问Docker Socket的用户可以挂载宿主机目录、创建高权限容器，因此加入`docker`组并不等于普通低权限授权。本课程默认使用`sudo docker`；教师确认后，才可在两台主机上分别将`rocky-server`或`ubuntu-client`加入Docker组。
 
 ## 四、实验环境
 
-- Linux课程保留的Rocky Linux 9与Ubuntu Server 22.04。
+- Linux课程保留的`rocky-server`与`ubuntu-client`；主机名和当前用户必须同名。
 - 两台主机能够联网访问教师软件仓库，或能够访问`<COURSE_MEDIA>/docker-packages/`。
 - 教师发布课程Docker软件版本和包清单。
 - 教师提供验证镜像在线地址和离线归档，例如`<COURSE_REGISTRY>/vc/verify:<COURSE_TAG>`。
-- KVM客户机已关闭，释放Rocky资源。
+- KVM客户机与`rocky-web`均已关闭，释放宿主机资源。
 
 ## 五、项目任务
 
 1. 检查两台主机现有容器软件和资源。
-2. 在Rocky安装Docker Engine与Compose插件。
-3. 在Ubuntu安装Docker Engine与Compose插件。
+2. 在`rocky-server`安装Docker Engine与Compose插件。
+3. 在`ubuntu-client`安装Docker Engine与Compose插件。
 4. 验证服务、版本、存储、cgroup和网络。
 5. 在两台主机运行同一课程验证镜像。
 6. 保存双环境差异和基线证据。
@@ -88,7 +88,7 @@ Docker守护进程通常以root权限运行。能够访问Docker Socket的用户
 
 ### 任务一：安装前检查
 
-#### 步骤1：在Rocky建立基线
+#### 步骤1：在`rocky-server`建立基线
 
 ```bash
 mkdir -p ~/vc-course/evidence ~/vc-course/backup
@@ -108,7 +108,7 @@ mkdir -p ~/vc-course/evidence ~/vc-course/backup
 
 若已经存在Docker，停止并报告教师，不覆盖安装，也不删除`/var/lib/docker`。
 
-#### 步骤2：在Ubuntu建立基线
+#### 步骤2：在`ubuntu-client`建立基线
 
 ```bash
 mkdir -p ~/vc-course/evidence ~/vc-course/backup
@@ -127,7 +127,7 @@ mkdir -p ~/vc-course/evidence ~/vc-course/backup
 
 两台主机架构应与教师镜像清单一致，通常为`x86_64/amd64`。
 
-### 任务二：在Rocky安装Docker
+### 任务二：在`rocky-server`安装Docker
 
 #### 步骤3：处理冲突包
 
@@ -196,7 +196,7 @@ sudo ss -lx | grep docker.sock || true
 
 > **验收点**：Rocky的Docker为active和enabled，客户端与服务端版本均可查询，Compose插件可用。
 
-### 任务三：在Ubuntu安装Docker
+### 任务三：在`ubuntu-client`安装Docker
 
 #### 步骤7：检查并处理冲突包
 
@@ -297,7 +297,7 @@ sudo docker load -i <COURSE_MEDIA>/docker-images/vc-verify-<COURSE_TAG>.tar
 
 校验值必须与教师镜像清单一致。
 
-#### 步骤12：在Rocky运行
+#### 步骤12：在`rocky-server`运行
 
 ```bash
 sudo docker image ls --digests
@@ -308,9 +308,9 @@ sudo docker run --rm \
 
 预期输出至少包含课程定义的`VC_DOCKER_OK`、容器架构和运行时信息。
 
-#### 步骤13：在Ubuntu运行
+#### 步骤13：在`ubuntu-client`运行
 
-在Ubuntu执行同一命令，只修改容器名称：
+在`ubuntu-client`执行同一命令，只修改容器名称：
 
 ```bash
 sudo docker run --rm \
@@ -358,7 +358,7 @@ lab06-ubuntu-docker-result.txt
 
 ## 七、独立实践
 
-在不查看前面命令的情况下，分别在Rocky和Ubuntu完成：
+在不查看前面命令的情况下，分别在`rocky-server`和`ubuntu-client`完成：
 
 1. 确认Docker服务状态；
 2. 输出Docker服务端版本；
@@ -373,7 +373,7 @@ lab06-ubuntu-docker-result.txt
 - [ ] 两台主机Docker服务均为active和enabled。
 - [ ] 两台主机Docker客户端、服务端、Buildx和Compose插件可用。
 - [ ] 能说明Docker Engine、containerd和runc的基本关系。
-- [ ] 同一课程验证镜像在Rocky和Ubuntu运行成功。
+- [ ] 同一课程验证镜像在`rocky-server`和`ubuntu-client`运行成功。
 - [ ] 两台主机镜像摘要一致。
 - [ ] 已完成双环境差异表。
 - [ ] 能说明Docker组为什么属于高权限授权。
@@ -437,4 +437,3 @@ Docker会创建自己的包过滤规则，发布端口可能绕过预期的UFW�
 - 不清理`/var/lib/docker`。
 - 分别创建VMware快照`VC-02-Docker双环境完成`。
 - 下一实验继续使用两台Docker主机。
-

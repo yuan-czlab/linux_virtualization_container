@@ -55,7 +55,7 @@
 
 ## 四、实验环境
 
-- Rocky Linux 9服务器，Ubuntu Server 22.04为正式客户端。
+- 默认故障目标为`rocky-server`，`ubuntu-client`为正式客户端；教师可把一项Web类故障安排到`rocky-web`，但必须在故障单中明确目标主机。
 - SSH和firewalld保持运行，SELinux保持Enforcing。
 - 教师准备3—5个故障，至少覆盖三个不同层次。
 - 学生开始前保留VMware快照或可回退配置。
@@ -277,7 +277,7 @@ getenforce
 禁止设置：
 
 - 删除虚拟磁盘或系统关键目录；
-- 删除student和唯一管理员；
+- 删除`rocky-server`主账号和唯一管理员；
 - 修改后无法通过VMware控制台恢复的故障；
 - 清空防火墙全部规则；
 - 禁用SELinux作为最终状态。

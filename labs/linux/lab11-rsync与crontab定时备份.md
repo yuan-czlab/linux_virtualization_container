@@ -53,7 +53,7 @@ cron五个时间字段依次为分钟、小时、日、月、星期。
 
 ## 四、实验环境
 
-- Rocky Linux 9，student登录。
+- Rocky Linux 9，rocky-server登录。
 - 需要`rsync`和`cronie`。
 - 源目录：`~/m1-project/web`。
 - 备份目录：`~/backup-lab/web-current`。
@@ -134,9 +134,9 @@ cat > ~/m1-project/scripts/backup-web.sh <<'SCRIPT'
 #!/bin/bash
 set -u
 
-SOURCE=/home/student/m1-project/web/
-TARGET=/home/student/backup-lab/web-current/
-LOG=/home/student/backup-lab/logs/backup-web.log
+SOURCE=/home/rocky-server/m1-project/web/
+TARGET=/home/rocky-server/backup-lab/web-current/
+LOG=/home/rocky-server/backup-lab/logs/backup-web.log
 
 printf 'START time=%s source=%s target=%s\n' "$(date '+%F %T')" "$SOURCE" "$TARGET" >> "$LOG"
 /usr/bin/rsync -a --itemize-changes "$SOURCE" "$TARGET" >> "$LOG" 2>&1
@@ -152,7 +152,7 @@ echo $?
 tail -n 20 ~/backup-lab/logs/backup-web.log
 ```
 
-如果student家目录不同，应修改三个绝对路径。cron环境中的PATH和工作目录可能不同，因此脚本不使用`~`和相对命令路径。
+如果rocky-server家目录不同，应修改三个绝对路径。cron环境中的PATH和工作目录可能不同，因此脚本不使用`~`和相对命令路径。
 
 > **验收点**：脚本语法正确，日志包含START、END和`exit_code=0`。
 
@@ -173,7 +173,7 @@ crontab -e
 加入每分钟测试任务：
 
 ```text
-* * * * * /home/student/m1-project/scripts/backup-web.sh
+* * * * * /home/rocky-server/m1-project/scripts/backup-web.sh
 ```
 
 等待一个执行周期后检查：
@@ -235,7 +235,7 @@ crontab -e
 删除每分钟测试行，或按教师要求改为每日任务，例如：
 
 ```text
-30 18 * * * /home/student/m1-project/scripts/backup-web.sh
+30 18 * * * /home/rocky-server/m1-project/scripts/backup-web.sh
 ```
 
 再次执行`crontab -l`确认。

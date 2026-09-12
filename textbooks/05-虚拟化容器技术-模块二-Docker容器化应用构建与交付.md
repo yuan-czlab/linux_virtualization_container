@@ -2,18 +2,18 @@
 
 > 适用课程：《虚拟化容器技术》  
 > 对应实验：实验6—实验11｜建议学时：40学时  
-> 主线环境：Rocky Linux 9、Ubuntu Server 22.04 LTS、Docker Engine、Docker Compose、教师镜像仓库与离线包、教师预建Kubernetes集群
+> 主线环境：`rocky-server`、`ubuntu-client`、Docker Engine、Docker Compose、教师镜像仓库与离线包、教师预建Kubernetes集群
 
 ## 模块导读
 
-模块一把完整操作系统封装为虚拟机，模块二进一步把应用及其依赖封装为容器镜像。课程在Rocky Linux和Ubuntu Server两个环境中教学：安装阶段明确发行版差异，核心实验使用同一批固定版本镜像和项目文件，使学生能够验证容器交付的一致性与可迁移性。
+模块一把完整操作系统封装为虚拟机，模块二进一步把应用及其依赖封装为容器镜像。课程在`rocky-server`（Rocky Linux 9）和`ubuntu-client`（Ubuntu 22.04 Desktop）两个环境中教学：安装阶段明确发行版差异，核心实验使用同一批固定版本镜像和项目文件，使学生能够验证容器交付的一致性与可迁移性。`rocky-web`继续保留Linux课程成果，但默认关机，不要求第三次重复安装Docker。
 
 本模块不依赖Windows Docker Desktop或WSL，不把Docker Hub作为课堂成功的前提。教师通过学校镜像仓库发布课程镜像，同时准备带校验文件的`docker save`离线包；学生既要会在线拉取，也要会用U盘或共享目录导入。
 
 完成本模块后，应能够：
 
 1. 说明镜像、容器、仓库、客户端和守护进程之间的关系。
-2. 在Rocky Linux与Ubuntu Server中安装、启动和验证Docker Engine及Compose插件。
+2. 在`rocky-server`与`ubuntu-client`中安装、启动和验证Docker Engine及Compose插件。
 3. 使用固定标签和镜像摘要识别版本，完成在线与离线镜像交付。
 4. 管理容器生命周期、端口、环境变量、日志和资源状态。
 5. 使用自定义网络、绑定挂载和命名卷部署有状态应用并完成备份恢复。
@@ -26,7 +26,7 @@
 
 | 实验 | 学时 | 本教材对应内容 | 核心成果 |
 |---|---:|---|---|
-| 实验6 | 4 | 第6章 | Rocky、Ubuntu双环境Docker基线 |
+| 实验6 | 4 | 第6章 | `rocky-server`、`ubuntu-client`双环境Docker基线 |
 | 实验7 | 6 | 第7章 | 镜像清单、容器运行记录和离线交付包 |
 | 实验8 | 8 | 第8章 | 多网络、有状态数据、备份恢复证据 |
 | 实验9 | 6 | 第9章 | 可复现、安全且体积受控的应用镜像 |
@@ -50,6 +50,18 @@
 | **合计** | **240分钟** | **150分钟** | **1060分钟** | **350分钟** | **1800分钟** |
 
 教材直接讲授约占13.3%。实验6—10应把更多时间交给学生搭建、验证和恢复；实验11应把最多时间留给综合交付、随机故障与个人答辩。镜像下载和平台等待不属于有效实践时间，必须通过课程Registry、离线包和预建集群消除。
+
+## 学习环境与双发行版分工
+
+| Docker主机 | 系统与主账号 | 主要任务 | 注意事项 |
+|---|---|---|---|
+| `rocky-server` | Rocky Linux 9；用户`rocky-server`，课堂密码`123456` | Docker环境A、DNF/SELinux差异、镜像构建或源端交付 | 开始前关闭KVM客户机，确认磁盘空间 |
+| `ubuntu-client` | Ubuntu 22.04 Desktop；用户`ubuntu-client`，课堂密码`123456` | Docker环境B、APT差异、主要Compose目标或迁移目标 | 从Terminal执行Docker命令，桌面浏览器用于功能验收 |
+| `rocky-web` | Linux课程保留的Nginx主机 | 默认不安装Docker | 通常关机；教师安排外部Web验证时再启动 |
+
+两套环境不是把所有实验机械重复两遍。实验6在两台主机分别完成安装与基线；实验7验证离线迁移；实验8—10选择一台作为主要操作主机，关键成果再迁移到另一台验收。这样既体现发行版差异，也把课堂时间留给网络、数据卷、Dockerfile和Compose。
+
+`123456`仍只适用于隔离课堂虚拟机。Registry、数据库、OpenStack和Kubernetes凭据按教师单独发布，不得沿用教学主机密码。
 
 ## 贯穿项目：TechCorp应用容器化交付
 
@@ -123,7 +135,7 @@ sudo docker version
 
 ## 6.4 Rocky与Ubuntu的共同点和差异
 
-| 项目 | Rocky Linux 9 | Ubuntu Server 22.04 |
+| 项目 | Rocky Linux 9 | Ubuntu 22.04 Desktop |
 |---|---|---|
 | 软件包体系 | RPM/DNF | DEB/APT |
 | Docker服务 | `docker.service` | `docker.service` |
@@ -848,7 +860,7 @@ Dockerfile把应用镜像构建变成可审查、可重复的工程过程。构�
 
 1. 为什么`EXPOSE 8080`不会自动开放宿主机8080端口？
 2. 为什么不能通过删除全部缓存来代替正确安排Dockerfile顺序？
-3. 设计一次实验，证明镜像在Rocky构建后可以在Ubuntu运行。
+3. 设计一次实验，证明镜像在`rocky-server`构建后可以在`ubuntu-client`运行。
 
 ---
 

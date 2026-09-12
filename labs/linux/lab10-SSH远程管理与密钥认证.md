@@ -5,7 +5,7 @@
 > 实验方式：个人  
 > 对应教材：《模块二 网络、远程管理与基础防护》第17—19章  
 > 前置实验：实验9  
-> 项目成果：Ubuntu客户端到Rocky Linux服务器的SSH连接、Ed25519密钥认证、客户端别名、文件传输和认证故障记录
+> 项目成果：`ubuntu-client`到两台Rocky服务器的SSH连接、Ed25519密钥认证、双别名、文件传输和认证故障记录
 
 ## 一、项目情境
 
@@ -23,7 +23,7 @@
 ### 2. 能力目标
 
 1. 检查sshd状态、监听地址、有效配置和日志。
-2. 从Ubuntu客户端使用密码连接Rocky Linux。
+2. 从Ubuntu客户端使用对应账号分别连接`rocky-server`和`rocky-web`。
 3. 创建Ed25519密钥并正确部署公钥。
 4. 使用SSH客户端配置、SCP和SFTP管理服务器。
 5. 使用`ssh -v`和journal日志排查密钥权限问题。
@@ -55,22 +55,24 @@ SSH客户端连接服务器22端口
 
 ## 四、实验环境
 
-- Rocky Linux 9虚拟机，已配置稳定IP。
-- Ubuntu Server 22.04虚拟机作为正式SSH客户端，已与Rocky处于同一实验网络。
+- `rocky-server`和`rocky-web`已配置稳定IP。
+- Ubuntu 22.04 Desktop `ubuntu-client`作为正式SSH客户端，已完成三机互通。
 - 保留VMware控制台登录，避免SSH配置错误后失去管理入口。
 - Ubuntu中应能执行`ssh`、`ssh-keygen`、`ssh-copy-id`、`scp`和`sftp`；Windows宿主机仅作可选辅助验证。
 
 记录：
 
 ```text
-ROCKY_IP=________________
-SSH_USER=student
+ROCKY_SERVER_IP=________________
+ROCKY_WEB_IP=___________________
+SERVER_USER=rocky-server
+WEB_USER=rocky-web
 SSH_PORT=22
 ```
 
 ## 五、项目任务
 
-1. 检查和启动sshd。
+1. 在两台Rocky检查和启动sshd。
 2. 核对主机指纹并完成首次密码连接。
 3. 创建独立实验密钥并部署公钥。
 4. 验证密钥认证和私钥保护。
@@ -83,7 +85,7 @@ SSH_PORT=22
 
 #### 步骤1：检查服务和端口
 
-在Rocky Linux控制台执行：
+在两台Rocky控制台分别执行：
 
 ```bash
 sudo systemctl enable --now sshd
@@ -117,12 +119,13 @@ sudo ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
 
 #### 步骤4：测试端口
 
-在Ubuntu客户端执行，替换实际IP：
+在`ubuntu-client`执行，分别替换两个实际IP：
 
 ```bash
 ip -brief address
-ip route get <ROCKY_IP>
-nc -vz -w 3 <ROCKY_IP> 22
+ip route get <ROCKY_SERVER_IP>
+nc -vz -w 3 <ROCKY_SERVER_IP> 22
+nc -vz -w 3 <ROCKY_WEB_IP> 22
 ```
 
 如果失败，依次检查虚拟机IP、sshd状态、22端口监听、VMware NAT和firewalld。
@@ -130,10 +133,11 @@ nc -vz -w 3 <ROCKY_IP> 22
 #### 步骤5：密码连接并确认主机身份
 
 ```bash
-ssh student@<ROCKY_IP>
+ssh rocky-server@<ROCKY_SERVER_IP>
+ssh rocky-web@<ROCKY_WEB_IP>
 ```
 
-首次连接会显示主机指纹。与Rocky Linux控制台记录的指纹一致后，输入`yes`，再输入student实验密码。
+首次连接会显示主机指纹。分别与对应Rocky控制台记录的指纹核对，确认后输入`yes`，密码均为课堂口令`123456`。
 
 登录后执行：
 
@@ -144,7 +148,7 @@ printf 'client=%s\n' "$SSH_CLIENT"
 exit
 ```
 
-> **验收点**：远程用户为student，主机名为rocky-vm，能够说明主机指纹核对的意义。
+> **验收点**：两次远程登录的用户名与主机名分别为`rocky-server`和`rocky-web`，能够说明主机指纹核对的意义。
 
 ### 任务三：配置密钥认证
 
@@ -157,7 +161,7 @@ mkdir -p ~/.ssh
 chmod 700 ~/.ssh
 ssh-keygen -t ed25519 -a 64 \
   -f ~/.ssh/linux-course-ed25519 \
-  -C "linux-course-student"
+  -C "ubuntu-client-linux-course"
 ```
 
 按课程要求设置私钥口令。生成：
@@ -180,22 +184,23 @@ ssh-keygen -lf ~/.ssh/linux-course-ed25519.pub
 使用`ssh-copy-id`部署公钥：
 
 ```bash
-ssh-copy-id -i ~/.ssh/linux-course-ed25519.pub student@<ROCKY_IP>
+ssh-copy-id -i ~/.ssh/linux-course-ed25519.pub rocky-server@<ROCKY_SERVER_IP>
+ssh-copy-id -i ~/.ssh/linux-course-ed25519.pub rocky-web@<ROCKY_WEB_IP>
 ```
 
-在Rocky Linux控制台检查：
+在两台Rocky控制台分别检查：
 
 ```bash
 stat -c '%A %a %U:%G %n' ~/.ssh ~/.ssh/authorized_keys
 tail -n 1 ~/.ssh/authorized_keys
 ```
 
-推荐权限为目录700、文件600，所有者为student。
+推荐权限为目录700、文件600，所有者应为当前机器的课程用户。
 
 ```bash
 chmod 700 ~/.ssh
 chmod 600 ~/.ssh/authorized_keys
-chown -R student:student ~/.ssh
+chown -R "$USER:$USER" ~/.ssh
 ```
 
 > **验收点**：`authorized_keys`包含实验公钥，目录和文件权限正确。
@@ -205,7 +210,8 @@ chown -R student:student ~/.ssh
 在Ubuntu客户端执行：
 
 ```bash
-ssh -i ~/.ssh/linux-course-ed25519 student@<ROCKY_IP>
+ssh -i ~/.ssh/linux-course-ed25519 rocky-server@<ROCKY_SERVER_IP>
+ssh -i ~/.ssh/linux-course-ed25519 rocky-web@<ROCKY_WEB_IP>
 ```
 
 如果设置了私钥口令，客户端会要求输入私钥口令，而不是服务器账号密码。
@@ -218,7 +224,7 @@ hostname
 exit
 ```
 
-> **验收点**：指定私钥后成功登录，不需要输入服务器student密码。
+> **验收点**：指定私钥后可登录两台服务器，不再输入服务器账号密码。
 
 ### 任务四：配置客户端别名
 
@@ -233,23 +239,31 @@ exit
 加入：
 
 ```text
-Host rocky-course
-    HostName <ROCKY_IP>
-    User student
+Host rocky-server
+    HostName <ROCKY_SERVER_IP>
+    User rocky-server
+    Port 22
+    IdentityFile ~/.ssh/linux-course-ed25519
+    IdentitiesOnly yes
+
+Host rocky-web
+    HostName <ROCKY_WEB_IP>
+    User rocky-web
     Port 22
     IdentityFile ~/.ssh/linux-course-ed25519
     IdentitiesOnly yes
 ```
 
-把`<ROCKY_IP>`替换为实际地址。测试：
+把两个IP占位符替换为实际地址。测试：
 
 ```bash
 chmod 600 ~/.ssh/config
-ssh -G rocky-course | grep -E '^(hostname|user|port|identityfile) '
-ssh rocky-course
+ssh -G rocky-server | grep -E '^(hostname|user|port|identityfile) '
+ssh rocky-server hostname
+ssh rocky-web hostname
 ```
 
-> **验收点**：使用`ssh rocky-course`成功登录。
+> **验收点**：两个别名分别进入正确服务器，不出现角色串线。
 
 ### 任务五：文件传输
 
@@ -260,7 +274,7 @@ ssh rocky-course
 ```bash
 printf '%s\n' 'SSH transfer test' > /tmp/ssh-transfer.txt
 sha256sum /tmp/ssh-transfer.txt
-scp /tmp/ssh-transfer.txt rocky-course:~/m1-project/
+scp /tmp/ssh-transfer.txt rocky-server:~/m1-project/
 ```
 
 在Rocky Linux中：
@@ -273,7 +287,7 @@ sha256sum ~/m1-project/ssh-transfer.txt
 
 ```bash
 mkdir -p ~/course-downloads
-scp rocky-course:~/m1-project/evidence/lab08-network-after.txt ~/course-downloads/
+scp rocky-server:~/m1-project/evidence/lab08-network-after.txt ~/course-downloads/
 ```
 
 > **验收点**：上传文件哈希一致，能够完成一次下载。
@@ -281,7 +295,7 @@ scp rocky-course:~/m1-project/evidence/lab08-network-after.txt ~/course-download
 #### 步骤11：使用SFTP
 
 ```bash
-sftp rocky-course
+sftp rocky-server
 ```
 
 在SFTP提示符中执行：
@@ -314,7 +328,7 @@ chmod 666 ~/.ssh/authorized_keys
 ```bash
 ssh -vv -o PreferredAuthentications=publickey \
   -o PasswordAuthentication=no \
-  -i ~/.ssh/linux-course-ed25519 student@<ROCKY_IP>
+  -i ~/.ssh/linux-course-ed25519 rocky-server@<ROCKY_SERVER_IP>
 ```
 
 该命令强制只使用公钥并关闭密码回退，因此权限错误时应明确失败。观察调试信息中客户端是否提供了正确公钥，以及服务端为何拒绝认证。
@@ -330,7 +344,7 @@ sudo journalctl -u sshd --since '-10 min' --no-pager | tail -50
 ```bash
 chmod 700 ~/.ssh
 chmod 600 ~/.ssh/authorized_keys
-chown -R student:student ~/.ssh
+chown -R "$USER:$USER" ~/.ssh
 ```
 
 再次在Ubuntu执行：
@@ -338,7 +352,7 @@ chown -R student:student ~/.ssh
 ```bash
 ssh -vv -o PreferredAuthentications=publickey \
   -o PasswordAuthentication=no \
-  -i ~/.ssh/linux-course-ed25519 student@<ROCKY_IP>
+  -i ~/.ssh/linux-course-ed25519 rocky-server@<ROCKY_SERVER_IP>
 ```
 
 > **验收点**：记录故障现象、客户端证据、服务端日志、根因、修复和密钥认证复测。
@@ -357,7 +371,7 @@ ssh -vv -o PreferredAuthentications=publickey \
 
 ## 七、独立实践
 
-1. 在Ubuntu创建第二个SSH别名`rocky-check`，复用同一主机和用户，但显式设置`ConnectTimeout 5`。
+1. 在Ubuntu为`rocky-server`和`rocky-web`都显式设置`ConnectTimeout 5`。
 2. 使用别名执行远程单条命令：`hostname && uptime`。
 3. 上传一个目录并在服务器比较文件数量。
 4. 查看`known_hosts`中目标主机记录，但不要删除。
@@ -367,10 +381,10 @@ ssh -vv -o PreferredAuthentications=publickey \
 
 - [ ] sshd服务、22端口和有效配置已检查。
 - [ ] 首次连接前核对了服务器主机指纹。
-- [ ] Ubuntu客户端使用密码成功登录Rocky Linux。
+- [ ] Ubuntu客户端使用各自主账号成功登录两台Rocky。
 - [ ] 已创建独立Ed25519密钥，私钥未提交。
 - [ ] `~/.ssh`为700，`authorized_keys`为600。
-- [ ] 使用密钥和客户端别名成功登录。
+- [ ] 使用密钥和两个客户端别名成功登录对应服务器。
 - [ ] SCP上传文件的SHA256一致，并完成一次下载。
 - [ ] 能区分SFTP本地与远程命令。
 - [ ] 已完成一次密钥权限故障排查和复测。

@@ -7,7 +7,7 @@
 - `linux/00-实验手册编写规范.md`
 - `linux/lab01`至`linux/lab20`
 
-学生、教师和课程进度表均以这20篇实验为准。课程包含Rocky Linux、Ubuntu Server、网络、SSH、Nginx、MySQL、MongoDB、Redis、Git、Shell与综合运维。
+学生、教师和课程进度表均以这20篇实验为准。课程使用`rocky-server`、`rocky-web`和Ubuntu 22.04 Desktop `ubuntu-client`三机环境，包含网络、SSH、Nginx、MySQL、MongoDB、Redis、Git、Shell与综合运维。
 
 ## 《虚拟化容器技术》正式实验
 

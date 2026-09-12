@@ -49,9 +49,9 @@
 
 ## 四、实验环境
 
-- Rocky Linux 9，保留VMware控制台和一个SSH会话。
+- 默认在`rocky-server`执行；保留VMware控制台和一个SSH会话。
 - firewalld保持启用，SELinux保持Enforcing。
-- Ubuntu Server 22.04作为正式外部测试客户端。
+- `ubuntu-client`作为正式外部测试客户端。
 - 临时Web端口8080。
 
 ## 五、项目任务

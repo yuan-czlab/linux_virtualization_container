@@ -52,7 +52,8 @@ TechCorp应用需要使用Redis保存访问计数和临时状态。你需要安�
 
 ## 四、实验环境
 
-- Rocky Linux 9。
+- `rocky-server`运行Rocky Linux 9；Redis只安装在该机。
+- `ubuntu-client`承担端口、认证和远程访问验证。
 - 使用教师验证的软件源。优先使用课程统一版本，避免同时混装Rocky原生包和Redis官方包。
 - 服务名通常为`redis`，配置通常为`/etc/redis/redis.conf`，以`rpm -ql redis`实际结果为准。
 
@@ -68,6 +69,11 @@ TechCorp应用需要使用Redis保存访问计数和临时状态。你需要安�
 ## 六、实验步骤
 
 ### 任务一：安装和基线
+
+```bash
+test "$(whoami)" = 'rocky-server' && echo USER_PASS || echo USER_FAIL
+test "$(hostnamectl --static)" = 'rocky-server' && echo HOST_PASS || echo HOST_FAIL
+```
 
 ```bash
 mkdir -p ~/m1-project/evidence ~/m1-project/backup/redis
@@ -312,4 +318,3 @@ sudo journalctl -u redis -n 80 --no-pager
 ## 十三、官方参考
 
 - [Redis：在Rocky Linux 8/9使用RPM安装](https://redis.io/docs/latest/operate/oss_and_stack/install/install-stack/rpm/)
-

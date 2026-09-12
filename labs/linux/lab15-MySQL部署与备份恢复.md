@@ -50,8 +50,8 @@ MySQL账号不是单独的用户名，而是`'用户名'@'来源'`。`app_user@l
 
 ## 四、实验环境
 
-- Rocky Linux 9 x86_64，建议4GB内存。
-- Ubuntu Server 22.04客户端，已在实验8配置稳定静态地址。
+- `rocky-server`运行Rocky Linux 9 x86_64，建议4GB内存；MySQL只安装在该机。
+- `ubuntu-client`已在实验8配置稳定静态地址，承担远程MySQL客户端验证。
 - 使用干净环境，不得在已有MariaDB数据的系统上直接替换。
 - 教师提供MySQL 8.4 EL9仓库配置RPM或完整离线包。
 - 数据库：`company_db`；表：`employees`。
@@ -69,6 +69,13 @@ MySQL账号不是单独的用户名，而是`'用户名'@'来源'`。`app_user@l
 ## 六、实验步骤
 
 ### 任务一：安装前检查
+
+先确认当前没有停留在`rocky-web`：
+
+```bash
+test "$(whoami)" = 'rocky-server' && echo USER_PASS || echo USER_FAIL
+test "$(hostnamectl --static)" = 'rocky-server' && echo HOST_PASS || echo HOST_FAIL
+```
 
 ```bash
 mkdir -p ~/m1-project/evidence ~/m1-project/backup/mysql ~/course-packages

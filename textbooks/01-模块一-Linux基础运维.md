@@ -2,16 +2,16 @@
 
 > 适用课程：《Linux操作系统》  
 > 对应实验：实验1—实验7｜建议学时：20学时
-> 主线环境：Rocky Linux 9服务器｜Ubuntu Server 22.04 LTS客户端
+> 主线环境：`rocky-server`、`rocky-web`｜Ubuntu 22.04 Desktop `ubuntu-client`
 
 ## 模块导读
 
-Linux是服务器、云计算平台、网络设备、容器平台和自动化运维系统的重要基础。本模块从安装一台Linux虚拟机开始，逐步学习命令行、目录与文件、文本编辑、用户和权限、软件包、服务、日志以及系统资源检查。
+Linux是服务器、云计算平台、网络设备、容器平台和自动化运维系统的重要基础。本模块从安装三机环境开始，逐步学习命令行、目录与文件、文本编辑、用户和权限、软件包、服务、日志以及系统资源检查。
 
 完成本模块后，应能够：
 
 1. 说明Linux内核、发行版和应用软件之间的关系。
-2. 在VMware中安装Rocky Linux 9服务器和Ubuntu Server 22.04客户端，完成首次登录、基础网络验证和初始快照。
+2. 在VMware中安装`rocky-server`、`rocky-web`和Ubuntu 22.04 Desktop `ubuntu-client`，完成首次登录、基础网络验证和初始快照。
 3. 使用命令行完成文件、目录、文本和归档管理。
 4. 创建用户和用户组，正确配置文件权限和sudo授权。
 5. 使用DNF和APT安装、查询、升级与卸载软件。
@@ -25,12 +25,13 @@ Linux是服务器、云计算平台、网络设备、容器平台和自动化运
 |---|---|
 | 宿主机 | Windows 10/11 64位 |
 | 虚拟化软件 | VMware Workstation 17 |
-| Rocky Linux虚拟机 | 2 vCPU、2-4GB内存、40GB磁盘、NAT网络 |
-| Ubuntu客户端虚拟机 | 2 vCPU、2GB内存、30GB磁盘、NAT网络 |
-| 主线账号 | 普通用户`student`，具备sudo权限 |
+| `rocky-server` | 2 vCPU、4GB内存、50GB磁盘、NAT；主机名和用户名均为`rocky-server` |
+| `rocky-web` | 2 vCPU、2GB内存、40GB磁盘、NAT；主机名和用户名均为`rocky-web` |
+| `ubuntu-client` | 2 vCPU、4GB内存、40GB磁盘、NAT；主机名和用户名均为`ubuntu-client` |
+| 教学密码 | 三台机器统一为`123456`，仅用于隔离课堂环境 |
 | 终端工具 | VMware控制台；后续可使用Windows Terminal、Xshell或MobaXterm |
 
-服务器操作示例默认在Rocky Linux 9中执行，Ubuntu Server 22.04作为后续服务访问、双机验证和发行版对照客户端。静态IP在实验8统一配置，实验1先让两台虚拟机通过DHCP联网并记录基线。
+实验2—13默认在`rocky-server`操作；实验14切换到`rocky-web`部署Nginx；实验15—19返回`rocky-server`；`ubuntu-client`全程作为浏览器、SSH、curl和数据库客户端。静态IP在实验8统一配置，实验1先让三台虚拟机通过DHCP联网并记录基线。
 
 ## 学习路线与成果
 
@@ -38,7 +39,7 @@ Linux是服务器、云计算平台、网络设备、容器平台和自动化运
 
 | 实验 | 对应教材章节 | 项目重点 | 应形成的成果 |
 |---|---|---|---|
-| 实验1（4学时） | 第1—2章 | Linux起源、发行版、VMware、Rocky服务器和Ubuntu客户端安装 | 可运行、可登录、可联网、可回退的双机环境 |
+| 实验1（4学时） | 第1—2章 | Linux起源、发行版、VMware和三机安装 | 可运行、可登录、可联网、可回退的三机环境 |
 | 实验2（4学时） | 第3—5章相关内容 | 命令行、目录、文件、查看和基础重定向 | 规范的项目目录树和操作记录 |
 | 实验3（2学时） | 第5—6章 | 查找、链接、Vim、归档和恢复 | 配置修改、归档及恢复验证 |
 | 实验4（4学时） | 第7—9章 | 用户、组、共享权限、umask和最小sudo | 部门账号、共享目录和授权证据 |
@@ -48,9 +49,9 @@ Linux是服务器、云计算平台、网络设备、容器平台和自动化运
 
 ## 教材深度与课堂使用
 
-本册详细解释Linux基础对象和命令，但课堂不逐页朗读。20学时建议分配为：教材讲授与任务导入175分钟、教师关键演示115分钟、学生独立操作455分钟、排障验收155分钟。实验1安装任务最紧，ISO、VMware安装包和校验值必须课前准备，两台Linux安装过程应合理交叉利用等待时间。
+本册详细解释Linux基础对象和命令，但课堂不逐页朗读。20学时建议分配为：教材讲授与任务导入175分钟、教师关键演示115分钟、学生独立操作455分钟、排障验收155分钟。实验1安装任务最紧，ISO、VMware安装包和校验值必须课前准备，两台Rocky与Ubuntu Desktop应错峰安装并交叉利用等待时间。
 
-教材负责Linux历史、目录与权限模型、软件包、systemd和资源指标等机制；实验1—7负责把知识落实为双机环境、账号权限、服务故障和巡检成果。
+教材负责Linux历史、目录与权限模型、软件包、systemd和资源指标等机制；实验1—7负责把知识落实为三机环境、账号权限、服务故障和巡检成果。
 
 ## 贯穿项目：新业务服务器基础交付
 
@@ -102,7 +103,7 @@ Rocky Linux基础环境（实验8再配置静态地址）
 
 ## 1.2 Linux内核与Linux发行版
 
-Linux严格来说是一个操作系统内核。实际安装的Rocky Linux、Ubuntu Server并不只有内核，而是由以下部分组成：
+Linux严格来说是一个操作系统内核。实际安装的Rocky Linux、Ubuntu Desktop并不只有内核，而是由以下部分组成：
 
 ```text
 Linux发行版
@@ -137,9 +138,9 @@ uname -m
 
 常见结果`x86_64`表示64位x86架构。ARM服务器上可能看到`aarch64`。
 
-## 1.3 Rocky Linux与Ubuntu Server
+## 1.3 Rocky Linux与Ubuntu Desktop
 
-| 对比项 | Rocky Linux 9 | Ubuntu Server 22.04 LTS |
+| 对比项 | Rocky Linux 9 | Ubuntu 22.04 Desktop LTS |
 |---|---|---|
 | 发行版家族 | RHEL兼容 | Debian/Ubuntu |
 | 软件包格式 | RPM | DEB |
@@ -223,8 +224,9 @@ Linux管理不是“背命令”，而是围绕对象和证据工作：
 ```text
 Windows宿主机
 └── VMware Workstation
-    ├── Rocky Linux服务器虚拟机
-    └── Ubuntu Server客户端虚拟机
+    ├── rocky-server（基础运维、数据库与后续KVM）
+    ├── rocky-web（Nginx与Web服务）
+    └── ubuntu-client（Ubuntu 22.04 Desktop图形客户端）
 ```
 
 虚拟机适合学习环境的原因：
@@ -289,7 +291,7 @@ VMware VMnet8（实际网段以本机为准）
 
 | 配置项 | 建议值 |
 |---|---|
-| 虚拟机名称 | `Rocky9-学号` |
+| 虚拟机名称 | 第一台`rocky-server`，第二台`rocky-web` |
 | 客户机类型 | Linux / RHEL 9 64-bit |
 | vCPU | 2 |
 | 内存 | 2-4GB |
@@ -301,23 +303,23 @@ VMware VMnet8（实际网段以本机为准）
 
 虚拟磁盘只是宿主机中的文件。安装程序中的分区操作只应作用于本实验虚拟磁盘，不会修改Windows真实磁盘，但仍须核对虚拟机名称、磁盘容量和安装目标。
 
-## 2.5 安装Rocky Linux 9并完成初始联网
+## 2.5 安装两台Rocky Linux 9并完成初始联网
 
 从ISO启动后完成以下配置：
 
 1. 选择语言和键盘。
 2. 选择40GB实验磁盘。推荐使用自动LVM并让根文件系统获得主要空间；若使用自定义分区，`/boot`约1GiB、swap约2GiB，其余主要分配给`/`，根文件系统不得小于30GiB。不要在小容量实验盘中把`/home`单独分走大量空间，因为后续Docker数据默认位于根文件系统下的`/var/lib/docker`。
 3. 软件选择使用Minimal Install（最小化安装、无图形桌面）。
-4. 打开“Network & Host Name”，启用网卡并设置主机名`rocky-vm`。
+4. 打开“Network & Host Name”并启用网卡；第一台主机名设置为`rocky-server`，第二台设置为`rocky-web`。
 5. 保持IPv4自动获取（DHCP），打开网卡并确认安装界面显示已连接。
 6. 记录安装阶段获得的地址；此地址可能变化，不把它写成全班统一固定值。
 7. 设置root密码。
-8. 创建普通用户`student`，并授予管理员权限。
+8. 第一台创建普通用户`rocky-server`，第二台创建普通用户`rocky-web`；密码均为`123456`并授予管理员权限。
 9. 开始安装，完成后重启并断开ISO。
 
 > **[截图占位 M1-04：Rocky安装器中网卡已启用并通过DHCP获得地址]**
 
-> **[截图占位 M1-05：Rocky Linux安装摘要和student管理员账号]**
+> **[截图占位 M1-05：两台Rocky安装摘要、角色主机名和同名管理员账号]**
 
 第一次登录后检查：
 
@@ -388,64 +390,59 @@ systemctl status vmtoolsd --no-pager
 sudo systemctl poweroff
 ```
 
-快照建议命名为：`rocky9-clean-installed`。
+快照分别命名为`00-rocky-server-安装与基础工具完成`和`00-rocky-web-安装与基础工具完成`。
 
-快照完成后重新启动Rocky并保持环境，然后安装Ubuntu客户端。
+快照完成后重新启动两台Rocky并核对身份，然后安装Ubuntu图形客户端。
 
-## 2.6 安装Ubuntu Server 22.04客户端
+## 2.6 安装Ubuntu 22.04 Desktop客户端
 
-Ubuntu Server使用文本式Subiquity安装程序。核心步骤：
+Ubuntu Desktop使用图形安装程序。核心步骤：
 
-1. 使用`ubuntu-22.04-live-server-amd64.iso`启动。
+1. 使用`ubuntu-22.04.x-desktop-amd64.iso`启动。
 2. 选择语言和键盘。
-3. 网络暂时保持安装程序自动获取地址（DHCP），确认网卡能够取得与VMnet8实际网段一致的IPv4地址。不要在实验1照抄固定地址；Ubuntu静态地址和Netplan配置在实验8统一完成。
-4. 使用整个虚拟磁盘。
-5. 软件源镜像地址使用课程统一的清华源或阿里源，例如`https://mirrors.aliyun.com/ubuntu`。
-6. 创建`student`账号和主机名`ubuntu-client`。
-7. 勾选安装OpenSSH Server。
-8. 不选择额外Snap，完成安装并重启。
+3. 网络暂时保持安装程序自动获取地址（DHCP），确认网卡能够取得与VMnet8实际网段一致的IPv4地址。不要在实验1照抄固定地址；Ubuntu Desktop的NetworkManager静态连接在实验8统一完成。
+4. 使用整个40GB虚拟磁盘完成正常的Ubuntu Desktop安装。
+5. 计算机名、主机名和用户名均设置为`ubuntu-client`，密码为`123456`，不启用自动登录。
+6. 完成安装并重启，进入图形桌面后打开Terminal。
+7. 使用APT安装`open-vm-tools-desktop`、OpenSSH和curl等客户端工具。
 
-> **[截图占位 M1-06：Ubuntu Server通过DHCP联网、主机名和镜像源配置]**
+> **[截图占位 M1-06：Ubuntu Desktop图形桌面、Terminal、DHCP地址和主机名]**
 
 登录后执行：
 
 ```bash
 sudo apt update
-sudo apt install -y open-vm-tools
-sudo systemctl enable --now open-vm-tools
+sudo apt install -y open-vm-tools open-vm-tools-desktop openssh-server curl
+sudo systemctl enable --now ssh
 cat /etc/os-release
 ip -br addr
 ip route
 ```
 
-Ubuntu Server 22.04的软件源通常配置在`/etc/apt/sources.list`。不要直接复制其他发行版或其他Ubuntu版本的软件源配置。
+Ubuntu 22.04 Desktop的软件源通常配置在`/etc/apt/sources.list`。不要直接复制其他发行版或其他Ubuntu版本的软件源配置。
 
-## 2.7 双机基础连通性验证
+## 2.7 三机基础连通性验证
 
-先分别用`ip -br addr`记录Rocky与Ubuntu通过DHCP取得的实际地址，下面用`<ROCKY_DHCP_IP>`、`<UBUNTU_DHCP_IP>`和`<VMNET8_GATEWAY>`表示。必须替换占位符，不能连同尖括号直接执行。
+分别用`ip -br addr`记录三台机器的DHCP地址，下面用`<ROCKY_SERVER_IP>`、`<ROCKY_WEB_IP>`、`<UBUNTU_CLIENT_IP>`和`<VMNET8_GATEWAY>`表示。必须替换占位符。
 
-Rocky执行：
-
-```bash
-ping -c 3 <VMNET8_GATEWAY>
-ping -c 3 <UBUNTU_DHCP_IP>
-```
-
-Ubuntu执行：
+两台Rocky分别测试网关；`ubuntu-client`测试两台服务器：
 
 ```bash
 ping -c 3 <VMNET8_GATEWAY>
-ping -c 3 <ROCKY_DHCP_IP>
+ping -c 3 <VMNET8_GATEWAY>
+ping -c 3 <ROCKY_SERVER_IP>
+ping -c 3 <ROCKY_WEB_IP>
 ```
 
 Windows宿主机执行：
 
 ```powershell
-ping <ROCKY_DHCP_IP>
-ping <UBUNTU_DHCP_IP>
+ping <ROCKY_SERVER_IP>
+ping <ROCKY_WEB_IP>
+ping <UBUNTU_CLIENT_IP>
 ```
 
-验证顺序是“本机地址→NAT网关→另一台虚拟机”，不要一开始只测试互联网地址。如果Windows防火墙或NAT策略不响应ICMP，应以双虚拟机之间的互通结果和网关、路由信息为主要证据。实验8会在核对VMnet8网段和DHCP范围后，为两台虚拟机配置稳定静态地址。
+验证顺序是“本机地址→NAT网关→同一VMnet8中的其他虚拟机”，不要一开始只测试互联网地址。实验8会为三台虚拟机配置稳定静态地址和hosts解析。
 
 ## 2.8 安装故障排查
 
@@ -457,21 +454,21 @@ ping <UBUNTU_DHCP_IP>
 | 安装时没有网络 | VMware网卡是否Connected、是否连接VMnet8 |
 | 系统启动后无IP | 安装器静态配置、`ip link`、`nmcli device` |
 | 能ping自己但不能ping网关 | VMnet8子网、网关、掩码或虚拟网卡连接错误 |
-| 两台虚拟机地址相同 | 立即关闭其中一台并修正静态地址 |
+| 任意两台虚拟机地址相同 | 立即关闭冲突机器并在实验8统一修正 |
 | 系统时间错误 | 时区、宿主机时间、时间同步服务 |
 
 ### 实践验收
 
 - [ ] Rocky Linux 9可以使用普通用户登录。
-- [ ] `student`可以使用sudo。
+- [ ] `rocky-server`和`rocky-web`分别能使用同名普通用户登录并使用sudo。
 - [ ] 已记录VMnet8的实际子网、网关和DHCP范围，没有照抄示例地址。
 - [ ] Rocky通过DHCP获得IPv4地址，默认路由和名称解析可用。
 - [ ] `open-vm-tools`处于active状态。
 - [ ] 已创建干净快照。
 
-- [ ] Ubuntu Server 22.04客户端能够使用student登录并使用sudo。
-- [ ] Ubuntu客户端通过DHCP联网，已创建安装完成快照。
-- [ ] 两台虚拟机地址不重复，能够访问各自NAT网关；双机固定地址和互通在实验8完成。
+- [ ] Ubuntu 22.04 Desktop客户端能够使用`ubuntu-client`登录、打开Terminal并使用sudo。
+- [ ] `ubuntu-client`通过DHCP联网，已创建安装完成快照。
+- [ ] 三台虚拟机地址不重复，能够访问NAT网关；三机固定地址和互通在实验8完成。
 
 ---
 
@@ -482,12 +479,12 @@ ping <UBUNTU_DHCP_IP>
 常见提示符：
 
 ```text
-[student@rocky-node ~]$
-[root@rocky-node ~]#
+[rocky-server@rocky-server ~]$
+[root@rocky-server ~]#
 ```
 
-- `student`是当前用户。
-- `rocky-node`是主机名。
+- 第一个`rocky-server`是当前用户。
+- 第二个`rocky-server`是主机名。
 - `~`代表当前用户家目录。
 - `$`通常表示普通用户。
 - `#`通常表示root用户。
@@ -605,7 +602,7 @@ echo $?
 
 ## 3.8 Rocky与Ubuntu常见命令对照
 
-| 任务 | Rocky Linux 9 | Ubuntu Server 22.04 |
+| 任务 | Rocky Linux 9 | Ubuntu 22.04 Desktop |
 |---|---|---|
 | 更新软件索引 | `dnf makecache` | `apt update` |
 | 安装软件 | `dnf install 包名` | `apt install 包名` |
@@ -758,8 +755,8 @@ touch ~/m1-project/docs/directory-plan.md
 cat > ~/m1-project/README.md <<'EOF'
 # 新业务服务器基础交付
 
-- 服务器：rocky-vm
-- 负责人：student
+- 服务器：rocky-server
+- 负责人：rocky-server
 - 状态：初始化中
 EOF
 
@@ -772,8 +769,9 @@ EOF
 
 cat > ~/m1-project/incoming/server-list.csv <<'EOF'
 hostname,role,ip
-rocky-vm,application,192.168.200.10
-ubuntu-vm,management,192.168.200.20
+rocky-server,data-and-ops,<ROCKY_SERVER_IP>
+rocky-web,web,<ROCKY_WEB_IP>
+ubuntu-client,client,<UBUNTU_CLIENT_IP>
 EOF
 
 printf '该文件为过期临时说明，确认后删除。\n' \
@@ -1295,7 +1293,7 @@ diff -ru "$HOME/m1-project" "$restore_dir/m1-project"
 1. 使用vim把`README.md`中的状态改为“基础文件已整理”。
 2. 使用vim完成`docs/directory-plan.md`。
 3. 创建`docs/initialization-record.md`，至少记录固定IP、网关、DNS、目录规划和当前日期。
-4. 使用搜索与替换确认文档中的主机名统一为`rocky-vm`。
+4. 使用搜索与替换确认文档中的主机名统一为`rocky-server`。
 5. 将`~/m1-project`归档并记录归档路径。
 6. 恢复到新目录，使用`diff -ru`验证。
 
@@ -1316,8 +1314,8 @@ Linux内核主要使用数字ID判断身份：
 
 ```bash
 id
-id student
-groups student
+id rocky-server
+groups rocky-server
 ```
 
 root用户的UID为0，拥有极高权限。管理员日常操作应使用普通账号，需要时通过sudo临时提权。
@@ -1329,7 +1327,7 @@ root用户的UID为0，拥有极高权限。管理员日常操作应使用普通
 示例结构：
 
 ```text
-student:x:1000:1000:Student:/home/student:/bin/bash
+rocky-server:x:1000:1000:Rocky Server:/home/rocky-server:/bin/bash
 ```
 
 字段依次表示：用户名、密码占位、UID、主GID、说明、家目录、登录Shell。
@@ -1345,7 +1343,7 @@ student:x:1000:1000:Student:/home/student:/bin/bash
 使用系统接口查询比直接grep更稳妥：
 
 ```bash
-getent passwd student
+getent passwd rocky-server
 getent group wheel
 ```
 
@@ -1415,7 +1413,7 @@ sudo groupdel web-team
 | `operator` | 执行日常服务检查和受控运维操作 | 加入`ops-team` |
 | `appdev` | 提交应用文件，但没有系统管理权限 | 加入`ops-team` |
 
-约束：两人必须有独立账号和实验密码，不能共享`student`或root密码；创建后必须通过`id`和`getent`验证。
+约束：练习账号必须相互独立，不能共享课程主账号或root密码；创建后必须通过`id`和`getent`验证。
 
 <details>
 <summary>参考实现：完成工单后展开</summary>
@@ -1714,7 +1712,7 @@ sudo useradd should-fail
 exit
 ```
 
-`sudo useradd should-fail`必须被拒绝。`exit`返回具有完整实验管理权限的`student`账号，后面的日志检查由student执行。
+`sudo useradd should-fail`必须被拒绝。`exit`返回课程主账号`rocky-server`，后面的日志检查由该账号执行。
 
 ## 9.4 NOPASSWD风险
 
@@ -1831,7 +1829,7 @@ dnf history
 
 ## 10.3 Ubuntu的DEB与APT
 
-Ubuntu Server 22.04常用：
+Ubuntu 22.04 Desktop常用：
 
 ```bash
 sudo apt update
@@ -1852,7 +1850,7 @@ Ubuntu 22.04采用合并后的`/usr`目录布局时，`/bin`与`/usr/bin`之间�
 sudo apt upgrade
 ```
 
-Ubuntu Server 22.04的软件源通常位于`/etc/apt/sources.list`，APT操作记录可在`/var/log/dpkg.log`等位置查看。
+Ubuntu 22.04 Desktop的软件源通常位于`/etc/apt/sources.list`，APT操作记录可在`/var/log/dpkg.log`等位置查看。
 
 交互操作可以使用`apt`；非交互脚本通常更适合使用`apt-get`，并明确处理失败状态。
 
@@ -1909,7 +1907,7 @@ sudo dnf makecache
 
 `backup_dir`变量只在当前Shell会话中有效。重新登录后，应先执行`sudo ls -dt /root/yum-repos-backup-* | head -1`确认实际备份目录，再赋值恢复。不要在未确认路径时执行批量删除。
 
-### Ubuntu Server 22.04镜像配置
+### Ubuntu 22.04 Desktop镜像配置
 
 先确认版本代号和CPU架构：
 
@@ -2000,7 +1998,7 @@ sudo apt update
 
 进程是正在运行的程序实例。服务通常是长期在后台运行并向系统或网络提供能力的进程。
 
-systemd在Rocky Linux 9和Ubuntu Server 22.04中通常作为PID 1运行，负责启动系统、管理服务依赖和收集服务状态。
+systemd在Rocky Linux 9和Ubuntu 22.04 Desktop中通常作为PID 1运行，负责启动系统、管理服务依赖和收集服务状态。
 
 ```bash
 ps -p 1 -o pid,comm,args
@@ -2466,8 +2464,8 @@ uptime/nproc
 
 ## 任务清单
 
-1. 主机名保持为`rocky-vm`；若尚未进入实验8，保留当前DHCP地址并记录，完成实验8后再按教师分配值使用稳定静态地址（示例为`192.168.200.10/24`）。
-2. 保留普通账号`student`，不得日常共用root。
+1. 主机名保持为`rocky-server`；若尚未进入实验8，保留当前DHCP地址并记录，完成实验8后再使用教师分配的稳定静态地址。
+2. 保留普通账号`rocky-server`，不得日常共用root。
 3. 确认`ops-team`组以及`operator`、`appdev`账号符合第7章角色矩阵。
 4. 确认`/srv/course-share`只允许`ops-team`成员协作，新文件继承组且成员不能删除他人文件。
 5. 保留sudoers独立文件，只允许`operator`查看和重启`chronyd`。
@@ -2524,7 +2522,7 @@ hostnamectl
 cat /etc/os-release
 ip -br addr
 ip route
-id student
+id rocky-server
 id operator
 id appdev
 getent group ops-team
@@ -2609,8 +2607,8 @@ CPU/内存/磁盘/进程/端口
 
 - [Rocky Linux 9安装文档](https://docs.rockylinux.org/guides/9_6_installation/)
 - [Rocky Linux DNF包管理文档](https://docs.rockylinux.org/guides/package_management/dnf_package_manager/)
-- [Ubuntu Server安装文档](https://documentation.ubuntu.com/server/how-to/installation/)
-- [Ubuntu Server软件包管理文档](https://documentation.ubuntu.com/server/how-to/software/package-management/)
+- [Ubuntu Desktop安装文档](https://documentation.ubuntu.com/desktop/en/24.04/tutorial/install-ubuntu-desktop/)
+- [Ubuntu Desktop软件安装文档](https://documentation.ubuntu.com/desktop/en/latest/how-to/software/install-an-application/)
 - [阿里云Rocky Linux镜像配置说明](https://developer.aliyun.com/mirror/rockylinux)
 - [阿里云Ubuntu镜像配置说明](https://developer.aliyun.com/mirror/ubuntu)
 - [清华大学Ubuntu镜像配置说明](https://mirrors.tuna.tsinghua.edu.cn/help/ubuntu/)

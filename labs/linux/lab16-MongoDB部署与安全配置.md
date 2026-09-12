@@ -66,7 +66,8 @@ MongoDB 8.0 Community支持RHEL/Rocky Linux 9的64位平台。x86_64上的现代
 
 ## 四、实验环境
 
-- Rocky Linux 9 x86_64，建议4GB内存。
+- `rocky-server`运行Rocky Linux 9 x86_64，建议4GB内存；MongoDB只安装在该机。
+- `ubuntu-client`承担端口、认证和远程连接验证。
 - 处理器应支持AVX。
 - MongoDB Community Edition 8.0官方仓库或教师准备的同版本离线RPM。
 - 服务名：`mongod`；端口：27017。
@@ -85,6 +86,11 @@ MongoDB 8.0 Community支持RHEL/Rocky Linux 9的64位平台。x86_64上的现代
 ## 六、实验步骤
 
 ### 任务一：平台和安装前检查
+
+```bash
+test "$(whoami)" = 'rocky-server' && echo USER_PASS || echo USER_FAIL
+test "$(hostnamectl --static)" = 'rocky-server' && echo HOST_PASS || echo HOST_FAIL
+```
 
 ```bash
 mkdir -p ~/m1-project/evidence ~/m1-project/backup/mongodb
@@ -176,7 +182,7 @@ use company_db
 
 db.inspections.insertMany([
   {
-    host: "rocky-vm",
+    host: "rocky-server",
     status: "ok",
     cpu_percent: 18,
     disk_percent: 42,
@@ -475,4 +481,3 @@ sudo tail -n 80 /var/log/mongodb/mongod.log
 - [MongoDB 8.0：在RHEL及Rocky Linux安装Community Edition](https://www.mongodb.com/docs/v8.0/tutorial/install-mongodb-on-red-hat/)
 - [MongoDB 8.0：基于角色的访问控制](https://www.mongodb.com/docs/v8.0/core/authorization/)
 - [MongoDB 8.0：创建数据库用户](https://www.mongodb.com/docs/v8.0/tutorial/create-users/)
-

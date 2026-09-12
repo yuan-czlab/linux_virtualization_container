@@ -5,26 +5,26 @@
 > 实验方式：个人  
 > 对应教材：《模块二 网络、远程管理与基础防护》第13章  
 > 前置实验：实验7  
-> 项目成果：Rocky服务器与Ubuntu客户端地址规划、静态网络配置、双机连通性验证和一次网络故障恢复记录
+> 项目成果：三机地址规划、持久静态网络、hosts名称解析、互通矩阵和一次网络故障恢复记录
 
 ## 一、项目情境
 
-通过DHCP获得的地址可能发生变化，不利于SSH和服务访问。你需要先调查VMware NAT网络，再为Rocky服务器和Ubuntu客户端建立不冲突的持久静态地址，并能够按照“网卡—地址—路由—DNS—目标服务”的顺序判断网络问题。
+通过DHCP获得的地址可能发生变化，不利于SSH和服务访问。你需要先调查VMware NAT网络，再为`rocky-server`、`rocky-web`和`ubuntu-client`建立不冲突的持久静态地址，并能够按照“网卡—地址—路由—DNS—目标服务”的顺序判断网络问题。
 
 ## 二、实验目标
 
 ### 1. 知识目标
 
 1. 说明网卡、连接配置、IP地址、前缀、默认网关和DNS各自解决的问题。
-2. 区分`ip`显示的运行状态、Rocky的NetworkManager配置和Ubuntu Server的Netplan配置。
+2. 区分`ip`显示的运行状态和NetworkManager保存的持久连接配置。
 3. 说明本机、同网段、网关、外部IP和域名测试的不同意义。
 
 ### 2. 能力目标
 
 1. 使用`ip`、`nmcli`、`hostnamectl`和`resolvectl`或配置文件检查网络。
 2. 根据实际VMnet8网段制定不冲突的地址计划。
-3. 创建、验证和回退Rocky NetworkManager与Ubuntu Netplan静态配置。
-4. 完成Rocky服务器与Ubuntu客户端双机互通。
+3. 创建、验证和回退三台机器的NetworkManager静态配置。
+4. 完成三机互通、hosts解析和SSH端口预检。
 5. 处理地址、网关或DNS配置错误。
 
 ### 3. 素质目标
@@ -64,10 +64,11 @@
 | 网卡 | `ens33` |  |
 | VMnet8网段 | `192.168.200.0/24` |  |
 | 默认网关 | `192.168.200.2` |  |
-| Rocky服务器静态IP | `192.168.200.10/24` |  |
-| Ubuntu客户端静态IP | `192.168.200.20/24` |  |
+| rocky-server静态IP | `192.168.200.10/24` |  |
+| rocky-web静态IP | `192.168.200.20/24` |  |
+| ubuntu-client静态IP | `192.168.200.30/24` |  |
 | DNS | 教师指定地址 |  |
-| 主机名 | `rocky-vm` |  |
+| 三台主机名 | `rocky-server`、`rocky-web`、`ubuntu-client` |  |
 
 ## 五、项目任务
 
@@ -76,13 +77,13 @@
 3. 建立持久静态连接。
 4. 验证网卡、IP、路由、网关、DNS和软件源路径。
 5. 制造一个可回退的DNS故障并完成修复。
-6. 使用Netplan配置Ubuntu客户端静态地址。
-7. 完成服务器与客户端双向连通性验证。
-8. 保存双机网络配置和排障记录。
+6. 使用NetworkManager配置Ubuntu图形客户端静态地址。
+7. 配置三台机器的hosts并完成互通矩阵。
+8. 保存三机网络配置和排障记录。
 
 ## 六、实验步骤
 
-### 任务一：记录网络基线
+### 任务一：记录rocky-server网络基线
 
 ```bash
 mkdir -p ~/m1-project/evidence ~/m1-project/backup/network
@@ -226,15 +227,14 @@ cat /etc/resolv.conf
 
 > **验收点**：完成网卡、地址、路由、网关和DNS五层验证。
 
-### 任务五：主机名配置
+### 任务五：核对主机名
 
 ```bash
-sudo hostnamectl set-hostname rocky-vm
-hostnamectl
-hostname
+hostnamectl --static
+test "$(hostnamectl --static)" = 'rocky-server' && echo PASS || echo FAIL
 ```
 
-主机名用于识别服务器角色，不替代DNS。修改主机名后，旧Shell提示符可能在重新登录后更新。
+本实验不重新命名主机。输出必须为`rocky-server`；不一致时回到实验1标准修正后再继续。
 
 ### 任务六：DNS故障与恢复
 
@@ -270,7 +270,7 @@ getent hosts mirrors.rockylinux.org
 
 > **验收点**：记录故障现象、网关证据、DNS证据、根因、修复和复测。
 
-### 任务七：保存最终配置
+### 任务七：保存rocky-server最终配置
 
 ```bash
 {
@@ -282,128 +282,145 @@ getent hosts mirrors.rockylinux.org
 } > ~/m1-project/evidence/lab08-network-after.txt
 ```
 
-### 任务八：配置Ubuntu客户端静态网络
+### 任务八：在rocky-web重复建立静态网络
 
-在Ubuntu Server客户端的VMware控制台操作。先记录DHCP状态和实际网卡名：
+启动`rocky-web`并在VMware控制台登录。重复任务一至任务四，但必须使用教师分配给`rocky-web`的独立地址。连接名仍可使用`course-static`，因为它位于另一台主机。
+
+核对身份：
+
+```bash
+test "$(whoami)" = 'rocky-web' && echo USER_PASS || echo USER_FAIL
+test "$(hostnamectl --static)" = 'rocky-web' && echo HOST_PASS || echo HOST_FAIL
+```
+
+保存最终证据：
+
+```bash
+mkdir -p ~/m1-project/evidence
+{
+  hostnamectl
+  ip -brief address
+  ip route
+  nmcli connection show --active
+} > ~/m1-project/evidence/lab08-rocky-web-network-after.txt
+```
+
+> **验收点**：`rocky-web`与`rocky-server`地址不同，网关和DNS符合同一VMnet8规划。
+
+### 任务九：配置Ubuntu Desktop静态网络
+
+Ubuntu 22.04 Desktop默认由NetworkManager管理桌面连接。本实验使用图形设置观察配置，同时使用`nmcli`完成可复查的操作，不再套用Ubuntu Server的Netplan步骤。
+
+在`ubuntu-client`打开Terminal：
 
 ```bash
 mkdir -p ~/m1-project/evidence ~/m1-project/backup
-{
-    hostnamectl
-    ip -brief address
-    ip route
-    ls -l /etc/netplan
-    sudo netplan get
-} | tee ~/m1-project/evidence/lab08-client-network-before.txt
-
-UBUNTU_IFACE=$(ip route show default | awk 'NR==1 {print $5}')
-printf 'ubuntu_interface=%s\n' "$UBUNTU_IFACE"
+hostnamectl --static
+nmcli device status
+nmcli connection show
+ip -brief address
+ip route
 ```
 
-如果接口变量为空，停止配置并检查VMware NAT网卡。备份Netplan目录：
+取得网卡和当前连接名：
 
 ```bash
-sudo cp -a /etc/netplan ~/m1-project/backup/netplan-before-static
-sudo chown -R "$USER:$USER" ~/m1-project/backup/netplan-before-static
+CLIENT_IFACE=$(ip route show default | awk 'NR==1 {print $5}')
+OLD_CLIENT_CON=$(nmcli -g GENERAL.CONNECTION device show "$CLIENT_IFACE")
+nmcli connection show "$OLD_CLIENT_CON" > ~/m1-project/backup/ubuntu-dhcp-connection.txt
+printf 'interface=%s old_connection=%s\n' "$CLIENT_IFACE" "$OLD_CLIENT_CON"
 ```
 
-教师为每台Ubuntu客户端分配地址。记录实际值：
+先在“设置 → 网络 → 有线 → 齿轮 → IPv4”中找到手动地址界面，核对教师地址表，但暂不点击应用。回到Terminal，用实际值执行：
+
+```bash
+CLIENT_IP='<ubuntu-client地址/前缀>'
+GATEWAY='<VMnet8网关>'
+DNS1='<教师指定DNS>'
+
+sudo nmcli connection add type ethernet \
+  con-name course-client-static ifname "$CLIENT_IFACE" \
+  ipv4.method manual \
+  ipv4.addresses "$CLIENT_IP" \
+  ipv4.gateway "$GATEWAY" \
+  ipv4.dns "$DNS1" \
+  connection.autoconnect yes
+```
+
+在VMware控制台激活：
+
+```bash
+sudo nmcli connection up course-client-static
+ip -brief address show dev "$CLIENT_IFACE"
+ip route
+nmcli -g IP4.DNS device show "$CLIENT_IFACE"
+```
+
+失败时回退：
+
+```bash
+sudo nmcli connection up "$OLD_CLIENT_CON"
+```
+
+> **验收点**：桌面网络界面和`nmcli`显示同一静态地址、网关与DNS，重启后配置仍然生效。
+
+### 任务十：配置三机名称解析
+
+把教师分配的三个实际地址写入三台机器的`/etc/hosts`。下面只表示格式：
 
 ```text
-UBUNTU_IFACE=________________
-UBUNTU_IP_CIDR=______________
-GATEWAY=_____________________
-DNS1=________________________
-DNS2=________________________
-ROCKY_IP=____________________
+<ROCKY_SERVER_IP>  rocky-server
+<ROCKY_WEB_IP>     rocky-web
+<UBUNTU_CLIENT_IP> ubuntu-client
 ```
 
-Ubuntu Server 22.04通常使用Netplan保存网络配置。创建课程配置：
+修改前备份：
 
 ```bash
-sudo vim /etc/netplan/99-course-static.yaml
+sudo cp -a /etc/hosts "/etc/hosts.before-lab08.$(date +%Y%m%d-%H%M%S)"
+sudo vim /etc/hosts
+getent hosts rocky-server rocky-web ubuntu-client
 ```
 
-按照实际网卡和地址填写；下面示例不能直接照抄：
+三台机器的内容必须一致，地址不得照抄示例。
 
-```yaml
-network:
-  version: 2
-  ethernets:
-    ens33:
-      dhcp4: false
-      addresses:
-        - 192.168.200.20/24
-      routes:
-        - to: default
-          via: 192.168.200.2
-      nameservers:
-        addresses:
-          - 223.5.5.5
-          - 119.29.29.29
-```
+### 任务十一：完成三机互通矩阵
 
-YAML只能使用空格缩进，不使用Tab。先检查生成配置：
+在`ubuntu-client`执行：
 
 ```bash
-sudo netplan generate
+ping -c 3 rocky-server
+ping -c 3 rocky-web
+nc -vz rocky-server 22
+nc -vz rocky-web 22
 ```
 
-没有错误后，在VMware控制台使用安全试用：
-
-```bash
-sudo netplan try
-```
-
-确认新网络可用后按提示接受。若网络失效且未确认，Netplan会在超时后尝试回退。随后执行：
-
-```bash
-sudo netplan apply
-ip -brief address show dev "$UBUNTU_IFACE"
-ip route
-getent hosts mirrors.ubuntu.com
-```
-
-> **验收点**：Ubuntu使用教师分配的静态地址，存在正确默认路由和DNS；重启后配置仍生效。
-
-### 任务九：完成双机验证
-
-在Ubuntu客户端测试Rocky服务器：
-
-```bash
-ping -c 3 <ROCKY_IP>
-nc -vz <ROCKY_IP> 22
-```
-
-如果`nc`尚未安装，可使用：
+缺少`nc`时安装：
 
 ```bash
 sudo apt update
 sudo apt install -y netcat-openbsd
 ```
 
-在Rocky服务器测试Ubuntu客户端：
+在两台Rocky之间双向测试，并分别测试客户端：
 
 ```bash
-ping -c 3 <UBUNTU_IP>
-ip route get <UBUNTU_IP>
+ping -c 3 <另一台Rocky主机名>
+ping -c 3 ubuntu-client
+ip route get <目标IP>
 ```
 
-若机房策略禁止ICMP，但后续TCP连接成功，应记录策略差异，不把ping失败直接等同于主机离线。
+填写矩阵：
 
-在Ubuntu保存最终证据：
+| 来源 | rocky-server | rocky-web | ubuntu-client |
+|---|---|---|---|
+| rocky-server | 本机 |  |  |
+| rocky-web |  | 本机 |  |
+| ubuntu-client | SSH/ICMP | SSH/ICMP | 本机 |
 
-```bash
-{
-    hostnamectl
-    ip -brief address
-    ip route
-    sudo netplan get
-    getent hosts mirrors.ubuntu.com
-} > ~/m1-project/evidence/lab08-client-network-after.txt
-```
+若ICMP被策略禁止但TCP 22成功，应记录差异，不能把ping失败直接等同于主机离线。
 
-> **验收点**：两台机器地址不冲突；Ubuntu能够连接Rocky的22端口；双机最终网络参数均有记录。
+> **验收点**：三机名称均能解析为规划地址，地址不冲突，客户端可以连接两台Rocky的22端口。
 
 ## 七、独立实践
 
@@ -411,20 +428,20 @@ ip route get <UBUNTU_IP>
 2. 分别说明“没有IP”“没有默认路由”和“DNS错误”的典型现象。
 3. 写出从静态连接回退到原DHCP连接的命令，但不删除当前有效连接。
 4. 解释为什么静态IP配置不能照抄其他同学的地址。
-5. 比较Rocky NetworkManager连接与Ubuntu Netplan YAML分别如何保存持久网络配置。
+5. 比较Ubuntu桌面网络设置与`nmcli`显示的连接参数为什么应保持一致。
 
 ## 八、验收标准
 
 - [ ] 地址规划与实际VMnet8一致，没有IP冲突。
 - [ ] 原连接名称和配置已保存。
-- [ ] `course-static`使用持久静态IP、网关和DNS。
+- [ ] 两台Rocky的`course-static`分别使用规划的静态IP、网关和DNS。
 - [ ] 网卡状态、IP、路由、网关和DNS均已验证。
 - [ ] 主机名符合规范。
 - [ ] 已完成一次DNS故障定位、修复和复测。
 - [ ] 能写出回退到原连接的方法。
 - [ ] 修改过程在VMware控制台完成，没有失去唯一管理通道。
-- [ ] Ubuntu客户端的Netplan语法检查通过，静态地址重启后仍有效。
-- [ ] Ubuntu能够连接Rocky的22端口，双机地址不冲突。
+- [ ] Ubuntu客户端的NetworkManager静态连接重启后仍有效。
+- [ ] hosts内容一致，三机互通矩阵已完成，Ubuntu能连接两台Rocky的22端口。
 
 ## 九、成果提交
 
@@ -433,8 +450,8 @@ ip route get <UBUNTU_IP>
 3. 静态连接关键参数。
 4. 分层连通性验证记录。
 5. DNS故障报告。
-6. Ubuntu配置文件、前后网络证据和双机验证结果。
-7. 独立实践答案和Rocky/Ubuntu回退说明。
+6. Ubuntu NetworkManager配置、前后证据和三机互通矩阵。
+7. 独立实践答案和三台机器的回退说明。
 
 ## 十、常见问题
 
@@ -466,4 +483,4 @@ nmcli -f ipv4.addresses,ipv4.gateway connection show course-static
 
 ## 十二、环境保留
 
-保留Rocky的`course-static`和Ubuntu的`99-course-static.yaml`用于后续SSH和服务实验。不要删除Rocky旧连接或Ubuntu备份；在教师确认全班双机静态网络稳定前保留回退入口。
+保留两台Rocky的`course-static`和Ubuntu的`course-client-static`，供后续SSH和服务实验使用。不要删除原DHCP连接；在教师确认全班三机静态网络稳定前保留回退入口。

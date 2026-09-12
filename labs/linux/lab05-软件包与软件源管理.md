@@ -52,7 +52,7 @@ DNF读取仓库配置
 
 ## 四、实验环境
 
-- Rocky Linux 9，student具备sudo权限。
+- Rocky Linux 9，rocky-server具备sudo权限。
 - 使用教师已经验证的软件源或机房离线仓库。
 - 本实验以`tree`和`jq`作为练习包；若离线仓库未提供，由教师替换为等价小工具。
 

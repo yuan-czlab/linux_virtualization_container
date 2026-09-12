@@ -10,13 +10,13 @@
 >
 > 前置实验：《Linux操作系统》实验20
 >
-> 项目成果：虚拟化层次图、宿主机能力检查表、Rocky/Ubuntu课程基线和可回退快照
+> 项目成果：虚拟化层次图、三机继承检查表、`rocky-server`嵌套虚拟化能力记录和可回退快照
 
 ## 一、项目情境
 
-你将继续使用Linux课程留下的Rocky Linux服务器和Ubuntu Server客户端，进入虚拟化与容器课程。后续Rocky需要承担KVM宿主机和Docker环境A，Ubuntu需要承担Docker环境B。若不先核对CPU虚拟化、内存、磁盘、网络、SSH和快照，后面的KVM失败很难判断究竟是硬件、VMware还是Rocky配置造成的。
+你将继续使用Linux课程留下的`rocky-server`、`rocky-web`和`ubuntu-client`进入虚拟化与容器课程。后续`rocky-server`承担KVM宿主机和Docker环境A，`ubuntu-client`承担Docker环境B；`rocky-web`保留Linux课程成果，平时关机节省资源。若不先核对CPU虚拟化、内存、磁盘、网络、SSH和快照，后面的KVM失败很难判断究竟是硬件、VMware还是Rocky配置造成的。
 
-本实验先建立可证明、可回退的课程基线，再在Rocky虚拟机中确认是否获得了嵌套虚拟化能力。
+本实验先建立可证明、可回退的课程基线，再在`rocky-server`中确认是否获得了嵌套虚拟化能力。
 
 ## 二、实验目标
 
@@ -30,8 +30,8 @@
 ### 2. 能力目标
 
 1. 检查Windows和VMware中的硬件虚拟化条件。
-2. 核对并调整Rocky、Ubuntu虚拟机资源和网络基线。
-3. 在Rocky中检查CPU虚拟化标志和`/dev/kvm`条件。
+2. 核对三台Linux虚拟机身份、快照、资源和网络基线。
+3. 在`rocky-server`中检查CPU虚拟化标志和`/dev/kvm`条件。
 4. 建立清晰命名的课程快照和环境记录。
 
 ### 3. 素质目标
@@ -47,10 +47,11 @@
 ```text
 L0 Windows物理机
 └── VMware Workstation（桌面Hypervisor）
-    ├── L1 Rocky Linux虚拟机
+    ├── L1 rocky-server（Rocky Linux虚拟机）
     │   ├── KVM/QEMU/libvirt
     │   └── L2 KVM客户机
-    └── L1 Ubuntu Server虚拟机
+    ├── L1 ubuntu-client（Ubuntu Desktop虚拟机）
+    └── L1 rocky-web（保留Linux课程成果，按需启动）
 ```
 
 嵌套虚拟化是指L1虚拟机继续充当Hypervisor运行L2虚拟机。它适合教学、开发和测试，性能与稳定性不能等同于裸机生产环境。
@@ -75,8 +76,9 @@ OpenStack不是另一种CPU虚拟化技术。它通过计算、镜像、网络�
 
 | 对象 | 建议资源 | 说明 |
 |---|---|---|
-| Rocky KVM宿主机 | 4 vCPU、6—8GB内存、至少30GB可用空间 | 做KVM实验时可暂时关闭Ubuntu |
-| Ubuntu Docker主机 | 2 vCPU、2—4GB内存、至少20GB可用空间 | 模块二再与Rocky同时开启 |
+| `rocky-server` KVM宿主机 | 4 vCPU、6—8GB内存、至少30GB可用空间 | 做KVM实验时关闭另外两台L1虚拟机 |
+| `ubuntu-client` Docker主机 | 2 vCPU、2—4GB内存、至少20GB可用空间 | 模块二再与`rocky-server`同时开启 |
+| `rocky-web`保留主机 | 沿用Linux课程资源 | 默认关机，不删除磁盘和快照 |
 | 单台KVM客户机 | 1 vCPU、1—2GB内存、4—8GB磁盘 | 使用教师轻量镜像 |
 
 实际配置以机房统一基线为准。宿主机总资源不足时不能简单把两台VM都调大。
@@ -85,17 +87,17 @@ OpenStack不是另一种CPU虚拟化技术。它通过计算、镜像、网络�
 
 - Windows 10/11学生机，BIOS/UEFI已启用Intel VT-x或AMD-V。
 - VMware Workstation已安装。
-- Linux课程保留的Rocky Linux 9和Ubuntu Server 22.04虚拟机。
-- student账号具有sudo权限，两台Linux主机能够通过SSH互访。
+- Linux课程保留的`rocky-server`、`rocky-web`和`ubuntu-client`三台虚拟机。
+- 三台主机分别使用同名主账号，课堂密码均为`123456`且具备sudo权限；`ubuntu-client`能够通过SSH访问两台Rocky。
 - 教师发布《机房资源与VMware设置表》。
 
 ## 五、项目任务
 
 1. 绘制本机虚拟化层次图。
 2. 检查Windows与VMware环境。
-3. 核对Rocky和Ubuntu基线。
-4. 为Rocky启用嵌套虚拟化。
-5. 在Rocky内部确认CPU虚拟化标志。
+3. 核对三台Linux虚拟机身份和基线。
+4. 为`rocky-server`启用嵌套虚拟化。
+5. 在`rocky-server`内部确认CPU虚拟化标志。
 6. 建立课程基线快照和环境检查表。
 
 ## 六、实验步骤
@@ -115,20 +117,21 @@ OpenStack不是另一种CPU虚拟化技术。它通过计算、镜像、网络�
 
 #### 步骤2：核对VMware虚拟机
 
-确认虚拟机列表中至少存在：
+确认VMware虚拟机列表中存在且名称完全一致：
 
 ```text
-Rocky-KVM-Docker
-Ubuntu-Docker
+rocky-server
+rocky-web
+ubuntu-client
 ```
 
-名称可以不同，但环境记录中必须写清对应关系。分别确认网络适配器仍使用Linux课程确定的VMnet，不要擅自切换NAT、桥接或仅主机模式。
+若名称不一致，先对照Linux实验1核实虚拟机身份，再在VMware中改正显示名称；不要新建重复虚拟机。三台机器的网络适配器继续使用Linux课程确定的同一VMnet。
 
-### 任务二：检查Rocky和Ubuntu基线
+### 任务二：检查三机基线
 
-#### 步骤3：在Rocky记录基线
+#### 步骤3：在`rocky-server`记录基线
 
-登录Rocky执行：
+登录`rocky-server`执行：
 
 ```bash
 hostnamectl
@@ -159,12 +162,12 @@ mkdir -p ~/vc-course/evidence ~/vc-course/backup
   ip route
   systemctl is-active sshd
   getenforce
-} > ~/vc-course/evidence/lab01-rocky-baseline.txt
+} > ~/vc-course/evidence/lab01-rocky-server-baseline.txt
 ```
 
 预期：系统为Rocky Linux 9，SSH为active，根文件系统空间满足后续镜像需要，SELinux保持Enforcing。
 
-#### 步骤4：在Ubuntu记录基线
+#### 步骤4：在`ubuntu-client`和`rocky-web`记录基线
 
 登录Ubuntu执行：
 
@@ -184,32 +187,48 @@ mkdir -p ~/vc-course/evidence ~/vc-course/backup
 } > ~/vc-course/evidence/lab01-ubuntu-baseline.txt
 ```
 
-确认Ubuntu可以连接Rocky：
+确认`ubuntu-client`可以连接两台Rocky：
 
 ```bash
-ping -c 3 <ROCKY_IP>
-ssh student@<ROCKY_IP> 'hostname; date -Is'
+ping -c 3 rocky-server
+ping -c 3 rocky-web
+ssh rocky-server 'hostname; date -Is'
+ssh rocky-web 'hostname; date -Is'
 ```
 
-将`<ROCKY_IP>`替换为Rocky实际地址。
+若实验10没有保留SSH别名，使用`rocky-server@<ROCKY_SERVER_IP>`和`rocky-web@<ROCKY_WEB_IP>`连接。
 
-> **验收点**：两台Linux主机基线文件均已生成，Ubuntu能够通过原有SSH路径连接Rocky。
+最后登录`rocky-web`执行以下轻量检查并保存结果：
+
+```bash
+mkdir -p ~/vc-course/evidence
+{
+  date -Is
+  hostnamectl
+  cat /etc/os-release
+  ip -brief address
+  systemctl is-active sshd
+  systemctl is-active nginx
+} > ~/vc-course/evidence/lab01-rocky-web-baseline.txt
+```
+
+> **验收点**：三台Linux主机的身份与基线文件均已确认，`ubuntu-client`能够通过原有SSH路径连接两台Rocky。
 
 ### 任务三：在VMware启用嵌套虚拟化
 
-#### 步骤5：安全关闭Rocky
+#### 步骤5：安全关闭三台虚拟机
 
-在Rocky执行：
+先分别正常关闭三台虚拟机。以下命令在每台Linux中执行：
 
 ```bash
 sudo systemctl poweroff
 ```
 
-等待VMware显示虚拟机已完全关闭。不能在挂起状态修改处理器虚拟化设置。
+等待VMware显示三台虚拟机均已完全关闭。不能在挂起状态修改处理器虚拟化设置。
 
-#### 步骤6：调整Rocky虚拟机资源
+#### 步骤6：调整`rocky-server`虚拟机资源
 
-在VMware中打开Rocky虚拟机设置：
+在VMware中打开`rocky-server`虚拟机设置：
 
 1. 选择“处理器”。
 2. 根据机房表设置处理器数量和每个处理器核心数，总vCPU建议为4。
@@ -221,7 +240,7 @@ sudo systemctl poweroff
 
 如果选项不可勾选或启动时报“VMware与Hyper-V不兼容”“不支持嵌套虚拟化”等错误，记录完整提示并使用教师准备的远程KVM环境，不自行删除虚拟机。
 
-#### 步骤7：启动Rocky并检查CPU标志
+#### 步骤7：只启动`rocky-server`并检查CPU标志
 
 启动后执行：
 
@@ -253,7 +272,7 @@ lsmod | grep '^kvm' || echo 'KVM模块尚未加载'
 
 #### 步骤9：生成环境检查表
 
-在Rocky执行：
+在`rocky-server`执行：
 
 ```bash
 {
@@ -273,7 +292,7 @@ lsmod | grep '^kvm' || echo 'KVM模块尚未加载'
 
 #### 步骤10：创建VMware快照
 
-分别正常关闭Rocky和Ubuntu，在VMware中创建快照：
+为三台虚拟机分别创建快照。`rocky-server`应先正常关闭，另外两台此时本来就应处于关机状态：
 
 ```text
 VC-00-课程基线
@@ -282,21 +301,22 @@ VC-00-课程基线
 快照说明至少写明：
 
 - 创建日期；
-- Rocky和Ubuntu版本；
+- 三台虚拟机的版本与角色；
 - 当前IP；
 - Linux课程成果是否保留；
-- Rocky已启用嵌套虚拟化；
+- `rocky-server`已启用嵌套虚拟化；
 - Docker和KVM尚未安装或当前状态。
 
-重新启动Rocky，确认SSH和网络仍正常。
+重新启动`rocky-server`，确认SSH和网络仍正常；`rocky-web`与`ubuntu-client`保持关机，直到实验步骤明确需要。
 
 ## 七、独立实践
 
 不查看教师示例，用自己的环境绘制一张层次图，至少包含：
 
 ```text
-Windows → VMware → Rocky → KVM/libvirt → KVM客户机
-Windows → VMware → Ubuntu → Docker
+Windows → VMware → rocky-server → KVM/libvirt → KVM客户机
+Windows → VMware → rocky-server / ubuntu-client → Docker
+Windows → VMware → rocky-web（Linux课程Web角色，按需启动）
 ```
 
 在图中标出哪一层是物理资源、哪一层是虚拟机、哪一层以后运行容器。
@@ -305,11 +325,11 @@ Windows → VMware → Ubuntu → Docker
 
 - [ ] 能解释物理机、宿主机、客户机和Hypervisor。
 - [ ] Windows任务管理器显示虚拟化已启用，或已记录教师确认的替代环境。
-- [ ] Rocky和Ubuntu基线文件完整。
-- [ ] Ubuntu能够通过SSH连接Rocky。
-- [ ] Rocky的`vmx`或`svm`统计值大于0。
-- [ ] Rocky资源满足机房统一要求。
-- [ ] 两台VM均存在`VC-00-课程基线`快照。
+- [ ] 三台虚拟机的身份、角色和基线文件完整。
+- [ ] `ubuntu-client`能够通过SSH连接两台Rocky。
+- [ ] `rocky-server`的`vmx`或`svm`统计值大于0。
+- [ ] `rocky-server`资源满足机房统一要求。
+- [ ] 三台VM均存在`VC-00-课程基线`快照。
 - [ ] 虚拟化层次图对象与上下层关系正确。
 
 ## 九、成果提交
@@ -317,7 +337,8 @@ Windows → VMware → Ubuntu → Docker
 ```text
 lab01-学号-姓名/
 ├── virtualization-layers.png或.pdf
-├── lab01-rocky-baseline.txt
+├── lab01-rocky-server-baseline.txt
+├── lab01-rocky-web-baseline.txt
 ├── lab01-ubuntu-baseline.txt
 ├── lab01-environment-check.txt
 ├── vmware-settings.png
@@ -356,7 +377,6 @@ lab01-学号-姓名/
 
 ## 十二、环境保留或清理
 
-- 保留Rocky和Ubuntu及`VC-00-课程基线`快照。
+- 保留三台虚拟机及各自的`VC-00-课程基线`快照。
 - 保留`~/vc-course/evidence`。
 - 不安装或删除KVM、Docker；安装从对应实验开始。
-

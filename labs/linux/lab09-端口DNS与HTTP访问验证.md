@@ -5,7 +5,7 @@
 > 实验方式：个人  
 > 对应教材：《模块二 网络、远程管理与基础防护》第14—16章  
 > 前置实验：实验8  
-> 项目成果：Rocky临时HTTP/HTTPS测试服务、端口监听，以及Ubuntu客户端名称解析和访问验证记录
+> 项目成果：`rocky-server`临时HTTP/HTTPS测试服务、端口监听，以及`ubuntu-client`名称解析和访问验证记录
 
 ## 一、项目情境
 
@@ -53,10 +53,10 @@
 
 ## 四、实验环境
 
-- Rocky Linux 9，静态IP已配置。
+- `rocky-server`（Rocky Linux 9），静态IP已配置，本实验的临时服务均在此运行。
 - 需要`python3`、`curl`和`openssl`。
 - 临时HTTP端口8080，临时HTTPS端口8443。
-- Ubuntu Server 22.04作为正式外部客户端，已在实验8与Rocky完成双机静态网络配置。
+- `ubuntu-client`（Ubuntu 22.04 Desktop）作为正式外部客户端，已在实验8完成三机静态网络配置。
 
 ## 五、项目任务
 

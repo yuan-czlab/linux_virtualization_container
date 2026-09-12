@@ -53,7 +53,7 @@ enabled不代表当前一定运行，active也不代表一定开机自启。
 
 ## 四、实验环境
 
-- Rocky Linux 9，student具备sudo权限。
+- Rocky Linux 9，rocky-server具备sudo权限。
 - 使用本实验自建的`course-demo.service`，避免破坏关键系统服务。
 - 工作文件位于`~/m1-project/systemd`和`/etc/systemd/system/course-demo.service`。
 
@@ -107,8 +107,8 @@ After=network.target
 
 [Service]
 Type=simple
-User=student
-ExecStart=/home/student/m1-project/systemd/course-demo.sh
+User=rocky-server
+ExecStart=/home/rocky-server/m1-project/systemd/course-demo.sh
 Restart=on-failure
 
 [Install]
@@ -119,7 +119,7 @@ sudo systemd-analyze verify /etc/systemd/system/course-demo.service
 sudo systemctl daemon-reload
 ```
 
-如果student家目录不是`/home/student`，应把`ExecStart`改成实际绝对路径。systemd的Unit中不能依赖交互式Shell的`~`展开。
+如果rocky-server家目录不是`/home/rocky-server`，应把`ExecStart`改成实际绝对路径。systemd的Unit中不能依赖交互式Shell的`~`展开。
 
 ### 任务三：管理服务
 
@@ -202,7 +202,7 @@ journalctl -u course-demo.service -n 5 --no-pager
 
 - [ ] 能区分active与enabled。
 - [ ] 自定义Unit通过语法检查。
-- [ ] 服务以student身份运行。
+- [ ] 服务以rocky-server身份运行。
 - [ ] 服务状态和日志能够互相印证。
 - [ ] 已制造、记录并修复ExecStart路径故障。
 - [ ] 修复后状态和日志均已复测。

@@ -61,7 +61,7 @@
 ## 四、实验环境
 
 - 使用实验2保留的`~/m1-project`。
-- 使用`student`登录。
+- 使用`rocky-server`登录。
 - 确认配置存在：
 
 ```bash
