@@ -96,6 +96,7 @@ Docker守护进程通常以root权限运行。能够访问Docker Socket的用户
 
 ```bash
 mkdir -p ~/vc-course/evidence ~/vc-course/backup
+test -r ~/vc-course/course-env.sh
 {
   date -Is
   cat /etc/os-release
@@ -112,10 +113,19 @@ mkdir -p ~/vc-course/evidence ~/vc-course/backup
 
 若已经存在Docker，停止并报告教师，不覆盖安装，也不删除`/var/lib/docker`。
 
+把实验1建立的非机密参数文件同步到`ubuntu-client`。在`rocky-server`执行，按提示输入Ubuntu课程账户密码：
+
+```bash
+ssh ubuntu-client@ubuntu-client 'mkdir -p ~/vc-course && chmod 700 ~/vc-course'
+scp ~/vc-course/course-env.sh ubuntu-client@ubuntu-client:~/vc-course/course-env.sh
+```
+
 #### 步骤2：在`ubuntu-client`建立基线
 
 ```bash
 mkdir -p ~/vc-course/evidence ~/vc-course/backup
+chmod 600 ~/vc-course/course-env.sh
+source ~/vc-course/course-env.sh
 {
   date -Is
   cat /etc/os-release
@@ -145,7 +155,7 @@ rpm -q podman podman-docker runc containerd docker docker-client 2>/dev/null || 
 
 #### 步骤4：配置教师验证的软件源
 
-在线路线由教师提供经过验证的仓库文件。官方RHEL系示例流程为：
+在线路线由教师提供经过验证的仓库文件。Docker上游文档列出的是RHEL支持范围，没有单独承诺Rocky Linux支持；本实验在Rocky 9使用RHEL仓库是经本学期实机验证后的课程选择。不能仅凭仓库添加成功就跳过版本、服务和镜像运行验收。课程示例流程为：
 
 ```bash
 sudo dnf install -y dnf-plugins-core
@@ -157,8 +167,9 @@ sudo dnf makecache
 机房无法稳定访问外网时，改用教师离线RPM目录：
 
 ```bash
-ls -lh <COURSE_MEDIA>/docker-packages/rocky9/
-sudo dnf install -y <COURSE_MEDIA>/docker-packages/rocky9/*.rpm
+source ~/vc-course/course-env.sh
+ls -lh "$COURSE_MEDIA/docker-packages/rocky9/"
+sudo dnf install -y "$COURSE_MEDIA"/docker-packages/rocky9/*.rpm
 ```
 
 执行离线命令前必须确认目录只包含教师清单中的同一版本软件包。
@@ -171,12 +182,14 @@ sudo dnf install -y <COURSE_MEDIA>/docker-packages/rocky9/*.rpm
 dnf list docker-ce --showduplicates | sort -r | sed -n '1,15p'
 ```
 
-教师发布`<ROCKY_DOCKER_VERSION>`后安装：
+教师发布的版本号已保存在`ROCKY_DOCKER_VERSION`中。在线安装时执行：
 
 ```bash
+source ~/vc-course/course-env.sh
+[[ "$ROCKY_DOCKER_VERSION" != 'CHANGE_ME' ]]
 sudo dnf install -y \
-  docker-ce-<ROCKY_DOCKER_VERSION> \
-  docker-ce-cli-<ROCKY_DOCKER_VERSION> \
+  "docker-ce-$ROCKY_DOCKER_VERSION" \
+  "docker-ce-cli-$ROCKY_DOCKER_VERSION" \
   containerd.io \
   docker-buildx-plugin \
   docker-compose-plugin
@@ -242,8 +255,9 @@ sudo apt update
 若使用离线DEB包：
 
 ```bash
-ls -lh <COURSE_MEDIA>/docker-packages/ubuntu22.04/
-sudo apt install -y <COURSE_MEDIA>/docker-packages/ubuntu22.04/*.deb
+source ~/vc-course/course-env.sh
+ls -lh "$COURSE_MEDIA/docker-packages/ubuntu22.04/"
+sudo apt install -y "$COURSE_MEDIA"/docker-packages/ubuntu22.04/*.deb
 ```
 
 #### 步骤9：安装固定课程版本
@@ -254,12 +268,14 @@ sudo apt install -y <COURSE_MEDIA>/docker-packages/ubuntu22.04/*.deb
 apt list --all-versions docker-ce 2>/dev/null | sed -n '1,15p'
 ```
 
-教师发布`<UBUNTU_DOCKER_VERSION>`后执行：
+教师发布的版本号已保存在`UBUNTU_DOCKER_VERSION`中。在线安装时执行：
 
 ```bash
+source ~/vc-course/course-env.sh
+[[ "$UBUNTU_DOCKER_VERSION" != 'CHANGE_ME' ]]
 sudo apt install -y \
-  docker-ce=<UBUNTU_DOCKER_VERSION> \
-  docker-ce-cli=<UBUNTU_DOCKER_VERSION> \
+  "docker-ce=$UBUNTU_DOCKER_VERSION" \
+  "docker-ce-cli=$UBUNTU_DOCKER_VERSION" \
   containerd.io \
   docker-buildx-plugin \
   docker-compose-plugin
@@ -289,14 +305,18 @@ sudo docker info
 在线：
 
 ```bash
-sudo docker pull <COURSE_REGISTRY>/vc/verify:<COURSE_TAG>
+source ~/vc-course/course-env.sh
+VERIFY_IMAGE="$COURSE_REGISTRY/vc/verify:$COURSE_TAG"
+sudo docker pull "$VERIFY_IMAGE"
 ```
 
 离线：
 
 ```bash
-sha256sum <COURSE_MEDIA>/docker-images/vc-verify-<COURSE_TAG>.tar
-sudo docker load -i <COURSE_MEDIA>/docker-images/vc-verify-<COURSE_TAG>.tar
+source ~/vc-course/course-env.sh
+VERIFY_ARCHIVE="$COURSE_MEDIA/docker-images/vc-verify-$COURSE_TAG.tar"
+sha256sum "$VERIFY_ARCHIVE"
+sudo docker load -i "$VERIFY_ARCHIVE"
 ```
 
 校验值必须与教师镜像清单一致。
@@ -304,10 +324,12 @@ sudo docker load -i <COURSE_MEDIA>/docker-images/vc-verify-<COURSE_TAG>.tar
 #### 步骤12：在`rocky-server`运行
 
 ```bash
+source ~/vc-course/course-env.sh
+VERIFY_IMAGE="$COURSE_REGISTRY/vc/verify:$COURSE_TAG"
 sudo docker image ls --digests
 sudo docker run --rm \
   --name vc-verify-rocky \
-  <COURSE_REGISTRY>/vc/verify:<COURSE_TAG>
+  "$VERIFY_IMAGE"
 ```
 
 预期输出至少包含课程定义的`VC_DOCKER_OK`、容器架构和运行时信息。
@@ -317,9 +339,11 @@ sudo docker run --rm \
 在`ubuntu-client`执行同一命令，只修改容器名称：
 
 ```bash
+source ~/vc-course/course-env.sh
+VERIFY_IMAGE="$COURSE_REGISTRY/vc/verify:$COURSE_TAG"
 sudo docker run --rm \
   --name vc-verify-ubuntu \
-  <COURSE_REGISTRY>/vc/verify:<COURSE_TAG>
+  "$VERIFY_IMAGE"
 ```
 
 两台主机应运行同一镜像摘要并得到相同应用结果。
@@ -439,5 +463,5 @@ Docker会创建自己的包过滤规则，发布端口可能绕过预期的UFW�
 
 - 保留Rocky和Ubuntu的Docker Engine、Compose插件和验证镜像。
 - 不清理`/var/lib/docker`。
-- 分别创建VMware快照`VC-02-Docker双环境完成`。
+- 本实验结束暂不建立课程检查点；完成实验7的离线镜像交付后，再为Rocky和Ubuntu统一建立`VC-V2`。
 - 下一实验继续使用两台Docker主机。

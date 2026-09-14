@@ -54,6 +54,8 @@
 | DNS | 把名称解析为IP | `getent hosts`、`nmcli` |
 | NetworkManager连接 | 保存可持久激活的配置 | `nmcli connection` |
 
+开始任务前打开[Linux网络配置、路由与DNS动画](../../animations/05-linux-network-routing-dns/index.html)，完成四个主题。动画参数只说明关系；正式操作必须先调查实际VMnet8，再使用教师地址表，并保留原DHCP连接作为回退。
+
 ## 四、实验环境
 
 - 使用VMware控制台操作，不通过SSH修改当前地址。
@@ -104,6 +106,11 @@ mkdir -p ~/m1-project/evidence ~/m1-project/backup/network
 ```bash
 IFACE=$(ip route show default | awk 'NR==1 {print $5}')
 OLD_CON=$(nmcli -g GENERAL.CONNECTION device show "$IFACE")
+{
+  printf 'export IFACE=%q\n' "$IFACE"
+  printf 'export OLD_CON=%q\n' "$OLD_CON"
+} > ~/m1-project/backup/network/rocky-network-state.sh
+chmod 600 ~/m1-project/backup/network/rocky-network-state.sh
 printf 'interface=%s\nold_connection=%s\n' "$IFACE" "$OLD_CON"
 ```
 
@@ -116,24 +123,39 @@ printf 'interface=%s\nold_connection=%s\n' "$IFACE" "$OLD_CON"
 #### 步骤1：确认实际网络
 
 ```bash
+source ~/m1-project/backup/network/rocky-network-state.sh
 ip route
 ip route get 1.1.1.1
 nmcli -f GENERAL,IP4,DHCP4 device show "$IFACE"
 ```
 
-从教师地址表取得目标IP。先检查本机是否已经使用：
+从教师地址表取得目标IP，先把它保存为变量。例如教师分配`192.168.200.10/24`时，地址冲突检查只使用其中的`192.168.200.10`：
 
 ```bash
-ip address show | grep -F '<目标IP>' || true
+source ~/m1-project/backup/network/rocky-network-state.sh
+TARGET_IP='CHANGE_ME'
+if [[ "$TARGET_IP" == 'CHANGE_ME' || ! "$TARGET_IP" =~ ^[0-9]+(\.[0-9]+){3}$ ]]; then
+  echo '请先填写教师分配的有效IPv4地址'
+else
+  sed -i '/^export TARGET_IP=/d' ~/m1-project/backup/network/rocky-network-state.sh
+  printf 'export TARGET_IP=%q\n' "$TARGET_IP" >> ~/m1-project/backup/network/rocky-network-state.sh
+  printf '本机准备使用的IPv4地址：%s\n' "$TARGET_IP"
+  ip address show | grep -F "$TARGET_IP" || true
+fi
 ```
 
 再从同网段环境检查冲突。可使用：
 
 ```bash
-arping -D -I "$IFACE" -c 3 '<目标IP>'
+source ~/m1-project/backup/network/rocky-network-state.sh
+if [[ -n "${TARGET_IP:-}" ]]; then
+  arping -D -I "$IFACE" -c 3 "$TARGET_IP"
+else
+  echo 'TARGET_IP尚未写入网络状态文件，未执行冲突检测'
+fi
 ```
 
-如果`arping`未安装，使用教师提供的地址分配表，不因安装工具阻塞核心实验。检测到响应时不要使用该IP。
+执行前必须把`CHANGE_ME`换成教师地址表中的实际地址。如果`arping`未安装，使用教师提供的地址分配表，不因安装工具阻塞核心实验。检测到响应时不要使用该IP。
 
 > **验收点**：目标IP属于实际VMnet8网段，没有与已知地址重复。
 
@@ -142,6 +164,7 @@ arping -D -I "$IFACE" -c 3 '<目标IP>'
 #### 步骤2：保存连接参数
 
 ```bash
+source ~/m1-project/backup/network/rocky-network-state.sh
 nmcli connection show "$OLD_CON" > ~/m1-project/backup/network/old-connection.txt
 sudo cp -a /etc/NetworkManager/system-connections/. ~/m1-project/backup/network/system-connections/
 ```
@@ -153,30 +176,51 @@ sudo cp -a /etc/NetworkManager/system-connections/. ~/m1-project/backup/network/
 按实际地址替换：
 
 ```bash
-STATIC_IP='<本机IP/前缀>'
-GATEWAY='<默认网关>'
-DNS1='<教师指定DNS>'
-printf 'iface=%s ip=%s gateway=%s dns=%s\n' "$IFACE" "$STATIC_IP" "$GATEWAY" "$DNS1"
+source ~/m1-project/backup/network/rocky-network-state.sh
+STATIC_IP='CHANGE_ME/24'
+GATEWAY='CHANGE_ME'
+DNS1='CHANGE_ME'
+if printf '%s\n' "$STATIC_IP" "$GATEWAY" "$DNS1" | grep -q 'CHANGE_ME'; then
+  echo '网络计划仍有CHANGE_ME，未保存'
+else
+  sed -i '/^export \(STATIC_IP\|GATEWAY\|DNS1\)=/d' ~/m1-project/backup/network/rocky-network-state.sh
+  {
+    printf 'export STATIC_IP=%q\n' "$STATIC_IP"
+    printf 'export GATEWAY=%q\n' "$GATEWAY"
+    printf 'export DNS1=%q\n' "$DNS1"
+  } >> ~/m1-project/backup/network/rocky-network-state.sh
+  printf 'iface=%s ip=%s gateway=%s dns=%s\n' "$IFACE" "$STATIC_IP" "$GATEWAY" "$DNS1"
+fi
 ```
 
-不要保留尖括号。把输出与教师地址表逐项核对后再继续。
+把三个`CHANGE_ME`换成教师地址表中的实际值。只要输出仍含`CHANGE_ME`就必须停止，把输出与教师地址表逐项核对后再继续。
 
-#### 步骤4：创建连接
+#### 步骤4：创建或核对课程静态连接
 
 ```bash
-sudo nmcli connection add type ethernet con-name course-static ifname "$IFACE" \
-  ipv4.addresses "$STATIC_IP" \
-  ipv4.gateway "$GATEWAY" \
-  ipv4.dns "$DNS1" \
-  ipv4.method manual \
-  connection.autoconnect yes
+source ~/m1-project/backup/network/rocky-network-state.sh
+if [[ -z "${STATIC_IP:-}" || -z "${GATEWAY:-}" || -z "${DNS1:-}" ]]; then
+  echo '静态地址计划不完整，未创建连接'
+elif nmcli -t -f NAME connection show | grep -Fxq 'course-static'; then
+  echo 'course-static已存在，本次不重复创建，请核对保存值'
+else
+  sudo nmcli connection add type ethernet con-name course-static ifname "$IFACE" \
+    ipv4.addresses "$STATIC_IP" \
+    ipv4.gateway "$GATEWAY" \
+    ipv4.dns "$DNS1" \
+    ipv4.method manual \
+    connection.autoconnect yes \
+    connection.autoconnect-priority 100
+fi
 ```
 
 检查保存值：
 
 ```bash
-nmcli -f connection.id,connection.interface-name,ipv4.method,ipv4.addresses,ipv4.gateway,ipv4.dns connection show course-static
+nmcli -f connection.id,connection.interface-name,connection.autoconnect,connection.autoconnect-priority,ipv4.method,ipv4.addresses,ipv4.gateway,ipv4.dns connection show course-static
 ```
+
+如果已有连接的接口、IP、网关或DNS与本次地址表不一致，不要直接激活；先由教师确认它是上次实验残留还是同名错误配置。确认需要重建时，保存其输出后执行`sudo nmcli connection delete course-static`，再重新执行本步骤。
 
 > **验收点**：静态连接参数和实际规划完全一致。
 
@@ -185,6 +229,7 @@ nmcli -f connection.id,connection.interface-name,ipv4.method,ipv4.addresses,ipv4
 确保正在VMware控制台中操作，然后执行：
 
 ```bash
+source ~/m1-project/backup/network/rocky-network-state.sh
 sudo nmcli connection up course-static
 ip -br address show dev "$IFACE"
 ip route
@@ -193,6 +238,7 @@ ip route
 若立即失去网络但控制台仍可用，回退：
 
 ```bash
+source ~/m1-project/backup/network/rocky-network-state.sh
 sudo nmcli connection up "$OLD_CON"
 ```
 
@@ -203,6 +249,7 @@ sudo nmcli connection up "$OLD_CON"
 #### 步骤6：检查本机和路由
 
 ```bash
+source ~/m1-project/backup/network/rocky-network-state.sh
 ip -br link show dev "$IFACE"
 ip -br address show dev "$IFACE"
 ip route
@@ -212,6 +259,7 @@ ip route get "$GATEWAY"
 #### 步骤7：测试网关和名称解析
 
 ```bash
+source ~/m1-project/backup/network/rocky-network-state.sh
 ping -c 3 "$GATEWAY"
 getent hosts mirrors.rockylinux.org
 ```
@@ -221,6 +269,7 @@ getent hosts mirrors.rockylinux.org
 #### 步骤8：检查有效DNS配置
 
 ```bash
+source ~/m1-project/backup/network/rocky-network-state.sh
 nmcli -g IP4.DNS device show "$IFACE"
 cat /etc/resolv.conf
 ```
@@ -243,7 +292,10 @@ test "$(hostnamectl --static)" = 'rocky-server' && echo PASS || echo FAIL
 #### 步骤9：保存正确DNS并写入错误值
 
 ```bash
+source ~/m1-project/backup/network/rocky-network-state.sh
 GOOD_DNS=$(nmcli -g ipv4.dns connection show course-static)
+sed -i '/^export GOOD_DNS=/d' ~/m1-project/backup/network/rocky-network-state.sh
+printf 'export GOOD_DNS=%q\n' "$GOOD_DNS" >> ~/m1-project/backup/network/rocky-network-state.sh
 printf 'good_dns=%s\n' "$GOOD_DNS"
 sudo nmcli connection modify course-static ipv4.dns '192.0.2.53'
 sudo nmcli connection up course-static
@@ -252,6 +304,7 @@ sudo nmcli connection up course-static
 `192.0.2.0/24`为文档示例地址段，本实验用它制造不可用DNS。观察：
 
 ```bash
+source ~/m1-project/backup/network/rocky-network-state.sh
 ping -c 2 "$GATEWAY"
 getent hosts training-name.invalid
 getent hosts mirrors.rockylinux.org
@@ -262,6 +315,7 @@ getent hosts mirrors.rockylinux.org
 #### 步骤10：恢复DNS
 
 ```bash
+source ~/m1-project/backup/network/rocky-network-state.sh
 sudo nmcli connection modify course-static ipv4.dns "$GOOD_DNS"
 sudo nmcli connection up course-static
 nmcli -g IP4.DNS device show "$IFACE"
@@ -275,6 +329,7 @@ getent hosts mirrors.rockylinux.org
 ### 任务七：保存rocky-server最终配置
 
 ```bash
+source ~/m1-project/backup/network/rocky-network-state.sh
 {
     hostnamectl
     ip -br address
@@ -329,6 +384,11 @@ ip route
 ```bash
 CLIENT_IFACE=$(ip route show default | awk 'NR==1 {print $5}')
 OLD_CLIENT_CON=$(nmcli -g GENERAL.CONNECTION device show "$CLIENT_IFACE")
+{
+  printf 'export CLIENT_IFACE=%q\n' "$CLIENT_IFACE"
+  printf 'export OLD_CLIENT_CON=%q\n' "$OLD_CLIENT_CON"
+} > ~/m1-project/backup/ubuntu-network-state.sh
+chmod 600 ~/m1-project/backup/ubuntu-network-state.sh
 nmcli connection show "$OLD_CLIENT_CON" > ~/m1-project/backup/ubuntu-dhcp-connection.txt
 printf 'interface=%s old_connection=%s\n' "$CLIENT_IFACE" "$OLD_CLIENT_CON"
 ```
@@ -336,22 +396,44 @@ printf 'interface=%s old_connection=%s\n' "$CLIENT_IFACE" "$OLD_CLIENT_CON"
 先在“设置 → 网络 → 有线 → 齿轮 → IPv4”中找到手动地址界面，核对教师地址表，但暂不点击应用。回到Terminal，用实际值执行：
 
 ```bash
-CLIENT_IP='<ubuntu-client地址/前缀>'
-GATEWAY='<VMnet8网关>'
-DNS1='<教师指定DNS>'
+source ~/m1-project/backup/ubuntu-network-state.sh
+CLIENT_IP='CHANGE_ME/24'
+GATEWAY='CHANGE_ME'
+DNS1='CHANGE_ME'
 
-sudo nmcli connection add type ethernet \
-  con-name course-client-static ifname "$CLIENT_IFACE" \
-  ipv4.method manual \
-  ipv4.addresses "$CLIENT_IP" \
-  ipv4.gateway "$GATEWAY" \
-  ipv4.dns "$DNS1" \
-  connection.autoconnect yes
+if printf '%s\n' "$CLIENT_IP" "$GATEWAY" "$DNS1" | grep -q 'CHANGE_ME'; then
+  echo 'Ubuntu网络计划仍有CHANGE_ME，未创建连接'
+elif nmcli -t -f NAME connection show | grep -Fxq 'course-client-static'; then
+  echo 'course-client-static已存在，本次不重复创建，请核对保存值'
+else
+  sudo nmcli connection add type ethernet \
+    con-name course-client-static ifname "$CLIENT_IFACE" \
+    ipv4.method manual \
+    ipv4.addresses "$CLIENT_IP" \
+    ipv4.gateway "$GATEWAY" \
+    ipv4.dns "$DNS1" \
+    connection.autoconnect yes \
+    connection.autoconnect-priority 100
+fi
+
+if ! printf '%s\n' "$CLIENT_IP" "$GATEWAY" "$DNS1" | grep -q 'CHANGE_ME'; then
+  sed -i '/^export \(CLIENT_IP\|GATEWAY\|DNS1\)=/d' ~/m1-project/backup/ubuntu-network-state.sh
+  {
+    printf 'export CLIENT_IP=%q\n' "$CLIENT_IP"
+    printf 'export GATEWAY=%q\n' "$GATEWAY"
+    printf 'export DNS1=%q\n' "$DNS1"
+  } >> ~/m1-project/backup/ubuntu-network-state.sh
+fi
+
+if nmcli -t -f NAME connection show | grep -Fxq 'course-client-static'; then
+  nmcli -f connection.id,connection.interface-name,connection.autoconnect,connection.autoconnect-priority,ipv4.method,ipv4.addresses,ipv4.gateway,ipv4.dns connection show course-client-static
+fi
 ```
 
 在VMware控制台激活：
 
 ```bash
+source ~/m1-project/backup/ubuntu-network-state.sh
 sudo nmcli connection up course-client-static
 ip -brief address show dev "$CLIENT_IFACE"
 ip route
@@ -361,6 +443,7 @@ nmcli -g IP4.DNS device show "$CLIENT_IFACE"
 失败时回退：
 
 ```bash
+source ~/m1-project/backup/ubuntu-network-state.sh
 sudo nmcli connection up "$OLD_CLIENT_CON"
 ```
 
@@ -379,12 +462,47 @@ sudo nmcli connection up "$OLD_CLIENT_CON"
 修改前备份：
 
 ```bash
-sudo cp -a /etc/hosts "/etc/hosts.before-lab08.$(date +%Y%m%d-%H%M%S)"
+HOSTS_BACKUP="/etc/hosts.before-lab08.$(date +%Y%m%d-%H%M%S)"
+sudo cp -a /etc/hosts "$HOSTS_BACKUP"
+printf '%s\n' "$HOSTS_BACKUP" | sudo tee /var/tmp/lab08-hosts-backup.path
 sudo vim /etc/hosts
 getent hosts rocky-server rocky-web ubuntu-client
 ```
 
 三台机器的内容必须一致，地址不得照抄示例。
+
+名称解析核验通过后，在三台虚拟机上各生成一份后续实验共用的地址变量文件。它从刚刚核验过的`/etc/hosts`读取地址，不需要再次手工填写：
+
+```bash
+mkdir -p ~/m1-project
+ROCKY_SERVER_IP=$(getent ahostsv4 rocky-server | awk 'NR==1 {print $1}')
+ROCKY_WEB_IP=$(getent ahostsv4 rocky-web | awk 'NR==1 {print $1}')
+UBUNTU_CLIENT_IP=$(getent ahostsv4 ubuntu-client | awk 'NR==1 {print $1}')
+
+if [[ -z "$ROCKY_SERVER_IP" || -z "$ROCKY_WEB_IP" || -z "$UBUNTU_CLIENT_IP" ]]; then
+  echo '地址解析不完整：请先修正/etc/hosts，再重新生成course-env.sh'
+else
+  {
+    printf 'export ROCKY_SERVER_IP=%q\n' "$ROCKY_SERVER_IP"
+    printf 'export ROCKY_WEB_IP=%q\n' "$ROCKY_WEB_IP"
+    printf 'export UBUNTU_CLIENT_IP=%q\n' "$UBUNTU_CLIENT_IP"
+  } > ~/m1-project/course-env.sh
+  chmod 600 ~/m1-project/course-env.sh
+fi
+
+source ~/m1-project/course-env.sh
+printf 'server=%s web=%s client=%s\n' \
+  "$ROCKY_SERVER_IP" "$ROCKY_WEB_IP" "$UBUNTU_CLIENT_IP"
+```
+
+从实验9开始，凡是命令需要三机地址，都先执行`source ~/m1-project/course-env.sh`。如果机房还原后该文件不存在，应从`Linux-L1`或更高检查点恢复；也可以先恢复三机`/etc/hosts`，再重做上面的生成步骤。
+
+需要回退时，在对应虚拟机执行：
+
+```bash
+HOSTS_BACKUP=$(sudo cat /var/tmp/lab08-hosts-backup.path)
+sudo test -f "$HOSTS_BACKUP" && sudo cp -a "$HOSTS_BACKUP" /etc/hosts
+```
 
 ### 任务十一：完成三机互通矩阵
 
@@ -404,12 +522,20 @@ sudo apt update
 sudo apt install -y netcat-openbsd
 ```
 
-在两台Rocky之间双向测试，并分别测试客户端：
+在两台Rocky之间双向测试，并分别测试客户端。在`rocky-server`执行第一组，在`rocky-web`执行第二组：
 
 ```bash
-ping -c 3 <另一台Rocky主机名>
+source ~/m1-project/course-env.sh
+
+# rocky-server执行
+ping -c 3 rocky-web
 ping -c 3 ubuntu-client
-ip route get <目标IP>
+ip route get "$ROCKY_WEB_IP"
+
+# rocky-web执行
+ping -c 3 rocky-server
+ping -c 3 ubuntu-client
+ip route get "$ROCKY_SERVER_IP"
 ```
 
 填写矩阵：

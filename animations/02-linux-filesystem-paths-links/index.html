@@ -1,0 +1,559 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Linux目录树、路径与链接</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #07101a;
+      --panel: rgba(15, 28, 45, .93);
+      --panel2: #142b44;
+      --line: #49627d;
+      --text: #eef6ff;
+      --muted: #9cafc5;
+      --cyan: #60d8ff;
+      --blue: #5c91ff;
+      --green: #61e6a3;
+      --yellow: #ffd166;
+      --purple: #bc94ff;
+      --red: #ff7180;
+      --shadow: 0 22px 58px rgba(0,0,0,.34);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--text);
+      font-family: "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+      background:
+        radial-gradient(circle at 14% 8%, rgba(96,216,255,.18), transparent 30%),
+        radial-gradient(circle at 88% 88%, rgba(188,148,255,.16), transparent 28%),
+        linear-gradient(145deg, #050b12, var(--bg) 55%, #0c1830);
+    }
+    button { font: inherit; }
+    .app {
+      min-height: 100vh;
+      display: grid;
+      grid-template-rows: auto auto 1fr auto;
+      gap: 14px;
+      padding: 22px clamp(18px,3vw,44px) 18px;
+    }
+    header { display: flex; justify-content: space-between; align-items: flex-end; gap: 20px; }
+    .eyebrow { margin: 0 0 6px; color: var(--cyan); font-size: 13px; font-weight: 900; letter-spacing: .16em; }
+    h1 { margin: 0; font-size: clamp(26px,3vw,42px); line-height: 1.1; }
+    .tag {
+      padding: 9px 13px;
+      border: 1px solid rgba(96,216,255,.3);
+      border-radius: 999px;
+      color: #ccefff;
+      background: rgba(96,216,255,.08);
+      font-size: 13px;
+      white-space: nowrap;
+    }
+    .tabs {
+      display: flex;
+      gap: 9px;
+      padding: 9px;
+      border: 1px solid rgba(122,151,185,.22);
+      border-radius: 16px;
+      background: rgba(7,15,27,.62);
+      box-shadow: var(--shadow);
+    }
+    .tab {
+      min-width: 150px;
+      padding: 11px 18px;
+      border: 1px solid transparent;
+      border-radius: 11px;
+      color: var(--muted);
+      background: transparent;
+      cursor: pointer;
+      transition: .2s ease;
+    }
+    .tab:hover { color: var(--text); background: rgba(255,255,255,.05); }
+    .tab.active { color: #06151e; background: var(--cyan); font-weight: 900; box-shadow: 0 8px 22px rgba(96,216,255,.2); }
+    main { min-height: 0; display: grid; grid-template-columns: minmax(600px,1.62fr) minmax(310px,.72fr); gap: 14px; }
+    .visual-card, .lesson-card {
+      border: 1px solid rgba(122,151,185,.22);
+      border-radius: 20px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+    .visual-card { min-height: 570px; padding: 22px; position: relative; }
+    .visual-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 18px; }
+    .visual-top h2 { margin: 0; font-size: 20px; }
+    .concept {
+      padding: 7px 10px;
+      border: 1px solid rgba(97,230,163,.28);
+      border-radius: 999px;
+      color: var(--green);
+      background: rgba(97,230,163,.08);
+      font-size: 12px;
+      font-weight: 800;
+    }
+    #visual { min-height: 475px; display: grid; align-content: center; }
+    .lesson-card { display: grid; grid-template-rows: auto auto 1fr auto; padding: 22px; }
+    .counter { color: var(--cyan); font-size: 13px; font-weight: 900; letter-spacing: .08em; }
+    .lesson-card h2 { margin: 8px 0 10px; font-size: clamp(22px,2.2vw,30px); line-height: 1.22; }
+    .explain { margin: 0; color: #ccd8e7; font-size: 16px; line-height: 1.72; }
+    .question {
+      align-self: end;
+      margin-top: 18px;
+      padding: 16px;
+      border-left: 4px solid var(--yellow);
+      border-radius: 0 12px 12px 0;
+      background: rgba(255,209,102,.08);
+    }
+    .question small { display: block; color: var(--yellow); font-weight: 900; margin-bottom: 5px; }
+    .question p { margin: 0; color: #f7e7bb; line-height: 1.55; }
+    .controls { display: grid; grid-template-columns: 44px 44px 1fr 44px; gap: 9px; margin-top: 18px; }
+    .control {
+      height: 44px;
+      border: 1px solid rgba(134,158,192,.3);
+      border-radius: 11px;
+      color: var(--text);
+      background: var(--panel2);
+      cursor: pointer;
+    }
+    .control:hover { border-color: var(--cyan); }
+    .control.play { color: #06151e; background: var(--cyan); border-color: var(--cyan); font-weight: 900; }
+    footer { display: flex; justify-content: space-between; align-items: center; gap: 18px; color: var(--muted); font-size: 12px; }
+
+    /* directory tree */
+    .tree { display: grid; justify-items: center; gap: 14px; }
+    .root-node, .dir {
+      border: 2px solid var(--line);
+      border-radius: 13px;
+      background: #11243a;
+      transition: .25s ease;
+    }
+    .root-node { min-width: 150px; padding: 13px 20px; text-align: center; border-color: var(--cyan); }
+    .root-node strong { display: block; font-size: 25px; color: var(--cyan); }
+    .root-node span, .dir span { color: var(--muted); font-size: 11px; }
+    .trunk { width: 2px; height: 18px; background: var(--line); }
+    .dirs { width: 100%; display: grid; grid-template-columns: repeat(5,1fr); gap: 9px; }
+    .dir { min-height: 74px; padding: 10px 7px; text-align: center; }
+    .dir strong { display: block; color: var(--text); font-size: 15px; margin-bottom: 4px; }
+    .dir.active { border-color: var(--green); background: rgba(97,230,163,.12); transform: translateY(-3px); box-shadow: 0 0 20px rgba(97,230,163,.16); }
+    .dir.link { border-style: dashed; border-color: var(--purple); }
+    .dir.virtual { border-color: var(--yellow); }
+    .tree-note {
+      margin-top: 14px;
+      padding: 12px 14px;
+      border: 1px solid rgba(122,151,185,.2);
+      border-radius: 12px;
+      background: rgba(5,12,22,.52);
+      color: #c9d6e5;
+      text-align: center;
+    }
+    .tree-note code { color: var(--cyan); }
+    .merge-flow { display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 12px; margin-top: 15px; }
+    .merge-box { min-width: 135px; padding: 13px; border: 2px solid var(--purple); border-radius: 12px; text-align: center; background: rgba(188,148,255,.08); }
+    .arrow { color: var(--green); font-size: 26px; font-weight: 900; }
+    .choice-grid { display: grid; grid-template-columns: repeat(2,1fr); gap: 12px; width: 86%; margin: auto; }
+    .choice { padding: 16px; border: 1px solid var(--line); border-radius: 14px; background: #10233a; }
+    .choice strong { color: var(--cyan); display: block; margin-bottom: 5px; }
+    .choice span { color: var(--muted); font-size: 13px; }
+
+    /* path */
+    .path-scene { display: grid; gap: 18px; align-content: center; }
+    .cwd { padding: 14px 16px; border: 1px solid var(--blue); border-radius: 13px; background: rgba(92,145,255,.09); }
+    .cwd small { color: var(--muted); display: block; margin-bottom: 5px; }
+    .cwd code { color: #dce8ff; font-size: 18px; }
+    .terminal { padding: 15px 18px; border-radius: 13px; background: #03090f; border: 1px solid #263b50; font-family: Consolas, monospace; color: #d9e7f5; }
+    .terminal .prompt { color: var(--green); }
+    .segments { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; min-height: 80px; }
+    .segment { padding: 12px 13px; border: 2px solid var(--line); border-radius: 11px; background: #10243a; animation: arrive .35s both; }
+    .segment.root { border-color: var(--cyan); color: var(--cyan); }
+    .segment.current { border-color: var(--blue); color: #bcd0ff; }
+    .segment.up { border-color: var(--yellow); color: var(--yellow); }
+    .segment.target { border-color: var(--green); color: var(--green); }
+    .slash { color: var(--muted); font-size: 22px; }
+    .result { text-align: center; padding: 12px; border-radius: 12px; background: rgba(97,230,163,.09); color: #baf4d6; }
+
+    /* inode and links */
+    .link-scene { display: grid; grid-template-columns: 1fr 72px 1fr 72px 1fr; align-items: center; gap: 8px; }
+    .stack { display: grid; gap: 10px; }
+    .object {
+      padding: 14px 11px;
+      border: 2px solid var(--blue);
+      border-radius: 13px;
+      text-align: center;
+      background: rgba(92,145,255,.08);
+      transition: .25s;
+    }
+    .object strong { display: block; margin-bottom: 5px; }
+    .object small { color: var(--muted); }
+    .object.inode { border-color: var(--purple); }
+    .object.data { border-color: var(--green); }
+    .object.symlink { border-color: var(--yellow); }
+    .object.deleted { border-color: var(--red); opacity: .35; text-decoration: line-through; }
+    .object.broken { border-color: var(--red); background: rgba(255,113,128,.1); }
+    .flow-arrow { color: var(--green); text-align: center; font-size: 28px; }
+    .flow-arrow.dashed { color: var(--yellow); }
+    .soft-track {
+      grid-column: 1/-1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 12px;
+      padding-top: 12px;
+      border-top: 1px dashed rgba(255,209,102,.35);
+    }
+    .soft-track .object { min-width: 190px; }
+    .command-strip { grid-column: 1/-1; margin-top: 20px; padding: 14px 17px; border-radius: 12px; background: #03090f; color: #d9e7f5; font-family: Consolas, monospace; }
+    .command-strip b { color: var(--green); }
+    .badge { display: inline-block; margin-top: 6px; padding: 4px 7px; border-radius: 7px; color: #06151e; background: var(--green); font-size: 11px; font-weight: 900; }
+    .badge.warn { background: var(--red); color: #fff; }
+    @keyframes arrive { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+    @keyframes pulse { 50% { box-shadow: 0 0 26px rgba(97,230,163,.45); transform: scale(1.025); } }
+    .pulse { animation: pulse 1.25s ease-in-out infinite; }
+
+    @media (max-width: 940px) {
+      .app { min-height: auto; }
+      header { align-items: flex-start; flex-direction: column; }
+      .tabs { flex-wrap: wrap; }
+      main { grid-template-columns: 1fr; }
+      .dirs { grid-template-columns: repeat(3,1fr); }
+      .visual-card { min-height: 540px; }
+    }
+    @media (max-width: 620px) {
+      .tag { white-space: normal; }
+      .tab { min-width: 0; flex: 1; padding: 10px 8px; }
+      .dirs { grid-template-columns: repeat(2,1fr); }
+      .choice-grid { width: 100%; grid-template-columns: 1fr; }
+      .link-scene { grid-template-columns: 1fr; }
+      .flow-arrow { transform: rotate(90deg); }
+    }
+    @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div>
+        <p class="eyebrow">模块一 · 第4—5章 · Linux实验2/3</p>
+        <h1>Linux目录树、路径与链接</h1>
+      </div>
+      <div class="tag">单根目录树 ≠ Windows盘符体系</div>
+    </header>
+
+    <nav class="tabs" aria-label="动画主题">
+      <button class="tab active" data-scene="tree">1　目录树与 /bin</button>
+      <button class="tab" data-scene="path">2　绝对/相对路径</button>
+      <button class="tab" data-scene="links">3　inode与链接</button>
+    </nav>
+
+    <main>
+      <section class="visual-card">
+        <div class="visual-top">
+          <h2 id="visualTitle">所有路径从根目录“/”展开</h2>
+          <span class="concept" id="conceptTag">Filesystem Hierarchy</span>
+        </div>
+        <div id="visual" aria-live="polite"></div>
+      </section>
+
+      <aside class="lesson-card">
+        <div class="counter" id="counter">第 1 / 5 步</div>
+        <div>
+          <h2 id="stepTitle">Linux只有一棵目录树</h2>
+          <p class="explain" id="stepText"></p>
+        </div>
+        <div class="question">
+          <small>先判断，再操作</small>
+          <p id="questionText"></p>
+        </div>
+        <div class="controls">
+          <button class="control" id="prev" aria-label="上一步">←</button>
+          <button class="control" id="restart" aria-label="重新开始">↺</button>
+          <button class="control play" id="play">▶ 播放</button>
+          <button class="control" id="next" aria-label="下一步">→</button>
+        </div>
+      </aside>
+    </main>
+
+    <footer>
+      <span>课堂顺序：预测 → 单步观察 → 在Rocky中用 pwd / ls / readlink / stat 验证</span>
+      <span>键盘：←/→ 单步 · 空格 播放/暂停 · 1/2/3 切换主题</span>
+    </footer>
+  </div>
+
+  <script>
+    const directoryItems = [
+      ['/etc','系统和服务配置'], ['/home','普通用户家目录'], ['/root','root用户家目录'],
+      ['/bin → /usr/bin','基本命令的兼容入口'], ['/sbin → /usr/sbin','管理命令的兼容入口'],
+      ['/lib → /usr/lib','库文件的兼容入口'], ['/lib64 → /usr/lib64','64位库兼容入口'],
+      ['/usr','程序、库和共享数据'], ['/var','日志等经常变化的数据'], ['/tmp','临时文件'],
+      ['/boot','启动文件'], ['/dev','设备入口'], ['/proc','进程与内核视图'],
+      ['/sys','设备与内核对象视图'], ['/run','本次启动的运行状态'], ['/opt','附加软件'],
+      ['/srv','服务提供的数据'], ['/mnt','临时挂载点'], ['/media','可移动介质挂载点']
+    ];
+
+    const scenes = {
+      tree: {
+        visualTitle: '所有路径从根目录“/”展开',
+        tag: 'Filesystem Hierarchy',
+        steps: [
+          {
+            title: 'Linux只有一棵目录树',
+            text: '最顶层的“/”叫根目录。磁盘、分区、U盘和网络文件系统都要挂载到这棵树中的某个目录，Linux不会为它们自动分配C盘、D盘。',
+            q: '“/”和“/root”是同一个目录吗？',
+            view: 'root'
+          },
+          {
+            title: '按用途认识主要目录',
+            text: '/etc保存配置，/home与/root保存用户家目录，/usr和/opt主要放程序，/var保存日志等变化数据，/proc、/sys和/run提供运行中的系统视图。',
+            q: 'Nginx配置、用户作业和系统日志通常分别放到哪三个目录体系？',
+            view: 'all',
+            active: ['/etc','/home','/var']
+          },
+          {
+            title: '/bin没有消失：它通常是链接',
+            text: 'Rocky 9和Ubuntu 22.04通常采用usr-merge。兼容路径/bin指向/usr/bin，/sbin指向/usr/sbin；执行/bin/ls时最终通常读取/usr/bin/ls。',
+            q: '既然/bin指向/usr/bin，教材目录树还需要写出/bin吗？为什么？',
+            view: 'merge'
+          },
+          {
+            title: '挂载把存储接入目录树',
+            text: '文件系统先存在于磁盘分区、逻辑卷或远程存储中；挂载后，它的根才出现在/mnt/data等目录。卸载是移除入口，不等于删除存储中的数据。',
+            q: '把新磁盘挂载到/mnt/data后，访问数据应使用盘符还是路径？',
+            view: 'mount'
+          },
+          {
+            title: '根据用途选择位置',
+            text: '目录规范帮助运维人员快速定位对象，但不能只凭名字猜测。实际操作还要用ls、findmnt、df、file和权限信息验证。',
+            q: '项目脚本、Nginx配置、访问日志和临时解压文件分别适合放在哪里？',
+            view: 'choices'
+          }
+        ]
+      },
+      path: {
+        visualTitle: '路径的含义由起点决定',
+        tag: 'Path Resolution',
+        steps: [
+          {
+            title: '当前工作目录是相对路径的起点',
+            text: 'Shell始终有一个当前工作目录。pwd显示它，cd改变它。相对路径如果离开当前目录单独看，信息并不完整。',
+            q: '两名同学在不同目录执行ls docs，结果一定相同吗？',
+            cwd: '/home/rocky-server/m1-project',
+            command: 'pwd',
+            parts: ['home','rocky-server','m1-project'],
+            result: '/home/rocky-server/m1-project',
+            type: 'cwd'
+          },
+          {
+            title: '绝对路径从根目录开始',
+            text: '以“/”开头的路径从根目录解析，不依赖当前工作目录。/etc/ssh/sshd_config在任意工作目录都指向同一位置。',
+            q: '在/tmp中执行cat /etc/ssh/sshd_config，起点是/tmp还是/？',
+            cwd: '/home/rocky-server/m1-project',
+            command: 'cat /etc/ssh/sshd_config',
+            parts: ['/','etc','ssh','sshd_config'],
+            result: '目标：/etc/ssh/sshd_config',
+            type: 'absolute'
+          },
+          {
+            title: '相对路径从当前位置开始',
+            text: 'docs/report.md没有以“/”开头，Shell会把它接在当前工作目录后面。因此它最终指向项目目录中的报告。',
+            q: '当前目录改成/home/rocky-server后，同一条命令还会找到原文件吗？',
+            cwd: '/home/rocky-server/m1-project',
+            command: 'cat docs/report.md',
+            parts: ['当前位置','docs','report.md'],
+            result: '目标：/home/rocky-server/m1-project/docs/report.md',
+            type: 'relative'
+          },
+          {
+            title: '“.”停留，“..”返回上一级',
+            text: './明确表示当前目录；../先从m1-project回到rocky-server的家目录，再进入backup。系统会按顺序解析每一段。',
+            q: '连续写../../会向上移动几级？到达“/”后还能继续向上吗？',
+            cwd: '/home/rocky-server/m1-project',
+            command: 'cd ../backup',
+            parts: ['当前位置','..','backup'],
+            result: '目标：/home/rocky-server/backup',
+            type: 'parent'
+          },
+          {
+            title: '“~”由Shell展开为当前用户家目录',
+            text: '~/docs通常先被Shell展开成/home/当前用户/docs。它方便个人操作，但脚本以不同账号运行时，展开结果也会改变。',
+            q: 'root和rocky-server分别执行cd ~/docs，会进入同一个目录吗？',
+            cwd: '/var/log',
+            command: 'cd ~/docs',
+            parts: ['~ → /home/rocky-server','docs'],
+            result: '目标：/home/rocky-server/docs',
+            type: 'home'
+          }
+        ]
+      },
+      links: {
+        visualTitle: '文件名、inode与数据不是同一个对象',
+        tag: 'Directory Entry & inode',
+        steps: [
+          {
+            title: '目录项把文件名映射到inode',
+            text: '目录中保存“文件名→inode号”的映射。inode记录类型、权限、所有者、时间和数据块位置等元数据，文件内容位于数据块中。',
+            q: '重命名同一文件时，数据内容必须整体复制一次吗？',
+            state: 'original',
+            command: 'printf data > report.txt    # report.txt → inode 2048 → 数据块'
+          },
+          {
+            title: '硬链接增加同一inode的名字',
+            text: 'ln创建新的目录项。report.txt与report.hard名称不同，但都指向inode 2048；链接计数变为2，修改任一名称看到的是同一份内容。',
+            q: '硬链接是原文件的一份独立备份吗？',
+            state: 'hard',
+            command: 'ln report.txt report.hard    # 两个文件名，同一inode'
+          },
+          {
+            title: '符号链接保存目标路径',
+            text: 'ln -s创建一个拥有自己inode的特殊文件。它的数据不是报告内容，而是字符串report.txt；访问时系统再沿这个路径寻找目标。',
+            q: '软链接和目标文件的inode号应该相同吗？',
+            state: 'soft',
+            command: 'ln -s report.txt report.soft    # 新inode保存目标路径'
+          },
+          {
+            title: '删除原名后，两种链接表现不同',
+            text: 'rm report.txt只删除这个目录项。inode 2048仍被report.hard引用，所以数据保留；report.soft保存的路径失去目标，于是成为断链。',
+            q: '此时用cat读取report.hard和report.soft，哪个仍然成功？',
+            state: 'deleted',
+            command: 'rm report.txt    # 硬链接可读；软链接断开'
+          },
+          {
+            title: '链接不能替代备份',
+            text: '硬链接共享同一数据，误修改会同时体现；软链接只保存路径，目标删除就失效。真正的备份必须是独立副本，并且完成恢复验证。',
+            q: 'cp report.hard backup/report.copy与ln report.hard backup/report.link，哪个更接近独立备份？',
+            state: 'lesson',
+            command: 'stat report.hard report.soft    # 比较inode、类型与链接计数'
+          }
+        ]
+      }
+    };
+
+    let sceneKey = 'tree';
+    let stepIndex = 0;
+    let timer = null;
+    const byId = id => document.getElementById(id);
+    const esc = text => String(text).replace(/[&<>"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]));
+
+    function treeVisual(step) {
+      if (step.view === 'merge') {
+        return '<div class="tree"><div class="root-node"><strong>/</strong><span>根目录</span></div><div class="merge-flow">' +
+          '<div class="merge-box"><b>/bin/ls</b><br><small>兼容入口</small></div><div class="arrow">→</div>' +
+          '<div class="merge-box pulse"><b>/usr/bin/ls</b><br><small>通常的实际位置</small></div></div>' +
+          '<div class="merge-flow"><div class="merge-box">/sbin → /usr/sbin</div><div class="merge-box">/lib → /usr/lib</div><div class="merge-box">/lib64 → /usr/lib64</div></div>' +
+          '<div class="tree-note"><code>ls -ld /bin</code> 查看链接　·　<code>readlink -f /bin/ls</code> 查看最终目标</div></div>';
+      }
+      if (step.view === 'mount') {
+        return '<div class="tree"><div class="root-node"><strong>/</strong><span>单一命名空间</span></div><div class="trunk"></div>' +
+          '<div class="merge-flow"><div class="merge-box"><b>新磁盘文件系统</b><br><small>/dev/sdb1</small></div><div class="arrow">挂载 →</div>' +
+          '<div class="merge-box pulse"><b>/mnt/data</b><br><small>访问入口</small></div></div>' +
+          '<div class="tree-note">磁盘设备、文件系统、挂载点是三个不同概念。<code>findmnt /mnt/data</code>可验证关系。</div></div>';
+      }
+      if (step.view === 'choices') {
+        return '<div class="choice-grid">' +
+          '<div class="choice"><strong>项目脚本</strong><span>~/m1-project/scripts 或组织约定目录</span></div>' +
+          '<div class="choice"><strong>Nginx配置</strong><span>/etc/nginx</span></div>' +
+          '<div class="choice"><strong>服务日志</strong><span>/var/log/nginx</span></div>' +
+          '<div class="choice"><strong>临时解压</strong><span>/tmp 或个人练习目录，完成后清理</span></div>' +
+          '</div>';
+      }
+      const active = step.active || [];
+      const dirs = step.view === 'root' ? directoryItems.slice(0,5) : directoryItems;
+      return '<div class="tree"><div class="root-node pulse"><strong>/</strong><span>根目录：整棵树唯一的顶点</span></div><div class="trunk"></div><div class="dirs">' +
+        dirs.map(item => '<div class="dir ' + (active.includes(item[0]) ? 'active ' : '') + (item[0].includes('→') ? 'link ' : '') + (['/proc','/sys','/run'].includes(item[0]) ? 'virtual' : '') + '">' +
+          '<strong>' + item[0] + '</strong><span>' + item[1] + '</span></div>').join('') +
+        '</div><div class="tree-note">注意：<code>/</code>是根目录，<code>/root</code>是root账号的家目录。</div></div>';
+    }
+
+    function pathVisual(step) {
+      const parts = step.parts.map((part, index) => {
+        let cls = 'segment';
+        if (part === '/') cls += ' root';
+        else if (part === '..') cls += ' up';
+        else if (index === step.parts.length - 1) cls += ' target';
+        else cls += ' current';
+        const separator = index && !(index === 1 && step.parts[0] === '/') ? '<span class="slash">/</span>' : '';
+        return separator + '<span class="' + cls + '" style="animation-delay:' + (index * .12) + 's">' + esc(part) + '</span>';
+      }).join('');
+      return '<div class="path-scene"><div class="cwd"><small>当前工作目录（pwd）</small><code>' + esc(step.cwd) + '</code></div>' +
+        '<div class="terminal"><span class="prompt">[rocky-server]$</span> ' + esc(step.command) + '</div>' +
+        '<div class="segments">' + parts + '</div><div class="result">' + esc(step.result) + '</div></div>';
+    }
+
+    function linksVisual(step) {
+      const showHard = ['hard','soft','deleted','lesson'].includes(step.state);
+      const showSoft = ['soft','deleted','lesson'].includes(step.state);
+      const deleted = ['deleted','lesson'].includes(step.state);
+      const left = '<div class="stack">' +
+        '<div class="object ' + (deleted ? 'deleted' : '') + '"><strong>report.txt</strong><small>目录项：文件名 → 2048</small></div>' +
+        (showHard ? '<div class="object ' + (step.state === 'hard' ? 'pulse' : '') + '"><strong>report.hard</strong><small>目录项：文件名 → 2048</small><i class="badge">硬链接可读</i></div>' : '') +
+        '</div>';
+      const linkCount = !showHard ? 1 : deleted ? 1 : 2;
+      const inode = '<div class="object inode ' + (showHard ? 'pulse' : '') + '"><strong>inode 2048</strong><small>类型、权限、属主、时间、数据块位置<br>硬链接计数：' + linkCount + '</small></div>';
+      const data = '<div class="object data"><strong>数据块</strong><small>report content</small></div>';
+      const softTrack = showSoft ? '<div class="soft-track"><div class="object symlink ' + (deleted ? 'broken' : '') + '"><strong>report.soft</strong><small>目录项 → inode 3170</small></div><div class="flow-arrow dashed">→</div><div class="object symlink"><strong>inode 3170</strong><small>保存路径字符串“report.txt”</small></div><div class="flow-arrow dashed">→</div><div class="object ' + (deleted ? 'broken' : '') + '"><strong>' + (deleted ? '目标不存在' : '按路径找到 report.txt') + '</strong><small>' + (deleted ? '符号链接断开' : '再进入inode 2048') + '</small></div></div>' : '';
+      return '<div class="link-scene">' + left + '<div class="flow-arrow">→</div>' + inode + '<div class="flow-arrow">→</div>' + data +
+        softTrack + '<div class="command-strip"><b>[rocky-server]$</b> ' + esc(step.command) + '</div></div>';
+    }
+
+    function stop() {
+      if (timer) clearInterval(timer);
+      timer = null;
+      byId('play').textContent = '▶ 播放';
+    }
+
+    function render() {
+      const scene = scenes[sceneKey];
+      const step = scene.steps[stepIndex];
+      document.querySelectorAll('.tab').forEach(tab => tab.classList.toggle('active', tab.dataset.scene === sceneKey));
+      byId('visualTitle').textContent = scene.visualTitle;
+      byId('conceptTag').textContent = scene.tag;
+      byId('counter').textContent = '第 ' + (stepIndex + 1) + ' / ' + scene.steps.length + ' 步';
+      byId('stepTitle').textContent = step.title;
+      byId('stepText').textContent = step.text;
+      byId('questionText').textContent = step.q;
+      byId('visual').innerHTML = sceneKey === 'tree' ? treeVisual(step) : sceneKey === 'path' ? pathVisual(step) : linksVisual(step);
+    }
+
+    function next() {
+      const length = scenes[sceneKey].steps.length;
+      stepIndex = (stepIndex + 1) % length;
+      render();
+    }
+    function prev() {
+      const length = scenes[sceneKey].steps.length;
+      stepIndex = (stepIndex - 1 + length) % length;
+      render();
+    }
+    function togglePlay() {
+      if (timer) return stop();
+      byId('play').textContent = '❚❚ 暂停';
+      next();
+      timer = setInterval(next, 5600);
+    }
+
+    document.querySelectorAll('.tab').forEach(tab => tab.addEventListener('click', () => {
+      stop();
+      sceneKey = tab.dataset.scene;
+      stepIndex = 0;
+      render();
+    }));
+    byId('prev').addEventListener('click', () => { stop(); prev(); });
+    byId('next').addEventListener('click', () => { stop(); next(); });
+    byId('restart').addEventListener('click', () => { stop(); stepIndex = 0; render(); });
+    byId('play').addEventListener('click', togglePlay);
+    document.addEventListener('keydown', event => {
+      if (event.key === 'ArrowRight') { stop(); next(); }
+      if (event.key === 'ArrowLeft') { stop(); prev(); }
+      if (event.key === ' ') { event.preventDefault(); togglePlay(); }
+      if (['1','2','3'].includes(event.key)) {
+        stop();
+        sceneKey = ['tree','path','links'][Number(event.key)-1];
+        stepIndex = 0;
+        render();
+      }
+    });
+    render();
+  </script>
+</body>
+</html>

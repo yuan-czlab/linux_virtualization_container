@@ -116,10 +116,21 @@ vc-db（back-net）
 
 ```bash
 mkdir -p ~/vc-course/evidence ~/vc-course/lab08/site ~/vc-course/lab08/backup
+source ~/vc-course/course-env.sh
+cat > ~/vc-course/lab08/images.sh <<EOF
+export VC_WEB_IMAGE='$COURSE_REGISTRY/vc/web:$COURSE_TAG'
+export VC_API_IMAGE='$COURSE_REGISTRY/vc/api:$COURSE_TAG'
+export VC_MYSQL_IMAGE='$COURSE_REGISTRY/vc/mysql:$COURSE_TAG'
+export VC_TOOLBOX_IMAGE='$COURSE_REGISTRY/vc/toolbox:$COURSE_TAG'
+EOF
+chmod 600 ~/vc-course/lab08/images.sh
+source ~/vc-course/lab08/images.sh
+sudo docker image inspect "$VC_WEB_IMAGE" "$VC_API_IMAGE" \
+  "$VC_MYSQL_IMAGE" "$VC_TOOLBOX_IMAGE" >/dev/null
 sudo docker image ls --digests
 ```
 
-逐项确认课程Web、API、MySQL和工具镜像存在。缺少时从课程仓库拉取或导入教师离线包。
+上述`docker image inspect`返回0才表示四个固定标签镜像全部存在。缺少时从课程仓库拉取或导入教师离线包。若中途重新打开终端，先执行`source ~/vc-course/lab08/images.sh`再继续本实验。
 
 #### 步骤2：确认名称未占用
 
@@ -152,12 +163,13 @@ sudo docker network inspect vc-back-net
 #### 步骤4：运行API容器
 
 ```bash
+source ~/vc-course/lab08/images.sh
 sudo docker run -d \
   --name vc-api \
   --network vc-front-net \
   -e APP_ENV=lab08 \
   -e DB_HOST=vc-db \
-  <COURSE_REGISTRY>/vc/api:<COURSE_TAG>
+  "$VC_API_IMAGE"
 ```
 
 把API再连接到后端网络：
@@ -171,18 +183,20 @@ sudo docker inspect vc-api \
 #### 步骤5：使用工具容器验证名称解析
 
 ```bash
+source ~/vc-course/lab08/images.sh
 sudo docker run --rm \
   --network vc-front-net \
-  <COURSE_REGISTRY>/vc/toolbox:<COURSE_TAG> \
+  "$VC_TOOLBOX_IMAGE" \
   getent hosts vc-api
 ```
 
 继续访问健康接口，实际命令以工具镜像包含的客户端为准：
 
 ```bash
+source ~/vc-course/lab08/images.sh
 sudo docker run --rm \
   --network vc-front-net \
-  <COURSE_REGISTRY>/vc/toolbox:<COURSE_TAG> \
+  "$VC_TOOLBOX_IMAGE" \
   curl --fail http://vc-api:8080/health
 ```
 
@@ -193,9 +207,10 @@ sudo docker run --rm \
 仅连接`vc-front-net`的临时容器不应解析尚未创建的`vc-db`。数据库创建后再次验证：
 
 ```bash
+source ~/vc-course/lab08/images.sh
 sudo docker run --rm \
   --network vc-front-net \
-  <COURSE_REGISTRY>/vc/toolbox:<COURSE_TAG> \
+  "$VC_TOOLBOX_IMAGE" \
   getent hosts vc-db || echo 'DB_NOT_VISIBLE_ON_FRONT_NET'
 ```
 
@@ -223,13 +238,15 @@ chmod 644 ~/vc-course/lab08/site/index.html
 Rocky启用SELinux时使用`:Z`为此容器私有重标记：
 
 ```bash
+source ~/vc-course/course-env.sh
+source ~/vc-course/lab08/images.sh
 VC_SITE_DIR="$(readlink -f ~/vc-course/lab08/site)"
 sudo docker run -d \
   --name vc-web \
   --network vc-front-net \
-  -p 8082:80 \
+  -p "$ROCKY_SERVER_IP:8082:80" \
   -v "$VC_SITE_DIR:/usr/share/nginx/html:ro,Z" \
-  <COURSE_REGISTRY>/vc/web:<COURSE_TAG>
+  "$VC_WEB_IMAGE"
 unset VC_SITE_DIR
 ```
 
@@ -245,25 +262,38 @@ sudo docker inspect vc-web --format '{{json .Mounts}}'
 #### 步骤9：验证绑定挂载
 
 ```bash
-curl --fail http://127.0.0.1:8082/ | grep VC_BIND_MOUNT_OK
+source ~/vc-course/course-env.sh
+curl --fail "http://$ROCKY_SERVER_IP:8082/" | grep VC_BIND_MOUNT_OK
 sudo docker logs --tail 20 vc-web
 ls -lZ ~/vc-course/lab08/site
 ```
 
-在Ubuntu客户端：
+跨主机验证前，记录Docker实际发布地址和过滤链：
 
 ```bash
-curl --fail http://<ROCKY_IP>:8082/ | grep VC_BIND_MOUNT_OK
+sudo docker port vc-web
+sudo iptables -S DOCKER-USER 2>/dev/null || true
+sudo firewall-cmd --state
 ```
 
-如跨主机访问失败，按Linux课程方法检查Docker发布端口、Rocky路由与防火墙。记录Docker端口规则与firewalld的实际交互，不永久关闭防火墙。
+Docker发布端口可能绕过只看firewalld zone所得出的直觉结论，因此本实验不使用“临时开放8082”来证明安全。端口只绑定`rocky-server`的指定地址并运行在隔离VMnet8中；生产来源限制应使用`DOCKER-USER`链或上游防火墙。
+
+然后切换到Ubuntu执行：
+
+```bash
+source ~/vc-course/course-env.sh
+curl --fail "http://$ROCKY_SERVER_IP:8082/" | grep VC_BIND_MOUNT_OK
+```
+
+如跨主机访问失败，按Linux课程方法检查绑定地址、Docker发布端口、Rocky路由和`DOCKER-USER`链。记录Docker规则与firewalld的实际交互，不永久关闭防火墙。
 
 #### 步骤10：修改主机文件并观察容器
 
 ```bash
 sed -i 's/VC_BIND_MOUNT_OK/VC_BIND_MOUNT_UPDATED/' \
   ~/vc-course/lab08/site/index.html
-curl --fail http://127.0.0.1:8082/ | grep VC_BIND_MOUNT_UPDATED
+source ~/vc-course/course-env.sh
+curl --fail "http://$ROCKY_SERVER_IP:8082/" | grep VC_BIND_MOUNT_UPDATED
 ```
 
 不重建容器即可看到变化，说明容器直接读取主机挂载目录。
@@ -282,6 +312,7 @@ sudo docker volume inspect vc-mysql-data
 #### 步骤12：启动数据库容器
 
 ```bash
+source ~/vc-course/lab08/images.sh
 sudo docker run -d \
   --name vc-db \
   --network vc-back-net \
@@ -290,7 +321,7 @@ sudo docker run -d \
   -e MYSQL_USER='vcuser' \
   -e MYSQL_PASSWORD='LabUser-ChangeMe!' \
   -v vc-mysql-data:/var/lib/mysql \
-  <COURSE_REGISTRY>/vc/mysql:<COURSE_TAG>
+  "$VC_MYSQL_IMAGE"
 ```
 
 本密码仅用于隔离课程环境，不提交到Git。实验10将使用环境变量模板统一管理。
@@ -329,9 +360,10 @@ sudo docker exec vc-api getent hosts vc-db
 如果API镜像没有`getent`，使用工具容器：
 
 ```bash
+source ~/vc-course/lab08/images.sh
 sudo docker run --rm \
   --network vc-back-net \
-  <COURSE_REGISTRY>/vc/toolbox:<COURSE_TAG> \
+  "$VC_TOOLBOX_IMAGE" \
   getent hosts vc-db
 ```
 
@@ -362,6 +394,7 @@ sudo docker volume ls --filter name=vc-mysql-data
 使用相同卷重建：
 
 ```bash
+source ~/vc-course/lab08/images.sh
 sudo docker run -d \
   --name vc-db \
   --network vc-back-net \
@@ -370,7 +403,7 @@ sudo docker run -d \
   -e MYSQL_USER='vcuser' \
   -e MYSQL_PASSWORD='LabUser-ChangeMe!' \
   -v vc-mysql-data:/var/lib/mysql \
-  <COURSE_REGISTRY>/vc/mysql:<COURSE_TAG>
+  "$VC_MYSQL_IMAGE"
 ```
 
 等待就绪后查询：
@@ -397,10 +430,11 @@ sudo docker stop vc-db
 
 ```bash
 cd ~/vc-course/lab08
+source ~/vc-course/lab08/images.sh
 sudo docker run --rm \
   -v vc-mysql-data:/source:ro \
   -v "$PWD/backup:/backup:Z" \
-  <COURSE_REGISTRY>/vc/toolbox:<COURSE_TAG> \
+  "$VC_TOOLBOX_IMAGE" \
   sh -c 'cd /source && tar -cpf /backup/vc-mysql-data.tar .'
 sudo chown "$(id -u):$(id -g)" backup/vc-mysql-data.tar
 ls -lh backup/vc-mysql-data.tar
@@ -416,11 +450,13 @@ tar -tf backup/vc-mysql-data.tar | sed -n '1,20p'
 为降低风险，不立即删除原卷，先恢复到新卷：
 
 ```bash
+cd ~/vc-course/lab08
+source ~/vc-course/lab08/images.sh
 sudo docker volume create vc-mysql-restored
 sudo docker run --rm \
   -v vc-mysql-restored:/target \
   -v "$PWD/backup:/backup:ro,Z" \
-  <COURSE_REGISTRY>/vc/toolbox:<COURSE_TAG> \
+  "$VC_TOOLBOX_IMAGE" \
   sh -c 'cd /target && tar -xpf /backup/vc-mysql-data.tar'
 sudo docker volume inspect vc-mysql-restored
 ```
@@ -428,6 +464,7 @@ sudo docker volume inspect vc-mysql-restored
 #### 步骤20：使用恢复卷启动验证容器
 
 ```bash
+source ~/vc-course/lab08/images.sh
 sudo docker run -d \
   --name vc-db-restored \
   --network vc-back-net \
@@ -436,7 +473,7 @@ sudo docker run -d \
   -e MYSQL_USER='vcuser' \
   -e MYSQL_PASSWORD='LabUser-ChangeMe!' \
   -v vc-mysql-restored:/var/lib/mysql \
-  <COURSE_REGISTRY>/vc/mysql:<COURSE_TAG>
+  "$VC_MYSQL_IMAGE"
 ```
 
 等待就绪后：
@@ -458,9 +495,10 @@ sudo docker exec vc-db-restored mysql \
 创建一次预期失败：
 
 ```bash
+source ~/vc-course/lab08/images.sh
 sudo docker run --rm \
   --network vc-wrong-net \
-  <COURSE_REGISTRY>/vc/toolbox:<COURSE_TAG> \
+  "$VC_TOOLBOX_IMAGE" \
   true
 ```
 
@@ -552,7 +590,7 @@ lab08-学号-姓名/
 确认使用自定义bridge而不是默认bridge，并检查两个容器是否共享同一网络：
 
 ```bash
-sudo docker inspect <容器名> --format '{{json .NetworkSettings.Networks}}'
+sudo docker inspect vc-api --format '{{json .NetworkSettings.Networks}}'
 ```
 
 业务配置应使用稳定的容器或服务名称，不记录临时容器IP。
@@ -563,7 +601,8 @@ sudo docker inspect <容器名> --format '{{json .NetworkSettings.Networks}}'
 sudo docker container ls --filter name=vc-web
 sudo docker port vc-web
 sudo ss -lntp | grep ':8082'
-curl -v http://127.0.0.1:8082/
+source ~/vc-course/course-env.sh
+curl -v "http://$ROCKY_SERVER_IP:8082/"
 sudo docker logs --tail 50 vc-web
 ```
 

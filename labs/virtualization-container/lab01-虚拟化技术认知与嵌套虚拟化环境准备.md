@@ -10,7 +10,7 @@
 >
 > 知识前置：《Linux操作系统》核心能力、计算机组成原理和网络基础
 >
-> 状态依赖：Linux课程保留的三台VM及最终交付环境，Windows宿主机能够启用嵌套虚拟化
+> 状态依赖：Linux课程保留的三台VM及`Linux-L4`；本机或本组指定机位能够启用嵌套虚拟化
 >
 > 建议起点：`Linux-L4`
 >
@@ -131,6 +131,8 @@ ubuntu-client
 
 若名称不一致，先对照Linux实验1核实虚拟机身份，再在VMware中改正显示名称；不要新建重复虚拟机。三台机器的网络适配器继续使用Linux课程确定的同一VMnet。
 
+在修改任何VMware硬件设置前，确认三台VM均有Linux课程结束时建立的`Linux-L4`快照，并核对快照说明中的日期、IP和服务清单。还应确认教师保存的`Linux-L4`独立VM副本可定位；只有快照而没有独立副本，不能应对虚拟机目录被机房还原或损坏。
+
 ### 任务二：检查三机基线
 
 #### 步骤3：在`rocky-server`记录基线
@@ -164,12 +166,57 @@ mkdir -p ~/vc-course/evidence ~/vc-course/backup
   df -hT
   ip -brief address
   ip route
+  nmcli connection show --active
+  test -d ~/m1-project && echo 'm1_project=present' || echo 'm1_project=missing'
   systemctl is-active sshd
+  systemctl is-active firewalld
   getenforce
 } > ~/vc-course/evidence/lab01-rocky-server-baseline.txt
 ```
 
-预期：系统为Rocky Linux 9，SSH为active，根文件系统空间满足后续镜像需要，SELinux保持Enforcing。
+预期：系统为Rocky Linux 9，`course-static`或教师登记的静态连接处于活动状态，`~/m1-project`存在，SSH与firewalld为active，根文件系统空间满足后续镜像需要，SELinux保持Enforcing。缺失项应先从`Linux-L4`恢复，不能在第二门课创建空目录冒充成果。
+
+#### 步骤3A：建立第二门课程统一参数文件
+
+课程媒体目录、镜像仓库和平台地址会随学期或机房变化，但它们不应散落在每条命令中反复手填。在`rocky-server`创建统一参数文件；如果文件已存在则保留原内容：
+
+```bash
+mkdir -p ~/vc-course
+if [[ ! -f ~/vc-course/course-env.sh ]]; then
+  cat > ~/vc-course/course-env.sh <<'EOF'
+[[ -r "$HOME/m1-project/course-env.sh" ]] && source "$HOME/m1-project/course-env.sh"
+export COURSE_MEDIA='CHANGE_ME'
+export COURSE_REGISTRY='CHANGE_ME'
+export COURSE_REGISTRY_USER='CHANGE_ME'
+export COURSE_TAG='CHANGE_ME'
+export ROCKY_DOCKER_VERSION='CHANGE_ME'
+export UBUNTU_DOCKER_VERSION='CHANGE_ME'
+export OPENSTACK_URL='CHANGE_ME'
+export OPENSTACK_KEY_SOURCE='CHANGE_ME'
+export OPENSTACK_IMAGE_USER='CHANGE_ME'
+export OPENSTACK_INSTANCE_IP='CHANGE_ME'
+export K8S_CONTEXT='CHANGE_ME'
+export K8S_NAMESPACE='CHANGE_ME'
+export K8S_IMAGE='CHANGE_ME'
+export KUBECONFIG_SOURCE='CHANGE_ME'
+EOF
+  chmod 600 ~/vc-course/course-env.sh
+fi
+nano ~/vc-course/course-env.sh
+```
+
+将教师本学期已经发布的值写在等号右侧，变量值保留单引号。尚未创建的OpenStack实例地址、个人私钥下载路径等动态值可以暂时保留`CHANGE_ME`，但进入对应实验前必须填写并通过该实验的单项检查。文件只保存地址、目录、命名空间和非机密标签，不保存平台密码或仓库密码。保存后核验本阶段立即要用的三项：
+
+```bash
+source ~/vc-course/course-env.sh
+printf 'media=%s\nregistry=%s\ntag=%s\n' \
+  "$COURSE_MEDIA" "$COURSE_REGISTRY" "$COURSE_TAG"
+[[ "$COURSE_MEDIA" != 'CHANGE_ME' && -d "$COURSE_MEDIA" ]]
+[[ "$COURSE_REGISTRY" != 'CHANGE_ME' ]]
+[[ "$COURSE_TAG" != 'CHANGE_ME' ]]
+```
+
+任一核验命令返回非0时先修正参数，不继续执行依赖该参数的实验。此文件随`VC-V0`及后续检查点保留；在`ubuntu-client`进入Docker阶段时，从`rocky-server`安全复制同一份非机密参数文件。
 
 #### 步骤4：在`ubuntu-client`和`rocky-web`记录基线
 
@@ -187,6 +234,9 @@ mkdir -p ~/vc-course/evidence ~/vc-course/backup
   df -hT
   ip -brief address
   ip route
+  nmcli connection show --active
+  test -d ~/m1-project && echo 'm1_project=present' || echo 'm1_project=missing'
+  test -f ~/.ssh/config && sed -n '/^Host rocky-server$/,/^$/p' ~/.ssh/config || true
   systemctl is-active ssh
 } > ~/vc-course/evidence/lab01-ubuntu-baseline.txt
 ```
@@ -211,7 +261,10 @@ mkdir -p ~/vc-course/evidence
   hostnamectl
   cat /etc/os-release
   ip -brief address
+  nmcli connection show --active
+  test -d ~/m1-project && echo 'm1_project=present' || echo 'm1_project=missing'
   systemctl is-active sshd
+  systemctl is-active firewalld
   systemctl is-active nginx
 } > ~/vc-course/evidence/lab01-rocky-web-baseline.txt
 ```
@@ -242,7 +295,7 @@ sudo systemctl poweroff
 
 不同VMware版本的中文名称可能不同，应以“向客户机暴露硬件辅助虚拟化能力”为判断标准。
 
-如果选项不可勾选或启动时报“VMware与Hyper-V不兼容”“不支持嵌套虚拟化”等错误，记录完整提示并使用教师准备的远程KVM环境，不自行删除虚拟机。
+如果选项不可勾选或启动时报“VMware与Hyper-V不兼容”“不支持嵌套虚拟化”等错误，记录完整提示，不自行关闭Windows安全功能或删除虚拟机。先切换到本组课前已经验证通过的KVM机位；若整组机位都不支持，再使用教师准备的远程KVM环境。分组共享只改变操作入口，每名学生仍需独立完成命令解释、证据记录和答辩。
 
 #### 步骤7：只启动`rocky-server`并检查CPU标志
 
@@ -259,7 +312,7 @@ Intel处理器通常应看到`vmx`，AMD处理器通常应看到`svm`。继续�
 grep -Eoc '(vmx|svm)' /proc/cpuinfo
 ```
 
-正常结果应大于0。如果为0，说明Rocky没有获得硬件虚拟化能力，后续即使安装软件包也不能正常使用KVM加速。
+正常结果应大于0。如果为0，说明Rocky没有获得硬件虚拟化能力，后续即使安装软件包也不能正常使用KVM加速。本机不继续实验2，按前一步切换到已验证机位或远程KVM主机；不要把纯QEMU软件模拟的慢速结果冒充KVM验收。
 
 #### 步骤8：检查内核设备准备状态
 
@@ -299,7 +352,7 @@ lsmod | grep '^kvm' || echo 'KVM模块尚未加载'
 为三台虚拟机分别创建快照。`rocky-server`应先正常关闭，另外两台此时本来就应处于关机状态：
 
 ```text
-VC-00-课程基线
+VC-V0-课程基线
 ```
 
 快照说明至少写明：
@@ -331,9 +384,10 @@ Windows → VMware → rocky-web（Linux课程Web角色，按需启动）
 - [ ] Windows任务管理器显示虚拟化已启用，或已记录教师确认的替代环境。
 - [ ] 三台虚拟机的身份、角色和基线文件完整。
 - [ ] `ubuntu-client`能够通过SSH连接两台Rocky。
+- [ ] 三机静态连接、`~/m1-project`、firewalld、SELinux和Linux服务成果已经核对。
 - [ ] `rocky-server`的`vmx`或`svm`统计值大于0。
 - [ ] `rocky-server`资源满足机房统一要求。
-- [ ] 三台VM均存在`VC-00-课程基线`快照。
+- [ ] 三台VM均存在`VC-V0-课程基线`快照。
 - [ ] 虚拟化层次图对象与上下层关系正确。
 
 ## 九、成果提交
@@ -381,6 +435,6 @@ lab01-学号-姓名/
 
 ## 十二、环境保留或清理
 
-- 保留三台虚拟机及各自的`VC-00-课程基线`快照。
+- 保留三台虚拟机及各自的`VC-V0-课程基线`快照。
 - 保留`~/vc-course/evidence`。
 - 不安装或删除KVM、Docker；安装从对应实验开始。

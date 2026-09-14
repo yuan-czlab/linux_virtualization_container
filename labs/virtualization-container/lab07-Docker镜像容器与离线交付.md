@@ -135,16 +135,19 @@ sudo docker system df
 如果仓库允许匿名只读：
 
 ```bash
-sudo docker pull <COURSE_REGISTRY>/vc/web:<COURSE_TAG>
+source ~/vc-course/course-env.sh
+WEB_IMAGE="$COURSE_REGISTRY/vc/web:$COURSE_TAG"
+sudo docker pull "$WEB_IMAGE"
 ```
 
 需要登录时，教师通过安全渠道提供个人或课程只读凭据。避免把密码直接写在命令参数：
 
 ```bash
+source ~/vc-course/course-env.sh
 read -rsp 'Registry password: ' VC_REGISTRY_PASSWORD
 printf '%s' "$VC_REGISTRY_PASSWORD" \
-  | sudo docker login <COURSE_REGISTRY> \
-      --username '<COURSE_REGISTRY_USER>' \
+  | sudo docker login "$COURSE_REGISTRY" \
+      --username "$COURSE_REGISTRY_USER" \
       --password-stdin
 unset VC_REGISTRY_PASSWORD
 ```
@@ -152,7 +155,8 @@ unset VC_REGISTRY_PASSWORD
 实验结束按教师要求退出：
 
 ```bash
-sudo docker logout <COURSE_REGISTRY>
+source ~/vc-course/course-env.sh
+sudo docker logout "$COURSE_REGISTRY"
 ```
 
 #### 步骤4：离线导入回退
@@ -160,14 +164,18 @@ sudo docker logout <COURSE_REGISTRY>
 若仓库不可达，先验证教师归档：
 
 ```bash
-sha256sum <COURSE_MEDIA>/docker-images/vc-web-<COURSE_TAG>.tar
+source ~/vc-course/course-env.sh
+WEB_ARCHIVE="$COURSE_MEDIA/docker-images/vc-web-$COURSE_TAG.tar"
+sha256sum "$WEB_ARCHIVE"
 ```
 
 与清单一致后：
 
 ```bash
+source ~/vc-course/course-env.sh
+WEB_ARCHIVE="$COURSE_MEDIA/docker-images/vc-web-$COURSE_TAG.tar"
 sudo docker load -i \
-  <COURSE_MEDIA>/docker-images/vc-web-<COURSE_TAG>.tar
+  "$WEB_ARCHIVE"
 ```
 
 导入后完整镜像名称必须与后续命令一致。如果离线包中的标签不同，使用教师清单规定的`docker tag`补充，不能自行猜测仓库地址。
@@ -177,13 +185,15 @@ sudo docker load -i \
 #### 步骤5：查看镜像身份
 
 ```bash
+source ~/vc-course/course-env.sh
+WEB_IMAGE="$COURSE_REGISTRY/vc/web:$COURSE_TAG"
 sudo docker image ls --digests \
-  <COURSE_REGISTRY>/vc/web
+  "$COURSE_REGISTRY/vc/web"
 sudo docker image inspect \
-  <COURSE_REGISTRY>/vc/web:<COURSE_TAG> \
+  "$WEB_IMAGE" \
   --format 'id={{.Id}} arch={{.Architecture}} os={{.Os}} size={{.Size}}'
 sudo docker image inspect \
-  <COURSE_REGISTRY>/vc/web:<COURSE_TAG> \
+  "$WEB_IMAGE" \
   --format '{{json .RepoDigests}}'
 ```
 
@@ -192,10 +202,12 @@ sudo docker image inspect \
 #### 步骤6：查看历史与配置
 
 ```bash
+source ~/vc-course/course-env.sh
+WEB_IMAGE="$COURSE_REGISTRY/vc/web:$COURSE_TAG"
 sudo docker history --no-trunc \
-  <COURSE_REGISTRY>/vc/web:<COURSE_TAG> | sed -n '1,15p'
+  "$WEB_IMAGE" | sed -n '1,15p'
 sudo docker image inspect \
-  <COURSE_REGISTRY>/vc/web:<COURSE_TAG> \
+  "$WEB_IMAGE" \
   --format 'entrypoint={{json .Config.Entrypoint}} cmd={{json .Config.Cmd}} ports={{json .Config.ExposedPorts}} user={{json .Config.User}}'
 ```
 
@@ -215,10 +227,12 @@ sudo docker container inspect vc-web01 >/dev/null 2>&1 \
 确认没有同名课程容器后：
 
 ```bash
+source ~/vc-course/course-env.sh
+WEB_IMAGE="$COURSE_REGISTRY/vc/web:$COURSE_TAG"
 sudo docker create \
   --name vc-web01 \
-  -p 8081:80 \
-  <COURSE_REGISTRY>/vc/web:<COURSE_TAG>
+  -p "$ROCKY_SERVER_IP:8081:80" \
+  "$WEB_IMAGE"
 sudo docker container ls -a --filter name=vc-web01
 ```
 
@@ -231,16 +245,29 @@ sudo docker start vc-web01
 sudo docker container ls --filter name=vc-web01
 sudo docker port vc-web01
 sudo ss -lntp | grep ':8081'
-curl --fail http://127.0.0.1:8081/ | grep VC_WEB_OK
+source ~/vc-course/course-env.sh
+curl --fail "http://$ROCKY_SERVER_IP:8081/" | grep VC_WEB_OK
 ```
 
-从另一台Linux主机访问：
+跨主机验证前，在`rocky-server`记录发布地址和Docker过滤链：
 
 ```bash
-curl --fail http://<ROCKY_IP>:8081/ | grep VC_WEB_OK
+source ~/vc-course/course-env.sh
+sudo docker port vc-web01
+sudo iptables -S DOCKER-USER 2>/dev/null || true
+sudo firewall-cmd --state
 ```
 
-如果跨主机失败，结合Rocky firewalld和Docker转发规则排查，不通过关闭防火墙长期解决。
+Docker发布端口会建立自己的包过滤和转发规则，不能把`firewall-cmd --add-port`或“UFW显示拒绝”当成可靠的容器访问控制。本实验通过绑定`rocky-server`的指定IPv4地址和隔离的VMnet8网络限制暴露面；生产环境还应在`DOCKER-USER`链或上游防火墙实施来源策略。
+
+然后从另一台Linux主机执行：
+
+```bash
+source ~/vc-course/course-env.sh
+curl --fail "http://$ROCKY_SERVER_IP:8081/" | grep VC_WEB_OK
+```
+
+如果跨主机失败，结合绑定地址、Rocky路由、Docker端口映射和`DOCKER-USER`链排查，不通过关闭防火墙长期解决。
 
 #### 步骤9：查看日志、进程和配置
 
@@ -270,18 +297,21 @@ sudo docker exec vc-web01 sh -c \
 ```bash
 sudo docker stop --time 10 vc-web01
 sudo docker container ls -a --filter name=vc-web01
-curl --connect-timeout 2 http://127.0.0.1:8081/ || true
+source ~/vc-course/course-env.sh
+curl --connect-timeout 2 "http://$ROCKY_SERVER_IP:8081/" || true
 sudo docker start vc-web01
 sudo docker restart vc-web01
-curl --fail http://127.0.0.1:8081/ | grep VC_WEB_OK
+curl --fail "http://$ROCKY_SERVER_IP:8081/" | grep VC_WEB_OK
 ```
 
 #### 步骤12：run与create+start比较
 
 ```bash
+source ~/vc-course/course-env.sh
+VERIFY_IMAGE="$COURSE_REGISTRY/vc/verify:$COURSE_TAG"
 sudo docker run --rm \
   --name vc-once \
-  <COURSE_REGISTRY>/vc/verify:<COURSE_TAG>
+  "$VERIFY_IMAGE"
 sudo docker container ls -a --filter name=vc-once
 ```
 
@@ -292,9 +322,12 @@ sudo docker container ls -a --filter name=vc-once
 #### 步骤13：创建课程交付标签
 
 ```bash
+source ~/vc-course/course-env.sh
+WEB_IMAGE="$COURSE_REGISTRY/vc/web:$COURSE_TAG"
+OFFLINE_IMAGE="vc-offline/web:$COURSE_TAG"
 sudo docker tag \
-  <COURSE_REGISTRY>/vc/web:<COURSE_TAG> \
-  vc-offline/web:<COURSE_TAG>
+  "$WEB_IMAGE" \
+  "$OFFLINE_IMAGE"
 sudo docker image ls --digests | grep -E 'vc/web|vc-offline/web'
 ```
 
@@ -303,16 +336,23 @@ sudo docker image ls --digests | grep -E 'vc/web|vc-offline/web'
 #### 步骤14：导出镜像归档
 
 ```bash
+source ~/vc-course/course-env.sh
+WEB_IMAGE="$COURSE_REGISTRY/vc/web:$COURSE_TAG"
+OFFLINE_IMAGE="vc-offline/web:$COURSE_TAG"
+LOCAL_ARCHIVE="$HOME/vc-course/offline/vc-web-$COURSE_TAG-amd64.tar"
 sudo docker save \
-  -o ~/vc-course/offline/vc-web-<COURSE_TAG>-amd64.tar \
-  <COURSE_REGISTRY>/vc/web:<COURSE_TAG> \
-  vc-offline/web:<COURSE_TAG>
+  -o "$LOCAL_ARCHIVE" \
+  "$WEB_IMAGE" \
+  "$OFFLINE_IMAGE"
 sudo chown "$(id -u):$(id -g)" \
-  ~/vc-course/offline/vc-web-<COURSE_TAG>-amd64.tar
-ls -lh ~/vc-course/offline/vc-web-<COURSE_TAG>-amd64.tar
-sha256sum ~/vc-course/offline/vc-web-<COURSE_TAG>-amd64.tar \
-  | tee ~/vc-course/offline/SHA256SUMS
+  "$LOCAL_ARCHIVE"
+ls -lh "$LOCAL_ARCHIVE"
+(cd ~/vc-course/offline && \
+  sha256sum "vc-web-$COURSE_TAG-amd64.tar" \
+    | tee SHA256SUMS)
 ```
+
+校验清单必须记录相对文件名。若把`/home/rocky-server/...`绝对路径写入清单，复制到`ubuntu-client`后会因用户主目录不同而无法校验。
 
 复制到U盘或共享目录后，在目标位置再次执行：
 
@@ -340,19 +380,22 @@ df -hT /
 将归档和`SHA256SUMS`复制到Ubuntu的`~/vc-course/offline/`，执行：
 
 ```bash
+source ~/vc-course/course-env.sh
 cd ~/vc-course/offline
 sha256sum -c SHA256SUMS
-sudo docker load -i vc-web-<COURSE_TAG>-amd64.tar
+sudo docker load -i "vc-web-$COURSE_TAG-amd64.tar"
 sudo docker image ls --digests | grep -E 'vc/web|vc-offline/web'
 ```
 
 #### 步骤17：在Ubuntu复现服务
 
 ```bash
+source ~/vc-course/course-env.sh
+OFFLINE_IMAGE="vc-offline/web:$COURSE_TAG"
 sudo docker run -d \
   --name vc-web-ubuntu \
   -p 8081:80 \
-  vc-offline/web:<COURSE_TAG>
+  "$OFFLINE_IMAGE"
 sudo docker container ls --filter name=vc-web-ubuntu
 curl --fail http://127.0.0.1:8081/ | grep VC_WEB_OK
 sudo docker logs --tail 20 vc-web-ubuntu
@@ -397,11 +440,12 @@ sudo docker rm vc-web-ubuntu
 在两台主机分别执行并标注主机名：
 
 ```bash
+source ~/vc-course/course-env.sh
 {
   date -Is
   hostname
   sudo docker image ls --digests
-  sudo docker image inspect vc-offline/web:<COURSE_TAG> \
+  sudo docker image inspect "vc-offline/web:$COURSE_TAG" \
     --format 'id={{.Id}} arch={{.Architecture}} os={{.Os}}'
 } > ~/vc-course/evidence/lab07-image-result.txt
 ```
@@ -469,7 +513,8 @@ sudo docker container ls --format '{{.Names}} {{.Ports}}'
 先检查哪些容器引用镜像：
 
 ```bash
-sudo docker container ls -a --filter ancestor=vc-offline/web:<COURSE_TAG>
+source ~/vc-course/course-env.sh
+sudo docker container ls -a --filter "ancestor=vc-offline/web:$COURSE_TAG"
 ```
 
 本实验不要求删除课程镜像。
@@ -490,4 +535,7 @@ sudo docker container ls -a --filter ancestor=vc-offline/web:<COURSE_TAG>
 - 保留`~/vc-course/offline`中的归档和SHA256清单。
 - 删除本实验临时容器，释放8081。
 - 不执行`docker system prune`。
+- 在Rocky和Ubuntu均完成固定镜像与离线导入验收后，分别创建VMware检查点`VC-V2-Docker与离线交付完成`；恢复记录中简称`VC-V2`。
+
+本实验没有修改永久firewalld规则；容器删除后8081发布规则随之消失。
 

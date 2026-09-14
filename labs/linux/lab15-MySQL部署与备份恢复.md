@@ -48,6 +48,8 @@ MySQL客户端
 
 MySQL账号不是单独的用户名，而是`'用户名'@'来源'`。`app_user@localhost`、`app_user@127.0.0.1`与`app_user@192.168.200.%`是不同账号。不同系统的名称解析设置可能使本机TCP连接匹配`localhost`或`127.0.0.1`，本实验分别建立Socket和本机TCP账号，避免把账号匹配问题误判为密码错误。
 
+实验开始前打开[MySQL连接、访问边界与备份恢复动画](../../animations/13-mysql-access-backup/index.html)。先完成“对象与连接”和“远程访问边界”，在创建账号前完成“账号与授权”，进入任务七前完成“备份与恢复”。每一步先预测将经过的入口、匹配账号和允许操作，再用`ss`、`USER()`、`CURRENT_USER()`、`SHOW GRANTS`及恢复数据验证。
+
 本实验使用MySQL 8.4 LTS官方Community包。仓库配置RPM的具体小版本文件名会更新，由教师每学期提供验证过的EL9版本和离线包，不在手册中固定过期下载链接。
 
 ## 四、实验环境
@@ -252,7 +254,7 @@ mysql --protocol=TCP -h 127.0.0.1 -P 3306 -u app_user -p company_db -e 'SELECT C
 
 ### 任务六：受限远程访问
 
-该任务使用实验1、8准备的Ubuntu客户端。先记录Ubuntu固定IP为`<CLIENT_IP>`。
+该任务使用实验1、8准备的Ubuntu客户端，并从`~/m1-project/course-env.sh`读取其固定IP。
 
 #### 步骤8：备份并调整监听
 
@@ -274,24 +276,33 @@ sudo ss -lntp | grep ':3306'
 登录MySQL：
 
 ```bash
-mysql -u root -p
+source ~/m1-project/course-env.sh
+REMOTE_SQL=~/m1-project/backup/mysql/lab15-remote-user.sql
+cat > "$REMOTE_SQL" <<SQL
+CREATE USER 'remote_app'@'$UBUNTU_CLIENT_IP' IDENTIFIED BY 'Lab15-Remote-Only!';
+GRANT SELECT ON company_db.* TO 'remote_app'@'$UBUNTU_CLIENT_IP';
+SHOW GRANTS FOR 'remote_app'@'$UBUNTU_CLIENT_IP';
+SQL
+chmod 600 "$REMOTE_SQL"
+mysql -u root -p < "$REMOTE_SQL"
+rm -f "$REMOTE_SQL"
 ```
 
-将`<CLIENT_IP>`替换为准确地址，不使用`%`开放所有来源：
-
-```sql
-CREATE USER 'remote_app'@'<CLIENT_IP>' IDENTIFIED BY '<远程实验密码>';
-GRANT SELECT ON company_db.* TO 'remote_app'@'<CLIENT_IP>';
-SHOW GRANTS FOR 'remote_app'@'<CLIENT_IP>';
-EXIT;
-```
+这里使用仅限隔离实验环境的固定口令，便于从客户端验证；生产环境必须改为独立随机凭据或密钥管理系统。账号host必须是Ubuntu准确地址，不使用`%`开放所有来源。
 
 #### 步骤10：配置来源防火墙
 
 ```bash
-ZONE=$(firewall-cmd --get-zone-of-interface="$(ip route show default | awk 'NR==1 {print $5}')")
-CLIENT_IP='<CLIENT_IP>'
-sudo firewall-cmd --zone="$ZONE" --add-rich-rule="rule family=ipv4 source address=$CLIENT_IP/32 port port=3306 protocol=tcp accept"
+source ~/m1-project/course-env.sh
+IFACE=$(ip route show default | awk 'NR==1 {print $5}')
+ZONE=$(firewall-cmd --get-zone-of-interface="$IFACE" 2>/dev/null)
+if [[ -z "$ZONE" || "$ZONE" == 'no zone' ]]; then ZONE=$(firewall-cmd --get-default-zone); fi
+CLIENT_IP="$UBUNTU_CLIENT_IP"
+RULE="rule family=\"ipv4\" source address=\"$CLIENT_IP/32\" port port=\"3306\" protocol=\"tcp\" accept"
+printf '%s\n' "$ZONE" > ~/m1-project/backup/mysql/remote-zone.txt
+printf '%s\n' "$CLIENT_IP" > ~/m1-project/backup/mysql/remote-client-ip.txt
+printf '%s\n' "$RULE" > ~/m1-project/backup/mysql/remote-rule.txt
+sudo firewall-cmd --zone="$ZONE" --add-rich-rule="$RULE"
 sudo firewall-cmd --zone="$ZONE" --list-rich-rules
 ```
 
@@ -310,7 +321,9 @@ mysql --version
 若机房离线，使用教师提供并验证过的客户端包。然后执行：
 
 ```bash
-mysql -h <SERVER_IP> -P 3306 -u remote_app -p company_db -e 'SELECT id,name,department FROM employees;'
+source ~/m1-project/course-env.sh
+mysql -h "$ROCKY_SERVER_IP" -P 3306 -u remote_app -p \
+  company_db -e 'SELECT id,name,department FROM employees;'
 ```
 
 从另一非授权来源测试应失败。Ubuntu客户端只承担远程连接验证，不在客户端安装数据库服务端。
@@ -322,7 +335,9 @@ mysql -h <SERVER_IP> -P 3306 -u remote_app -p company_db -e 'SELECT id,name,depa
 服务器执行：
 
 ```bash
-sudo firewall-cmd --zone="$ZONE" --remove-rich-rule="rule family=ipv4 source address=$CLIENT_IP/32 port port=3306 protocol=tcp accept"
+ZONE=$(cat ~/m1-project/backup/mysql/remote-zone.txt)
+RULE=$(cat ~/m1-project/backup/mysql/remote-rule.txt)
+sudo firewall-cmd --zone="$ZONE" --remove-rich-rule="$RULE"
 sudo rm -f /etc/my.cnf.d/course-network.cnf
 sudo tee /etc/my.cnf.d/course-local.cnf > /dev/null <<'MYSQLCNF'
 [mysqld]
@@ -334,8 +349,13 @@ sudo ss -lntp | grep ':3306'
 
 登录MySQL删除临时远程账号：
 
-```sql
-DROP USER 'remote_app'@'<CLIENT_IP>';
+```bash
+source ~/m1-project/course-env.sh
+CLEANUP_SQL=~/m1-project/backup/mysql/lab15-drop-remote-user.sql
+printf "DROP USER IF EXISTS 'remote_app'@'%s';\n" "$UBUNTU_CLIENT_IP" > "$CLEANUP_SQL"
+chmod 600 "$CLEANUP_SQL"
+mysql -u root -p < "$CLEANUP_SQL"
+rm -f "$CLEANUP_SQL"
 ```
 
 最终应看到`127.0.0.1:3306`，证明已恢复仅本机使用的监听策略。
@@ -349,6 +369,8 @@ mkdir -p ~/backup-lab/mysql
 BACKUP=~/backup-lab/mysql/company_db-$(date +%Y%m%d-%H%M).sql
 mysqldump -u root -p --single-transaction --routines --triggers company_db > "$BACKUP"
 test -s "$BACKUP"
+printf '%s\n' "$(readlink -f "$BACKUP")" \
+  > ~/m1-project/backup/mysql/lab15-latest-backup.path
 grep -E 'CREATE TABLE|INSERT INTO' "$BACKUP" | sed -n '1,10p'
 sha256sum "$BACKUP" | tee "$BACKUP.sha256"
 ```
@@ -366,10 +388,15 @@ mysql -u root -p company_db -e 'SHOW TABLES;'
 #### 步骤15：恢复到测试数据库
 
 ```bash
-mysql -u root -p -e 'CREATE DATABASE company_restore CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;'
-sed 's/`company_db`/`company_restore`/g' "$BACKUP" > ~/backup-lab/mysql/company_restore.sql
-mysql -u root -p company_restore < ~/backup-lab/mysql/company_restore.sql
-mysql -u root -p company_restore -e 'SELECT COUNT(*) AS restored_count FROM employees; SELECT * FROM employees;'
+BACKUP=$(cat ~/m1-project/backup/mysql/lab15-latest-backup.path)
+if [[ ! -s "$BACKUP" ]]; then
+  echo "备份不存在或为空：$BACKUP"
+else
+  mysql -u root -p -e 'DROP DATABASE IF EXISTS company_restore; CREATE DATABASE company_restore CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;'
+  sed 's/`company_db`/`company_restore`/g' "$BACKUP" > ~/backup-lab/mysql/company_restore.sql
+  mysql -u root -p company_restore < ~/backup-lab/mysql/company_restore.sql
+  mysql -u root -p company_restore -e 'SELECT COUNT(*) AS restored_count FROM employees; SELECT * FROM employees;'
+fi
 ```
 
 如果备份中没有`USE company_db`或数据库名，直接导入指定测试库即可，不需要sed替换。先查看备份内容再选择方法。
@@ -379,8 +406,13 @@ mysql -u root -p company_restore -e 'SELECT COUNT(*) AS restored_count FROM empl
 确认测试恢复正确后：
 
 ```bash
-mysql -u root -p company_db < "$BACKUP"
-mysql -u root -p company_db -e 'SELECT COUNT(*) AS final_count FROM employees;'
+BACKUP=$(cat ~/m1-project/backup/mysql/lab15-latest-backup.path)
+if [[ -s "$BACKUP" ]]; then
+  mysql -u root -p company_db < "$BACKUP"
+  mysql -u root -p company_db -e 'SELECT COUNT(*) AS final_count FROM employees;'
+else
+  echo "备份不存在或为空：$BACKUP"
+fi
 ```
 
 > **验收点**：误删前、测试恢复和正式恢复的记录数一致，数据可查询。

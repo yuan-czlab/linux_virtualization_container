@@ -87,6 +87,8 @@ Rocky Linux接近企业RHEL环境，适合学习DNF、systemd、firewalld和SELi
 
 VMware Workstation运行在Windows之上，属于Type 2虚拟化软件。本课程默认使用VMnet8 NAT网络，使三台虚拟机处于同一实验网络并可经宿主机访问外部资源。
 
+开始安装前，打开[VMware三种网络模式与课程三机拓扑动画](../../animations/01-vmware-network-modes/index.html)。依次观察三种模式的可达范围，再回答“为什么本课程初装统一使用NAT”。动画显示的是概念地址；本实验必须以虚拟网络编辑器和DHCP实际结果为准。
+
 ## 五、实验准备
 
 ### 1. 宿主机建议配置

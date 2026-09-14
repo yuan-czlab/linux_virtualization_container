@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Linux网络配置、路由与DNS</title>
+  <style>
+    :root{
+      color-scheme:dark;--bg:#071019;--panel:rgba(14,27,43,.94);--panel2:#142a40;
+      --text:#eff7ff;--muted:#9fb1c5;--line:#486078;--blue:#61a5ff;--cyan:#65dcf6;
+      --green:#62e6a5;--yellow:#ffd166;--purple:#bd95ff;--red:#ff7180;
+      --shadow:0 22px 58px rgba(0,0,0,.35)
+    }
+    *{box-sizing:border-box} body{margin:0;min-height:100vh;color:var(--text);font-family:"Microsoft YaHei","PingFang SC",system-ui,sans-serif;background:radial-gradient(circle at 12% 10%,rgba(97,165,255,.19),transparent 30%),radial-gradient(circle at 90% 88%,rgba(189,149,255,.15),transparent 30%),linear-gradient(145deg,#050a11,var(--bg) 56%,#0c1930)}
+    button{font:inherit}.app{min-height:100vh;display:grid;grid-template-rows:auto auto 1fr auto;gap:14px;padding:22px clamp(18px,3vw,44px) 18px}
+    header{display:flex;justify-content:space-between;align-items:flex-end;gap:20px}.eyebrow{margin:0 0 6px;color:var(--blue);font-size:13px;font-weight:900;letter-spacing:.16em}h1{margin:0;font-size:clamp(26px,3vw,42px);line-height:1.1}
+    .tag{padding:9px 13px;border:1px solid rgba(98,230,165,.3);border-radius:999px;color:var(--green);background:rgba(98,230,165,.08);font-size:13px}
+    .tabs{display:flex;gap:9px;padding:9px;border:1px solid rgba(130,155,185,.22);border-radius:16px;background:rgba(7,15,27,.62);box-shadow:var(--shadow)}
+    .tab{min-width:145px;padding:11px 16px;border:1px solid transparent;border-radius:11px;color:var(--muted);background:transparent;cursor:pointer;transition:.2s}.tab:hover{color:var(--text);background:rgba(255,255,255,.05)}.tab.active{color:#06151e;background:var(--blue);font-weight:900;box-shadow:0 8px 22px rgba(97,165,255,.22)}
+    main{min-height:0;display:grid;grid-template-columns:minmax(630px,1.67fr) minmax(310px,.72fr);gap:14px}.visual-card,.lesson-card{border:1px solid rgba(130,155,185,.22);border-radius:20px;background:var(--panel);box-shadow:var(--shadow);overflow:hidden}
+    .visual-card{min-height:570px;padding:22px}.visual-top{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:18px}.visual-top h2{margin:0;font-size:20px}.concept{padding:7px 10px;border:1px solid rgba(101,220,246,.28);border-radius:999px;color:var(--cyan);background:rgba(101,220,246,.08);font-size:12px;font-weight:800}#visual{min-height:475px;display:grid;align-content:center}
+    .lesson-card{display:grid;grid-template-rows:auto auto 1fr auto;padding:22px}.counter{color:var(--blue);font-size:13px;font-weight:900;letter-spacing:.08em}.lesson-card h2{margin:8px 0 10px;font-size:clamp(22px,2.2vw,30px);line-height:1.22}.explain{margin:0;color:#ccd9e7;font-size:16px;line-height:1.72}
+    .question{align-self:end;margin-top:18px;padding:16px;border-left:4px solid var(--yellow);border-radius:0 12px 12px 0;background:rgba(255,209,102,.08)}.question small{display:block;color:var(--yellow);font-weight:900;margin-bottom:5px}.question p{margin:0;color:#f7e8bc;line-height:1.55}
+    .controls{display:grid;grid-template-columns:44px 44px 1fr 44px;gap:9px;margin-top:18px}.control{height:44px;border:1px solid rgba(134,158,192,.3);border-radius:11px;color:var(--text);background:var(--panel2);cursor:pointer}.control:hover{border-color:var(--blue)}.control.play{color:#06151e;background:var(--blue);border-color:var(--blue);font-weight:900}
+    footer{display:flex;justify-content:space-between;gap:18px;color:var(--muted);font-size:12px}
+    .card{padding:14px;border:2px solid var(--line);border-radius:14px;background:#10243a;text-align:center;transition:.25s}.card strong{display:block;margin-bottom:5px}.card small{color:var(--muted)}.card.active{border-color:var(--green);background:rgba(98,230,165,.1);box-shadow:0 0 24px rgba(98,230,165,.18)}.card.warn{border-color:var(--yellow);background:rgba(255,209,102,.08)}.card.fail{border-color:var(--red);background:rgba(255,113,128,.09)}.card.dim{opacity:.3}
+    .arrow{color:var(--green);font-size:25px;text-align:center;font-weight:900}.badge{display:inline-block;margin-top:7px;padding:4px 8px;border-radius:7px;color:#06151e;background:var(--green);font-size:11px;font-weight:900}.badge.warn{background:var(--yellow)}.badge.fail{color:#fff;background:var(--red)}
+    .terminal{padding:14px 17px;border:1px solid #293d51;border-radius:12px;background:#03090f;color:#dae7f3;font:13px/1.6 Consolas,monospace;white-space:normal}.terminal b{color:var(--green)}
+
+    /* NetworkManager */
+    .nm{display:grid;gap:15px}.object-flow{display:grid;grid-template-columns:1fr 65px 1.15fr 65px 1fr;gap:9px;align-items:center}.device{border-color:var(--blue)}.profile{border-color:var(--purple)}.runtime{border-color:var(--green)}
+    .profiles{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}.profile-row{padding:13px;border:2px solid var(--line);border-radius:12px;background:#10243a}.profile-row.active{border-color:var(--green)}.profile-row strong{display:block}.profile-row span{color:var(--muted);font-size:12px}
+    .settings{display:grid;grid-template-columns:repeat(4,1fr);gap:9px}.setting{padding:12px 7px;border:1px solid var(--line);border-radius:11px;text-align:center}.setting b{display:block;color:var(--cyan);margin-bottom:5px}.setting span{font-size:12px;color:var(--muted)}
+    .timeline{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:7px}.phase{padding:11px;border:2px solid var(--line);border-radius:11px;text-align:center}.phase.current{border-color:var(--green);background:rgba(98,230,165,.09)}
+
+    /* routing */
+    .routing{display:grid;gap:15px}.route-table{display:grid;gap:7px}.route{display:grid;grid-template-columns:1.5fr 1fr 1fr .55fr;gap:8px;padding:11px;border:2px solid var(--line);border-radius:11px;background:#10243a}.route.head{border:0;background:transparent;color:var(--muted);font-size:12px}.route.selected{border-color:var(--green);background:rgba(98,230,165,.09)}.route span:last-child{text-align:right}
+    .packet-flow{display:flex;justify-content:center;align-items:center;flex-wrap:wrap;gap:8px}.node{min-width:150px;padding:14px;border:2px solid var(--line);border-radius:13px;text-align:center;background:#10243a}.node.host{border-color:var(--blue)}.node.gateway{border-color:var(--yellow)}.node.target{border-color:var(--green)}
+    .decision-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+
+    /* dns */
+    .dns{display:grid;gap:14px}.lookup{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:7px}.lookup-step{padding:12px;border:2px solid var(--line);border-radius:11px;text-align:center;background:#10243a}.lookup-step.current{border-color:var(--green);background:rgba(98,230,165,.09)}.lookup-step.skip{opacity:.3}.lookup-step.error{border-color:var(--red)}
+    .dns-packet{display:grid;grid-template-columns:1fr 64px 1fr;align-items:center;gap:9px}.answer{padding:14px;border-radius:12px;background:rgba(98,230,165,.09);color:#c2f6dc;text-align:center}
+    .compare{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+
+    /* troubleshooting */
+    .trouble{display:grid;gap:14px}.ladder{display:flex;align-items:stretch;justify-content:center;flex-wrap:wrap;gap:7px}.layer{min-width:90px;flex:1;padding:12px 7px;border:2px solid var(--line);border-radius:11px;text-align:center;background:#10243a}.layer.pass{border-color:var(--green)}.layer.fail{border-color:var(--red);background:rgba(255,113,128,.1)}.layer.future{opacity:.3}
+    .symptoms{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}.evidence{padding:13px;border-left:4px solid var(--cyan);border-radius:0 11px 11px 0;background:rgba(101,220,246,.07)}
+
+    @keyframes pulse{50%{box-shadow:0 0 28px rgba(98,230,165,.45);transform:scale(1.025)}}.pulse{animation:pulse 1.25s ease-in-out infinite}
+    @media(max-width:980px){.app{min-height:auto}header{align-items:flex-start;flex-direction:column}.tabs{flex-wrap:wrap}main{grid-template-columns:1fr}.visual-card{min-height:540px}}
+    @media(max-width:680px){.tab{min-width:0;flex:1 1 45%}.object-flow,.dns-packet{grid-template-columns:1fr}.arrow{transform:rotate(90deg)}.settings,.decision-grid{grid-template-columns:repeat(2,1fr)}.route{grid-template-columns:1fr 1fr;font-size:12px}.compare,.symptoms{grid-template-columns:1fr}}
+    @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div><p class="eyebrow">模块二 · 第13/15章 · Linux实验8/9/13</p><h1>Linux网络配置、路由与DNS</h1></div>
+      <div class="tag">先保存与验证，再激活；先分层定位，再修改</div>
+    </header>
+    <nav class="tabs" aria-label="动画主题">
+      <button class="tab active" data-scene="nm">1　设备与连接</button>
+      <button class="tab" data-scene="route">2　路由与网关</button>
+      <button class="tab" data-scene="dns">3　名称解析</button>
+      <button class="tab" data-scene="trouble">4　分层排障</button>
+    </nav>
+    <main>
+      <section class="visual-card">
+        <div class="visual-top"><h2 id="visualTitle"></h2><span class="concept" id="conceptTag"></span></div>
+        <div id="visual" aria-live="polite"></div>
+      </section>
+      <aside class="lesson-card">
+        <div class="counter" id="counter"></div>
+        <div><h2 id="stepTitle"></h2><p class="explain" id="stepText"></p></div>
+        <div class="question"><small>先判断，再验证</small><p id="questionText"></p></div>
+        <div class="controls">
+          <button class="control" id="prev" aria-label="上一步">←</button><button class="control" id="restart" aria-label="重新开始">↺</button>
+          <button class="control play" id="play">▶ 播放</button><button class="control" id="next" aria-label="下一步">→</button>
+        </div>
+      </aside>
+    </main>
+    <footer><span>实验地址必须来自本机VMnet8与教师地址表，动画中的地址只说明关系</span><span>键盘：←/→ · 空格 · 1/2/3/4切换主题</span></footer>
+  </div>
+  <script>
+    const scenes={
+      nm:{
+        title:'device是网卡对象，connection是可保存的配置方案',tag:'NetworkManager object model',
+        steps:[
+          {title:'先区分设备、连接配置与运行状态',text:'ens160是系统看到的网卡设备；course-static是NetworkManager保存的连接配置；IP、路由和DNS是连接激活后应用到设备上的运行状态。三者名称不要求相同。',q:'连接名叫course-static时，网卡名也必须改成course-static吗？',kind:'model'},
+          {title:'一张网卡可以保存多个连接配置',text:'同一ens160可以保留原DHCP连接和新的course-static配置，但通常同一时刻只有一个主要连接处于活动状态。保留旧连接可提供明确回退入口。',q:'创建course-static之前，为什么要记录OLD_CON而不是直接删除DHCP连接？',kind:'profiles'},
+          {title:'静态配置包含一组相互关联的参数',text:'地址必须带正确前缀；网关必须在可到达的链路上；DNS只负责名称解析。照抄其他同学地址会造成冲突，照抄教材示例网段可能让网关不可达。',q:'只设置静态IP、不设置前缀和网关，能否保证访问外部网络？',kind:'settings'},
+          {title:'修改配置不等于运行状态已经更新',text:'nmcli connection add/modify改变保存的profile。执行connection up后，NetworkManager才按该profile重新配置设备；激活可能改变IP并中断当前SSH会话，应优先使用VMware控制台。',q:'远程SSH中激活新IP后连接断开，是否一定表示配置失败？',kind:'activate'},
+          {title:'验证失败时回到保留的旧连接',text:'激活后立即检查device、地址、路由和DNS。若新配置不通，使用本地控制台重新激活OLD_CON；不要同时继续修改多项参数，更不要删除唯一可用的回退连接。',q:'回退到DHCP连接后，应该删除失败证据还是保留并说明根因？',kind:'rollback'}
+        ]
+      },
+      route:{
+        title:'内核按最长前缀选择路由，再比较metric',tag:'destination → route → next hop',
+        steps:[
+          {title:'路由表回答“从哪里、经谁发送”',text:'每条路由包含目标前缀、出口设备、可选下一跳和metric。ip route get只询问内核准备采用的结果，不会真正发送数据包。',q:'ip route get成功显示路径，是否已经证明目标服务可访问？',kind:'table'},
+          {title:'更具体的前缀优先于默认路由',text:'访问192.168.200.20时，直连192.168.200.0/24比default更具体，因此从ens160直接发送。最长前缀优先，只有同等匹配时才进一步比较metric等属性。',q:'一条metric更小的default和一条metric更大的/24路由，谁更优先匹配/24内目标？',kind:'local'},
+          {title:'同网段目标不经过默认网关',text:'源主机先通过ARP获得目标IPv4对应的MAC，再直接在VMnet8中发送帧。默认网关虽然存在，但这次不是下一跳。IPv6使用邻居发现而不是ARP。',q:'rocky-server访问同网段rocky-web时，把网关关掉后一定无法通信吗？',kind:'arp'},
+          {title:'非直连目标交给默认网关',text:'访问不匹配其他具体路由的目标时，default via 192.168.200.2被选中。主机只需解析网关的链路层地址，再由网关继续转发。',q:'发送外部数据时，主机先ARP查询外部互联网目标，还是本地网关？',kind:'gateway'},
+          {title:'源地址也是选路结果的一部分',text:'多地址或多网卡主机需要选择出口与源地址。ip route get会显示via、dev和src，可用于解释返回流量为什么可能走错路径。',q:'服务器请求从ens160发出，却使用另一网段源地址，返回路径可能出现什么问题？',kind:'source'}
+        ]
+      },
+      dns:{
+        title:'应用的系统解析链不只是一台DNS服务器',tag:'NSS · hosts · resolver · DNS',
+        steps:[
+          {title:'应用先请求把名称解析为地址',text:'浏览器、SSH或curl通常通过系统名称服务接口解析名称。getent hosts更接近应用使用的系统解析链；它可能得到IPv4或IPv6结果。',q:'能ping某个IP但curl域名失败，问题更可能集中在哪一层？',kind:'app'},
+          {title:'nsswitch.conf决定查询来源和顺序',text:'hosts行常包含files和dns等来源。files表示/etc/hosts，dns表示DNS查询；具体顺序和动作以当前系统配置为准，不能假定所有发行版完全相同。',q:'hosts中已有同名记录时，系统一定还会向DNS发送查询吗？',kind:'nss'},
+          {title:'/etc/hosts适合课程三机固定名称',text:'hosts是本机静态映射，没有自动同步和集中管理。三台机器都要保持一致，重复名称或旧地址会让访问指向错误主机。',q:'只在rocky-server修改hosts，ubuntu-client会自动获得同样记录吗？',kind:'hosts'},
+          {title:'DNS客户端把查询交给有效解析器',text:'NetworkManager连接保存DNS参数，激活后生成或交给系统解析服务。Rocky与Ubuntu的resolv.conf实现可能不同，直接编辑它可能被覆盖，应修改持久连接配置并检查最终有效值。',q:'resolv.conf内容改变后又恢复，最可能是哪一层在重新生成它？',kind:'resolver'},
+          {title:'解析成功只得到地址，不证明服务可达',text:'DNS返回A或AAAA记录后，应用还要选路、建立TCP或UDP通信，并通过监听、防火墙、TLS和应用检查。dig直接查询DNS，通常不会使用hosts，因此应与getent对照。',q:'getent能得到正确IP但curl提示Connection refused，应该继续改DNS吗？',kind:'answer'}
+        ]
+      },
+      trouble:{
+        title:'按层收集证据，一次只修一个根因',tag:'link → address → route → DNS → port',
+        steps:[
+          {title:'第一层：设备与链路',text:'先确认目标主机、接口名称、UP状态和NetworkManager接管情况。网卡断开时，修改DNS或服务配置没有意义。',q:'nmcli device显示disconnected时，第一步应查HTTP还是网卡连接？',kind:'link'},
+          {title:'第二层：地址与前缀',text:'确认接口拥有计划内且不重复的地址，前缀能正确判断直连范围。地址冲突可能表现为时通时断或访问到错误主机。',q:'两名同学照抄同一静态IP，为什么故障可能不是稳定的“完全不通”？',kind:'address'},
+          {title:'第三层：路由和网关',text:'用ip route和ip route get检查出口、下一跳和源地址，再ping实际VMnet8网关。公网不可达不能推翻局域网配置已经正确的证据。',q:'网关可达但公共网站不可达，能否直接判定本机静态IP错误？',kind:'route'},
+          {title:'第四层：名称解析',text:'分别比较getent hosts、必要时dig、连接DNS和resolv.conf。IP访问成功而名称失败时，集中检查解析层，不重装网络服务。',q:'DNS故障时，已经建立的IP直连SSH是否必然中断？',kind:'dns'},
+          {title:'第五层以后：端口与应用',text:'解析到正确IP后仍要检查目标端口、服务监听地址、防火墙和应用日志。网络配置实验先完成到DNS；实验9和13继续验证Socket与服务。',q:'ping通且DNS正确，但TCP 8080被拒绝，下一步最直接的服务端证据是什么？',kind:'port'}
+        ]
+      }
+    };
+    let sceneKey='nm',stepIndex=0,timer=null;const byId=id=>document.getElementById(id);
+    const esc=v=>String(v).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+    function nmVisual(s){
+      if(s.kind==='model')return '<div class="nm"><div class="object-flow"><div class="card device active"><strong>device：ens160</strong><small>物理/虚拟网卡对象</small></div><div class="arrow">← 绑定 →</div><div class="card profile"><strong>connection：course-static</strong><small>可保存、可再次激活的profile</small></div><div class="arrow">激活 →</div><div class="card runtime"><strong>运行状态</strong><small>IP · route · DNS</small></div></div><div class="terminal"><b>$</b> nmcli device status<br><b>$</b> nmcli connection show --active<br><b>$</b> ip -br addr; ip route</div></div>';
+      if(s.kind==='profiles')return '<div class="nm"><div class="card device"><strong>ens160</strong><small>同一网卡设备</small></div><div class="profiles"><div class="profile-row"><strong>OLD_CON · DHCP</strong><span>保留作为回退</span></div><div class="profile-row active pulse"><strong>course-static · manual</strong><span>当前准备激活</span></div></div><div class="terminal"><b>$</b> nmcli -g GENERAL.CONNECTION device show ens160<br><b>$</b> nmcli connection show</div></div>';
+      if(s.kind==='settings')return '<div class="nm"><div class="settings"><div class="setting"><b>地址/前缀</b><span>192.168.200.10/24<br>示例</span></div><div class="setting"><b>网关</b><span>192.168.200.2<br>必须链路可达</span></div><div class="setting"><b>DNS</b><span>教师指定<br>只负责解析</span></div><div class="setting"><b>自动连接</b><span>重启后选择<br>还看优先级</span></div></div><div class="card warn"><strong>提交前检查</strong><small>来自实际VMnet8和教师地址表 · 地址不重复 · 网关属于正确链路</small></div><div class="terminal"><b>$</b> nmcli connection show course-static</div></div>';
+      if(s.kind==='activate')return '<div class="nm"><div class="timeline"><span class="phase current">保存profile</span><span class="arrow">→</span><span class="phase current">connection up</span><span class="arrow">→</span><span class="phase current">设备重新配置</span><span class="arrow">→</span><span class="phase current">重新验证</span></div><div class="object-flow"><div class="card profile"><strong>course-static</strong><small>持久配置</small></div><div class="arrow">→</div><div class="card device active pulse"><strong>ens160</strong><small>旧地址移除、新地址生效</small></div><div class="arrow">→</div><div class="card warn"><strong>SSH可能断开</strong><small>改用VMware控制台继续</small></div></div><div class="terminal"><b>$</b> sudo nmcli connection up course-static</div></div>';
+      return '<div class="nm"><div class="timeline"><span class="phase current">本地控制台</span><span class="arrow">→</span><span class="phase current">激活OLD_CON</span><span class="arrow">→</span><span class="phase current">恢复DHCP</span><span class="arrow">→</span><span class="phase current">保存故障证据</span></div><div class="compare"><div class="card fail"><strong>course-static</strong><small>参数待修正，不直接删除证据</small></div><div class="card active pulse"><strong>OLD_CON</strong><small>恢复可管理状态</small></div></div><div class="terminal"><b>$</b> sudo nmcli connection up &quot;$OLD_CON&quot;</div></div>';
+    }
+
+    const routes=[
+      ['192.168.200.0/24','—','ens160','100'],['10.10.0.0/16','192.168.200.254','ens160','200'],['default','192.168.200.2','ens160','100']
+    ];
+    function routeTable(selected){
+      return '<div class="route-table"><div class="route head"><span>目标</span><span>via下一跳</span><span>dev出口</span><span>metric</span></div>'+routes.map((r,i)=>'<div class="route '+(i===selected?'selected pulse':'')+'">'+r.map(x=>'<span>'+x+'</span>').join('')+'</div>').join('')+'</div>';
+    }
+    function routeVisual(s){
+      if(s.kind==='table')return '<div class="routing">'+routeTable(-1)+'<div class="terminal"><b>$</b> ip route<br><b>$</b> ip route get 192.168.200.20</div></div>';
+      if(s.kind==='local')return '<div class="routing">'+routeTable(0)+'<div class="decision-grid"><div class="card active">/24匹配24位</div><div class="card dim">/16只匹配较少位</div><div class="card dim">default匹配0位</div></div><div class="terminal"><b>结果</b> 192.168.200.20 dev ens160 src 192.168.200.10</div></div>';
+      if(s.kind==='arp')return '<div class="routing"><div class="packet-flow"><div class="node host">rocky-server<br><small>192.168.200.10</small></div><span class="arrow">ARP目标MAC →</span><div class="node target pulse">rocky-web<br><small>192.168.200.20</small></div></div><div class="card dim"><strong>默认网关192.168.200.2</strong><small>本次不是下一跳</small></div><div class="terminal"><b>$</b> ip neigh show dev ens160</div></div>';
+      if(s.kind==='gateway')return '<div class="routing"><div class="packet-flow"><div class="node host">rocky-server<br><small>192.168.200.10</small></div><span class="arrow">→</span><div class="node gateway pulse">VMnet8网关<br><small>192.168.200.2</small></div><span class="arrow">→</span><div class="node target">外部目标<br><small>非直连网络</small></div></div>'+routeTable(2)+'<div class="terminal"><b>$</b> ip route get 外部IP</div></div>';
+      return '<div class="routing"><div class="decision-grid"><div class="card active"><strong>via</strong><small>下一跳地址</small></div><div class="card active"><strong>dev</strong><small>出口设备</small></div><div class="card active pulse"><strong>src</strong><small>选定源地址</small></div></div><div class="packet-flow"><div class="node host">应用请求</div><span class="arrow">→</span><div class="node gateway">路由决策</div><span class="arrow">→</span><div class="node target">带src发出</div></div><div class="terminal"><b>$</b> ip route get 目标IP</div></div>';
+    }
+
+    function dnsVisual(s){
+      const chain=(current,error=-1)=>'<div class="lookup">'+['应用/getent','nsswitch.conf','files: /etc/hosts','dns: 解析器','得到A/AAAA'].map((x,i)=>'<span class="lookup-step '+(i===current?'current pulse ':'')+(i===error?'error':'')+'">'+x+'</span>'+(i<4?'<span class="arrow">→</span>':'')).join('')+'</div>';
+      if(s.kind==='app')return '<div class="dns">'+chain(0)+'<div class="terminal"><b>$</b> getent ahosts rocky-web<br><b>$</b> getent hosts rocky-web</div><div class="answer">应用先需要目标地址，之后才进入路由和端口通信</div></div>';
+      if(s.kind==='nss')return '<div class="dns">'+chain(1)+'<div class="terminal"><b>$</b> grep &quot;^hosts:&quot; /etc/nsswitch.conf<br>hosts: files dns</div><div class="compare"><div class="card active"><strong>files</strong><small>读取/etc/hosts</small></div><div class="card"><strong>dns</strong><small>按配置继续查询</small></div></div></div>';
+      if(s.kind==='hosts')return '<div class="dns">'+chain(2)+'<div class="compare"><div class="card active"><strong>ubuntu-client</strong><small>/etc/hosts<br>192.168.200.20 rocky-web</small></div><div class="card warn"><strong>rocky-server</strong><small>另一份本地文件<br>不会自动同步</small></div></div><div class="terminal"><b>$</b> getent hosts rocky-web</div></div>';
+      if(s.kind==='resolver')return '<div class="dns">'+chain(3)+'<div class="dns-packet"><div class="card profile"><strong>NetworkManager profile</strong><small>ipv4.dns=教师指定</small></div><span class="arrow">激活 →</span><div class="card active"><strong>有效解析器</strong><small>Rocky/Ubuntu实现可能不同<br>检查resolv.conf与系统状态</small></div></div><div class="terminal"><b>$</b> nmcli -g IP4.DNS device show ens160<br><b>$</b> cat /etc/resolv.conf</div></div>';
+      return '<div class="dns">'+chain(4)+'<div class="packet-flow"><div class="node host">rocky-web.test</div><span class="arrow">DNS →</span><div class="node target">192.168.200.20</div><span class="arrow">TCP另行建立 →</span><div class="node gateway">:8080服务</div></div><div class="compare"><div class="card active"><strong>getent hosts</strong><small>系统NSS解析链</small></div><div class="card warn"><strong>dig</strong><small>直接DNS查询，通常不读hosts</small></div></div></div>';
+    }
+
+    function troubleVisual(s){
+      const layers=['链路','地址','路由/网关','DNS','端口/服务'];
+      const index={link:0,address:1,route:2,dns:3,port:4}[s.kind];
+      const commands=[
+        'nmcli device status ; ip link',
+        'ip -br addr ; ip addr show',
+        'ip route ; ip route get 目标IP ; ping 网关',
+        'getent hosts 名称 ; nmcli -g IP4.DNS device show 接口',
+        'ss -lntup ; curl -v http://目标:端口 ; journalctl -u 服务'
+      ];
+      const notes=[
+        ['现象：接口disconnected','证据：没有活动connection'],
+        ['现象：地址不在计划网段或重复','证据：地址、前缀与三机表不一致'],
+        ['现象：同网段可达，外部不通','证据：default/via/dev/src或网关测试'],
+        ['现象：IP可访问，名称失败','证据：getent、hosts、DNS有效值'],
+        ['现象：ping通但应用失败','证据：监听地址、端口、firewalld和日志']
+      ][index];
+      return '<div class="trouble"><div class="ladder">'+layers.map((x,i)=>'<div class="layer '+(i<index?'pass':i===index?'fail pulse':'future')+'"><strong>'+x+'</strong><br><small>'+(i<index?'PASS':i===index?'CHECK':'LATER')+'</small></div>').join('')+'</div><div class="symptoms"><div class="evidence">'+notes[0]+'</div><div class="evidence">'+notes[1]+'</div></div><div class="terminal"><b>$</b> '+esc(commands[index])+'</div><div class="card active"><strong>一次只处理当前证据支持的根因</strong><small>修复后从客户端重新走完整链路，不只复测失败点</small></div></div>';
+    }
+
+    function stop(){if(timer)clearInterval(timer);timer=null;byId('play').textContent='▶ 播放'}
+    function render(){const scene=scenes[sceneKey],s=scene.steps[stepIndex];document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.scene===sceneKey));byId('visualTitle').textContent=scene.title;byId('conceptTag').textContent=scene.tag;byId('counter').textContent='第 '+(stepIndex+1)+' / '+scene.steps.length+' 步';byId('stepTitle').textContent=s.title;byId('stepText').textContent=s.text;byId('questionText').textContent=s.q;byId('visual').innerHTML=sceneKey==='nm'?nmVisual(s):sceneKey==='route'?routeVisual(s):sceneKey==='dns'?dnsVisual(s):troubleVisual(s)}
+    function next(){stepIndex=(stepIndex+1)%scenes[sceneKey].steps.length;render()}function prev(){stepIndex=(stepIndex-1+scenes[sceneKey].steps.length)%scenes[sceneKey].steps.length;render()}
+    function togglePlay(){if(timer)return stop();byId('play').textContent='❚❚ 暂停';next();timer=setInterval(next,5800)}
+    document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{stop();sceneKey=t.dataset.scene;stepIndex=0;render()}));byId('prev').addEventListener('click',()=>{stop();prev()});byId('next').addEventListener('click',()=>{stop();next()});byId('restart').addEventListener('click',()=>{stop();stepIndex=0;render()});byId('play').addEventListener('click',togglePlay);
+    document.addEventListener('keydown',e=>{if(e.key==='ArrowRight'){stop();next()}if(e.key==='ArrowLeft'){stop();prev()}if(e.key===' '){e.preventDefault();togglePlay()}if(['1','2','3','4'].includes(e.key)){stop();sceneKey=['nm','route','dns','trouble'][Number(e.key)-1];stepIndex=0;render()}});
+    render();
+  </script>
+</body>
+</html>

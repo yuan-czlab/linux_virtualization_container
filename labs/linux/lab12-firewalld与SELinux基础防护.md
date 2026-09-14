@@ -49,6 +49,8 @@
 
 运行时规则立即生效，重载或重启后可能消失；永久规则保存在配置中，需要reload后进入运行时。先用运行时规则试验，确认不影响管理后再永久化。
 
+进入firewalld任务前打开[firewalld区域、规则与安全变更动画](../../animations/09-firewalld-zones-rules/index.html)。依次完成“流量与Zone”“Service与Port”“运行时与永久”和“来源限制与回滚”，每一步先预测数据包结果，再用活动zone、两套规则查询和`ubuntu-client`访问结果验证。SELinux部分使用下一支独立动画，避免把网络层拒绝和强制访问控制混为一谈。
+
 ## 四、实验环境
 
 - 默认在`rocky-server`执行；保留VMware控制台和一个SSH会话。
@@ -93,6 +95,7 @@ printf '<h1>firewalld test</h1>\n' > ~/m1-project/firewall-test/index.html
 cd ~/m1-project/firewall-test
 python3 -m http.server 8080 --bind 0.0.0.0 > ~/m1-project/logs/lab12-http.log 2>&1 &
 LAB12_HTTP_PID=$!
+printf '%s\n' "$LAB12_HTTP_PID" > ~/m1-project/firewall-test/http.pid
 ss -lntp | grep ':8080'
 curl -I http://127.0.0.1:8080/
 ```
@@ -107,8 +110,10 @@ printf 'vm_ip=%s\n' "$VM_IP"
 在Ubuntu客户端测试：
 
 ```bash
-nc -vz -w 3 <ROCKY_IP> 8080
-curl --connect-timeout 3 -I http://<ROCKY_IP>:8080/
+source ~/m1-project/course-env.sh
+ROCKY_IP="$ROCKY_SERVER_IP"
+nc -vz -w 3 "$ROCKY_IP" 8080
+curl --connect-timeout 3 -I "http://$ROCKY_IP:8080/"
 ```
 
 如果之前实验遗留8080规则，应先记录并删除，否则无法观察规则变化。
@@ -122,14 +127,19 @@ curl --connect-timeout 3 -I http://<ROCKY_IP>:8080/
 ```bash
 IFACE=$(ip route show default | awk 'NR==1 {print $5}')
 ZONE=$(firewall-cmd --get-zone-of-interface="$IFACE")
+if [[ -z "$ZONE" || "$ZONE" == 'no zone' ]]; then
+  ZONE=$(firewall-cmd --get-default-zone)
+fi
 printf 'interface=%s zone=%s\n' "$IFACE" "$ZONE"
+printf '%s\n' "$ZONE" > ~/m1-project/firewall-test/zone.txt
 ```
 
-如果返回`no zone`或空值，使用`firewall-cmd --get-active-zones`确认实际zone，不要盲目修改默认zone。
+命令在接口没有显式绑定zone时回退到默认zone。继续前还要用`firewall-cmd --get-active-zones`核对；如果实际活动zone与变量不一致，停止修改并查清NetworkManager连接绑定。
 
 #### 步骤2：开放运行时端口
 
 ```bash
+ZONE=$(cat ~/m1-project/firewall-test/zone.txt)
 sudo firewall-cmd --zone="$ZONE" --add-port=8080/tcp
 sudo firewall-cmd --zone="$ZONE" --query-port=8080/tcp
 sudo firewall-cmd --zone="$ZONE" --list-ports
@@ -138,8 +148,10 @@ sudo firewall-cmd --zone="$ZONE" --list-ports
 在Ubuntu重新测试：
 
 ```bash
-nc -vz -w 3 <ROCKY_IP> 8080
-curl --connect-timeout 3 -I http://<ROCKY_IP>:8080/
+source ~/m1-project/course-env.sh
+ROCKY_IP="$ROCKY_SERVER_IP"
+nc -vz -w 3 "$ROCKY_IP" 8080
+curl --connect-timeout 3 -I "http://$ROCKY_IP:8080/"
 ```
 
 > **验收点**：端口规则为yes，Ubuntu获得HTTP响应。
@@ -147,6 +159,7 @@ curl --connect-timeout 3 -I http://<ROCKY_IP>:8080/
 #### 步骤3：验证运行时与永久差异
 
 ```bash
+ZONE=$(cat ~/m1-project/firewall-test/zone.txt)
 sudo firewall-cmd --zone="$ZONE" --query-port=8080/tcp
 sudo firewall-cmd --permanent --zone="$ZONE" --query-port=8080/tcp
 ```
@@ -156,6 +169,7 @@ sudo firewall-cmd --permanent --zone="$ZONE" --query-port=8080/tcp
 ### 任务四：永久规则和回滚
 
 ```bash
+ZONE=$(cat ~/m1-project/firewall-test/zone.txt)
 sudo firewall-cmd --permanent --zone="$ZONE" --add-port=8080/tcp
 sudo firewall-cmd --reload
 sudo firewall-cmd --zone="$ZONE" --query-port=8080/tcp
@@ -167,6 +181,7 @@ reload后两种查询都应为yes。
 回滚永久规则：
 
 ```bash
+ZONE=$(cat ~/m1-project/firewall-test/zone.txt)
 sudo firewall-cmd --permanent --zone="$ZONE" --remove-port=8080/tcp
 sudo firewall-cmd --reload
 sudo firewall-cmd --zone="$ZONE" --query-port=8080/tcp
@@ -183,16 +198,20 @@ Ubuntu再次测试应失败，但Rocky本机访问127.0.0.1仍可成功。
 在Ubuntu客户端执行：
 
 ```bash
+source ~/m1-project/course-env.sh
+ROCKY_IP="$ROCKY_SERVER_IP"
 ip -brief address
-ip route get <ROCKY_IP>
+ip route get "$ROCKY_IP"
 ```
 
-记录访问Rocky时实际使用的IPv4地址，写为`<CLIENT_IP>`。该地址是本实验允许访问8080的管理来源。
+记录访问Rocky时实际使用的IPv4地址。该地址是本实验允许访问8080的管理来源。
 
 #### 步骤5：配置rich rule
 
 ```bash
-CLIENT_IP='<UBUNTU_CLIENT_IP>'
+source ~/m1-project/course-env.sh
+CLIENT_IP="$UBUNTU_CLIENT_IP"
+ZONE=$(cat ~/m1-project/firewall-test/zone.txt)
 sudo firewall-cmd --zone="$ZONE" --add-rich-rule="rule family=ipv4 source address=$CLIENT_IP/32 port port=8080 protocol=tcp accept"
 sudo firewall-cmd --zone="$ZONE" --list-rich-rules
 ```
@@ -206,10 +225,15 @@ sudo firewall-cmd --zone="$ZONE" --list-rich-rules
 清理运行时rich rule：
 
 ```bash
+source ~/m1-project/course-env.sh
+CLIENT_IP="$UBUNTU_CLIENT_IP"
+ZONE=$(cat ~/m1-project/firewall-test/zone.txt)
 sudo firewall-cmd --zone="$ZONE" --remove-rich-rule="rule family=ipv4 source address=$CLIENT_IP/32 port port=8080 protocol=tcp accept"
 ```
 
 ### 任务六：SELinux状态与上下文
+
+继续打开[SELinux双重判定、上下文与AVC排障动画](../../animations/10-selinux-dac-context-avc/index.html)。完成“DAC与MAC”“模式与上下文”“标签持久化”和“AVC排障”后，再执行步骤6—9；先预测`chcon`后和`restorecon`后的类型变化，再用`ls -Z`和实际输出验证。
 
 #### 步骤6：检查模式和日志工具
 
@@ -234,7 +258,8 @@ ls -lZ /srv/selinux-lab/index.html
 #### 步骤8：设置持久上下文规则
 
 ```bash
-sudo semanage fcontext -a -t httpd_sys_content_t '/srv/selinux-lab(/.*)?'
+sudo semanage fcontext -a -t httpd_sys_content_t '/srv/selinux-lab(/.*)?' 2>/dev/null || \
+  sudo semanage fcontext -m -t httpd_sys_content_t '/srv/selinux-lab(/.*)?'
 sudo restorecon -Rv /srv/selinux-lab
 ls -ldZ /srv/selinux-lab
 ls -lZ /srv/selinux-lab/index.html
@@ -322,9 +347,13 @@ Permissive只记录而不阻止，适合受控诊断，不是完成安全配置�
 ## 十二、环境清理
 
 ```bash
-test -n "${LAB12_HTTP_PID:-}" && kill "$LAB12_HTTP_PID" 2>/dev/null || true
-sudo firewall-cmd --remove-port=8080/tcp 2>/dev/null || true
-sudo firewall-cmd --permanent --remove-port=8080/tcp 2>/dev/null || true
+if test -f ~/m1-project/firewall-test/http.pid; then
+  LAB12_HTTP_PID=$(cat ~/m1-project/firewall-test/http.pid)
+  ps -p "$LAB12_HTTP_PID" -o args= 2>/dev/null | grep -Fq 'http.server 8080' && kill "$LAB12_HTTP_PID" || true
+fi
+ZONE=$(cat ~/m1-project/firewall-test/zone.txt 2>/dev/null || firewall-cmd --get-default-zone)
+sudo firewall-cmd --zone="$ZONE" --remove-port=8080/tcp 2>/dev/null || true
+sudo firewall-cmd --permanent --zone="$ZONE" --remove-port=8080/tcp 2>/dev/null || true
 sudo firewall-cmd --reload
 ```
 

@@ -28,7 +28,3 @@ KVM为嵌套环境中的真实操作；Docker同时使用Rocky和Ubuntu；OpenSt
 ## 期末大项目位置
 
 虚拟化容器技术的大项目没有取消，而是放入正式实验流程：实验10完成Web、API、MySQL、Redis四服务Compose应用；实验11是8学时期末综合大项目，包含Kubernetes操作、跨发行版迁移、离线镜像、数据恢复、3—5项故障和个人答辩。
-
-旧版根目录`lab39`至`lab63`以及`../projects/project02`已经删除，需要时可从Git历史恢复。
-
-旧版Linux实验`lab01`至`lab38`及旧实验模板已被新的20篇Linux手册替代并删除，仍可从Git历史恢复。

@@ -52,6 +52,14 @@ TechCorp需要在专用Web服务器`rocky-web`发布企业官网，并由Nginx�
 | 404 | Nginx可达，但目标资源不存在 | URI、root、文件路径 |
 | 502 | Nginx作为代理无法获得有效上游响应 | 上游进程、地址、端口、SELinux |
 
+复习服务状态与日志取证时，可打开[systemd服务状态、依赖与journal排障动画](../../animations/04-systemd-journal/index.html)的“运行与自启”和“日志证据链”。Nginx配置修改后应先执行配置语法检查，再根据`CanReload`和服务能力选择reload或restart。
+
+复习HTTP请求路径与状态码时，打开[Socket、TCP、HTTP与TLS端到端访问动画](../../animations/06-socket-tcp-http-tls/index.html)的“HTTP消息”。重点观察Host如何选择虚拟主机、URI如何进入location，以及404和502分别把排障方向指向哪里。
+
+配置非标准站点目录和反向代理前，打开[SELinux双重判定、上下文与AVC排障动画](../../animations/10-selinux-dac-context-avc/index.html)的“标签持久化”和“AVC排障”。区分站点文件类型`httpd_sys_content_t`与允许Web进程连接上游的策略能力，不能用`chmod 777`或关闭SELinux代替定位。
+
+进入Nginx配置任务前打开[Nginx请求路由、静态资源与反向代理动画](../../animations/12-nginx-request-routing-proxy/index.html)。依次完成“监听与Server”“Location与路径”“反向代理”和“状态码与日志”，每一步先写出预期server、location、文件或上游路径，再执行`nginx -T`和`curl`验证。
+
 ## 四、实验环境
 
 - `rocky-web`运行Rocky Linux 9，使用同名用户登录并具备sudo权限。
@@ -59,7 +67,7 @@ TechCorp需要在专用Web服务器`rocky-web`发布企业官网，并由Nginx�
 - 使用教师验证过的软件源或离线RPM。
 - 端口80用于Nginx，5000用于仅本机访问的测试后端。
 - firewalld保持启用，SELinux保持Enforcing。
-- 虚拟主机名称：`techcorp.local`。
+- 虚拟主机名称：`techcorp.test`。`.test`是保留测试域，避免与mDNS使用的`.local`混淆。
 
 ## 五、项目任务
 
@@ -146,7 +154,8 @@ sudo find /srv/techcorp -type f -exec chmod 644 {} +
 
 ```bash
 command -v semanage || sudo dnf install -y policycoreutils-python-utils
-sudo semanage fcontext -a -t httpd_sys_content_t '/srv/techcorp/www(/.*)?'
+sudo semanage fcontext -a -t httpd_sys_content_t '/srv/techcorp/www(/.*)?' 2>/dev/null || \
+  sudo semanage fcontext -m -t httpd_sys_content_t '/srv/techcorp/www(/.*)?'
 sudo restorecon -Rv /srv/techcorp/www
 ls -ldZ /srv/techcorp/www
 ls -lZ /srv/techcorp/www/index.html
@@ -162,7 +171,7 @@ ls -lZ /srv/techcorp/www/index.html
 sudo tee /etc/nginx/conf.d/techcorp.conf > /dev/null <<'NGINX'
 server {
     listen 80;
-    server_name techcorp.local;
+    server_name techcorp.test;
 
     root /srv/techcorp/www;
     index index.html;
@@ -196,8 +205,8 @@ NGINX
 sudo nginx -t
 sudo systemctl reload nginx
 systemctl is-active nginx
-curl -s -H 'Host: techcorp.local' http://127.0.0.1/ | grep NGINX_STATIC_OK
-curl --fail -H 'Host: techcorp.local' http://127.0.0.1/health
+curl -s -H 'Host: techcorp.test' http://127.0.0.1/ | grep NGINX_STATIC_OK
+curl --fail -H 'Host: techcorp.test' http://127.0.0.1/health
 ```
 
 如果`nginx -t`失败，不执行reload。根据错误中的文件和行号修复。
@@ -207,36 +216,41 @@ curl --fail -H 'Host: techcorp.local' http://127.0.0.1/health
 #### 步骤8：开放HTTP并从Ubuntu客户端验证
 
 ```bash
-sudo firewall-cmd --add-service=http --permanent
+IFACE=$(ip route show default | awk 'NR==1 {print $5}')
+ZONE=$(firewall-cmd --get-zone-of-interface="$IFACE" 2>/dev/null)
+if [[ -z "$ZONE" || "$ZONE" == 'no zone' ]]; then ZONE=$(firewall-cmd --get-default-zone); fi
+printf '%s\n' "$ZONE" > ~/m1-project/backup/nginx/firewall-zone.txt
+sudo firewall-cmd --zone="$ZONE" --add-service=http --permanent
 sudo firewall-cmd --reload
-sudo firewall-cmd --query-service=http
+sudo firewall-cmd --zone="$ZONE" --query-service=http
 ```
 
 在`ubuntu-client`先直接携带Host头验证：
 
 ```bash
-curl -i -H 'Host: techcorp.local' http://<ROCKY_IP>/
-curl --fail -H 'Host: techcorp.local' http://<ROCKY_IP>/health
+source ~/m1-project/course-env.sh
+ROCKY_IP="$ROCKY_WEB_IP"
+curl -i -H 'Host: techcorp.test' "http://$ROCKY_IP/"
+curl --fail -H 'Host: techcorp.test' "http://$ROCKY_IP/health"
 ```
 
-再检查`ubuntu-client`的hosts文件中`rocky-web`和`techcorp.local`是否指向同一地址：
+再检查`ubuntu-client`的hosts文件中`rocky-web`和`techcorp.test`是否指向同一地址：
 
 ```bash
-sudo vim /etc/hosts
-```
-
-加入：
-
-```text
-<ROCKY_IP> techcorp.local
+source ~/m1-project/course-env.sh
+mkdir -p ~/m1-project/backup/nginx
+test -f ~/m1-project/backup/nginx/ubuntu-hosts.before-techcorp || \
+  sudo cp -p /etc/hosts ~/m1-project/backup/nginx/ubuntu-hosts.before-techcorp
+sudo sed -i '/[[:space:]]techcorp\.test\([[:space:]]\|$\)/d' /etc/hosts
+printf '%s %s\n' "$ROCKY_WEB_IP" 'techcorp.test' | sudo tee -a /etc/hosts
 ```
 
 验证系统解析和HTTP访问：
 
 ```bash
-getent hosts techcorp.local
-curl --fail http://techcorp.local/
-curl --fail http://techcorp.local/health
+getent hosts techcorp.test
+curl --fail http://techcorp.test/
+curl --fail http://techcorp.test/health
 ```
 
 若教师需要图形浏览器展示，也可以在Windows宿主机配置同名hosts记录后访问，但Ubuntu命令行结果是本实验的正式客户端证据。
@@ -253,6 +267,7 @@ printf '{"service":"techcorp-api","status":"BACKEND_OK"}\n' > ~/m1-project/backe
 cd ~/m1-project/backend
 python3 -m http.server 5000 --bind 127.0.0.1 > ~/m1-project/logs/backend.log 2>&1 &
 BACKEND_PID=$!
+printf '%s\n' "$BACKEND_PID" > ~/m1-project/backend/backend.pid
 ss -lntp | grep ':5000'
 curl -s http://127.0.0.1:5000/
 ```
@@ -279,7 +294,7 @@ getsebool httpd_can_network_connect
 #### 步骤11：验证代理
 
 ```bash
-curl -s -H 'Host: techcorp.local' http://127.0.0.1/api/
+curl -s -H 'Host: techcorp.test' http://127.0.0.1/api/
 tail -n 10 /var/log/nginx/techcorp-access.log
 tail -n 10 ~/m1-project/logs/backend.log
 ```
@@ -293,7 +308,7 @@ tail -n 10 ~/m1-project/logs/backend.log
 #### 步骤12：404资源不存在
 
 ```bash
-curl -s -o /dev/null -w 'status=%{http_code}\n' -H 'Host: techcorp.local' http://127.0.0.1/not-found.html
+curl -s -o /dev/null -w 'status=%{http_code}\n' -H 'Host: techcorp.test' http://127.0.0.1/not-found.html
 tail -n 5 /var/log/nginx/techcorp-access.log
 tail -n 10 /var/log/nginx/techcorp-error.log
 ```
@@ -305,7 +320,7 @@ tail -n 10 /var/log/nginx/techcorp-error.log
 `private`目录存在但没有首页，且默认不允许列目录：
 
 ```bash
-curl -s -o /dev/null -w 'status=%{http_code}\n' -H 'Host: techcorp.local' http://127.0.0.1/private/
+curl -s -o /dev/null -w 'status=%{http_code}\n' -H 'Host: techcorp.test' http://127.0.0.1/private/
 tail -n 10 /var/log/nginx/techcorp-error.log
 ```
 
@@ -314,10 +329,11 @@ tail -n 10 /var/log/nginx/techcorp-error.log
 #### 步骤14：502上游失败
 
 ```bash
-kill "$BACKEND_PID"
+BACKEND_PID=$(cat ~/m1-project/backend/backend.pid)
+ps -p "$BACKEND_PID" -o args= | grep -Fq 'http.server 5000' && kill "$BACKEND_PID"
 sleep 1
 ss -lntp | grep ':5000' || true
-curl -s -o /dev/null -w 'status=%{http_code}\n' -H 'Host: techcorp.local' http://127.0.0.1/api/
+curl -s -o /dev/null -w 'status=%{http_code}\n' -H 'Host: techcorp.test' http://127.0.0.1/api/
 tail -n 10 /var/log/nginx/techcorp-error.log
 ```
 
@@ -329,7 +345,8 @@ tail -n 10 /var/log/nginx/techcorp-error.log
 cd ~/m1-project/backend
 python3 -m http.server 5000 --bind 127.0.0.1 > ~/m1-project/logs/backend.log 2>&1 &
 BACKEND_PID=$!
-curl -s -H 'Host: techcorp.local' http://127.0.0.1/api/
+printf '%s\n' "$BACKEND_PID" > ~/m1-project/backend/backend.pid
+curl -s -H 'Host: techcorp.test' http://127.0.0.1/api/
 ```
 
 > **验收点**：分别提供403、404、502的状态、日志、根因和恢复结果。
@@ -345,17 +362,17 @@ curl -s -H 'Host: techcorp.local' http://127.0.0.1/api/
     firewall-cmd --query-service=http
     getenforce
     ls -ldZ /srv/techcorp/www
-    curl -s -o /dev/null -w 'home=%{http_code}\n' -H 'Host: techcorp.local' http://127.0.0.1/
-    curl -s -o /dev/null -w 'api=%{http_code}\n' -H 'Host: techcorp.local' http://127.0.0.1/api/
+    curl -s -o /dev/null -w 'home=%{http_code}\n' -H 'Host: techcorp.test' http://127.0.0.1/
+    curl -s -o /dev/null -w 'api=%{http_code}\n' -H 'Host: techcorp.test' http://127.0.0.1/api/
 } > ~/m1-project/evidence/lab14-nginx-final.txt
 ```
 
 ## 七、独立实践
 
-1. 新增`status.techcorp.local`虚拟主机，站点目录为`/srv/techcorp/status`。
+1. 新增`status.techcorp.test`虚拟主机，站点目录为`/srv/techcorp/status`。
 2. 页面必须包含`STATUS_SITE_OK`。
 3. 设置正确传统权限和SELinux上下文。
-4. 使用`curl -H 'Host: status.techcorp.local'`验证。
+4. 使用`curl -H 'Host: status.techcorp.test'`验证。
 5. 为该虚拟主机使用独立访问日志。
 6. 故意写错一次配置，在不影响现有服务的情况下通过`nginx -t`发现并修复。
 
@@ -403,7 +420,7 @@ sudo ausearch -m AVC -ts recent | tail -30
 
 ### Q4：直接访问IP显示默认页面
 
-本虚拟主机按`server_name techcorp.local`匹配。使用正确Host头或本地域名，不要把默认站点误判为配置未加载。
+本虚拟主机按`server_name techcorp.test`匹配。使用正确Host头或本地域名，不要把默认站点误判为配置未加载。
 
 ## 十一、课后思考与拓展
 
@@ -416,5 +433,8 @@ sudo ausearch -m AVC -ts recent | tail -30
 保留Nginx、站点、HTTP防火墙服务和后端文件，供实验20使用。实验结束或虚拟机关机前终止临时后端：
 
 ```bash
-test -n "${BACKEND_PID:-}" && kill "$BACKEND_PID" 2>/dev/null || true
+if test -f ~/m1-project/backend/backend.pid; then
+  BACKEND_PID=$(cat ~/m1-project/backend/backend.pid)
+  ps -p "$BACKEND_PID" -o args= 2>/dev/null | grep -Fq 'http.server 5000' && kill "$BACKEND_PID" || true
+fi
 ```

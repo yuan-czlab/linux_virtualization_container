@@ -124,15 +124,16 @@ df -h /var/lib/libvirt/images
 
 ```bash
 sudo virsh shutdown course-vm01
+for i in {1..30}; do
+  STATE=$(sudo virsh domstate course-vm01 | tr -d '\r')
+  printf 'state=%s\n' "$STATE"
+  [[ "$STATE" == 'shut off' ]] && break
+  sleep 2
+done
+test "$STATE" = 'shut off'
 ```
 
-确认已关闭：
-
-```bash
-sudo virsh domstate course-vm01
-```
-
-只有返回`shut off`后才继续复制。若迟迟不关机，先进入客户机检查，不直接强制断电。
+只有最后一条`test`返回0才继续复制。若60秒后仍未关机，先进入客户机检查，不直接强制断电。
 
 #### 步骤4：备份配置和磁盘
 
@@ -235,10 +236,11 @@ ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
 先把实验2的教师基础镜像路径记为实际值，然后执行：
 
 ```bash
+source ~/vc-course/course-env.sh
 sudo qemu-img create \
   -f qcow2 \
   -F qcow2 \
-  -b <COURSE_MEDIA>/kvm/course-base.qcow2 \
+  -b "$COURSE_MEDIA/kvm/course-base.qcow2" \
   /var/lib/libvirt/images/course-overlay-demo.qcow2
 sudo chown qemu:qemu /var/lib/libvirt/images/course-overlay-demo.qcow2
 sudo restorecon -v /var/lib/libvirt/images/course-overlay-demo.qcow2
@@ -305,7 +307,7 @@ cat /etc/course-lab03-marker
 
 ```bash
 sudo hostnamectl set-hostname broken-node
-echo '192.0.2.99 wrong.course.local' | sudo tee -a /etc/hosts
+echo '192.0.2.99 wrong.course.test' | sudo tee -a /etc/hosts
 echo 'BROKEN_STATE' | sudo tee /etc/course-broken-state
 ```
 
@@ -327,7 +329,12 @@ cat /etc/course-broken-state
 
 ```bash
 sudo virsh shutdown course-vm01
-sudo virsh domstate course-vm01
+for i in {1..30}; do
+  STATE=$(sudo virsh domstate course-vm01 | tr -d '\r')
+  [[ "$STATE" == 'shut off' ]] && break
+  sleep 2
+done
+test "$STATE" = 'shut off'
 ```
 
 状态为`shut off`后：
@@ -341,7 +348,7 @@ sudo virsh snapshot-revert course-vm01 lab03-clean --running
 ```bash
 hostnamectl --static
 test ! -e /etc/course-broken-state && echo 'BROKEN_STATE_REMOVED'
-grep -F 'wrong.course.local' /etc/hosts || echo 'WRONG_HOSTS_REMOVED'
+grep -F 'wrong.course.test' /etc/hosts || echo 'WRONG_HOSTS_REMOVED'
 test ! -e /etc/course-lab03-marker && echo 'POST_SNAPSHOT_MARKER_REMOVED'
 ```
 
@@ -353,18 +360,36 @@ test ! -e /etc/course-lab03-marker && echo 'POST_SNAPSHOT_MARKER_REMOVED'
 
 ```bash
 sudo virsh shutdown course-vm01
-sudo virsh domstate course-vm01
-sudo virsh undefine course-vm01
-sudo mv \
-  /var/lib/libvirt/images/course-vm01.qcow2 \
-  /var/lib/libvirt/images/course-vm01-broken.qcow2
-sudo cp --sparse=always \
-  ~/vc-course/backup/lab03/course-vm01-baseline.qcow2 \
-  /var/lib/libvirt/images/course-vm01.qcow2
-sudo chown qemu:qemu /var/lib/libvirt/images/course-vm01.qcow2
-sudo restorecon -v /var/lib/libvirt/images/course-vm01.qcow2
-sudo virsh define ~/vc-course/backup/lab03/course-vm01-baseline.xml
-sudo virsh start course-vm01
+for i in {1..30}; do
+  STATE=$(sudo virsh domstate course-vm01 | tr -d '\r')
+  [[ "$STATE" == 'shut off' ]] && break
+  sleep 2
+done
+test "$STATE" = 'shut off'
+```
+
+确认最后一条`test`返回0后，再执行取消定义和磁盘替换：
+
+```bash
+STATE=$(sudo virsh domstate course-vm01 | tr -d '\r')
+if [[ "$STATE" != 'shut off' ]]; then
+  echo "course-vm01仍为$STATE，未执行取消定义和磁盘替换"
+elif [[ ! -s ~/vc-course/backup/lab03/course-vm01-baseline.qcow2 || \
+        ! -s ~/vc-course/backup/lab03/course-vm01-baseline.xml ]]; then
+  echo '基线磁盘或XML不存在，未执行恢复'
+else
+  sudo virsh undefine course-vm01
+  sudo mv \
+    /var/lib/libvirt/images/course-vm01.qcow2 \
+    /var/lib/libvirt/images/course-vm01-broken.qcow2
+  sudo cp --sparse=always \
+    ~/vc-course/backup/lab03/course-vm01-baseline.qcow2 \
+    /var/lib/libvirt/images/course-vm01.qcow2
+  sudo chown qemu:qemu /var/lib/libvirt/images/course-vm01.qcow2
+  sudo restorecon -v /var/lib/libvirt/images/course-vm01.qcow2
+  sudo virsh define ~/vc-course/backup/lab03/course-vm01-baseline.xml
+  sudo virsh start course-vm01
+fi
 ```
 
 只有在教师确认使用替代路线时执行。每一步目标均为明确文件，不能改用宽泛通配符。
@@ -469,7 +494,8 @@ sudo du -sh /var/lib/libvirt/images/*
 确认这是克隆机身份重建造成的预期变化，而不是中间人攻击。使用明确地址删除对应旧记录：
 
 ```bash
-ssh-keygen -R <KVM_GUEST_IP>
+source ~/vc-course/course-env.sh
+ssh-keygen -R "$KVM_GUEST_IP"
 ```
 
 重新连接前核对控制台中显示的SSH主机密钥指纹。

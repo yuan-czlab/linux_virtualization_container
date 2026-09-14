@@ -147,13 +147,18 @@
 vc-key-<学号>
 ```
 
-下载私钥后立即保存到个人目录，不通过聊天工具公开发送。在Linux终端中设置权限：
+下载私钥后立即保存到个人目录，不通过聊天工具公开发送。先把下载文件的绝对路径写入`~/vc-course/course-env.sh`中的`OPENSTACK_KEY_SOURCE`，再在Linux终端中设置权限：
 
 ```bash
+source ~/vc-course/course-env.sh
 mkdir -p ~/vc-course/keys
-mv <下载目录>/<私钥文件> ~/vc-course/keys/
-chmod 600 ~/vc-course/keys/<私钥文件>
-ls -l ~/vc-course/keys/<私钥文件>
+[[ "$OPENSTACK_KEY_SOURCE" != 'CHANGE_ME' && -f "$OPENSTACK_KEY_SOURCE" ]]
+OPENSTACK_KEY="$HOME/vc-course/keys/$(basename "$OPENSTACK_KEY_SOURCE")"
+mv "$OPENSTACK_KEY_SOURCE" "$OPENSTACK_KEY"
+chmod 600 "$OPENSTACK_KEY"
+sed -i '/^export OPENSTACK_KEY=/d' ~/vc-course/course-env.sh
+printf 'export OPENSTACK_KEY=%q\n' "$OPENSTACK_KEY" >> ~/vc-course/course-env.sh
+ls -l "$OPENSTACK_KEY"
 ```
 
 如果平台由教师预置统一密钥，只使用教师指定路线，不重复创建导致配额浪费。
@@ -214,13 +219,16 @@ ip -brief address
 
 不能把“分配浮动IP”机械理解为所有OpenStack都必须执行的步骤。
 
+把最终可从当前客户端访问的实例IPv4地址写入`~/vc-course/course-env.sh`中的`OPENSTACK_INSTANCE_IP`，保存后重新`source`。不要填写只能在其他租户网络内部使用的地址。
+
 #### 步骤9：检查安全组效果
 
 从教师指定客户端执行：
 
 ```bash
-ping -c 3 <INSTANCE_ACCESS_IP>
-nc -vz <INSTANCE_ACCESS_IP> 22
+source ~/vc-course/course-env.sh
+ping -c 3 "$OPENSTACK_INSTANCE_IP"
+nc -vz "$OPENSTACK_INSTANCE_IP" 22
 ```
 
 ICMP可能因平台规则关闭而失败，必须结合22端口和SSH判断。
@@ -230,8 +238,9 @@ ICMP可能因平台规则关闭而失败，必须结合22端口和SSH判断。
 镜像默认用户名由教师清单发布，常见值可能是`cloud-user`、`rocky`或`ubuntu`。执行：
 
 ```bash
-ssh -i ~/vc-course/keys/<私钥文件> \
-  <IMAGE_USER>@<INSTANCE_ACCESS_IP>
+source ~/vc-course/course-env.sh
+ssh -i "$OPENSTACK_KEY" \
+  "$OPENSTACK_IMAGE_USER@$OPENSTACK_INSTANCE_IP"
 ```
 
 登录后：
@@ -411,7 +420,8 @@ lab05-学号-姓名/
 ### 3. 私钥权限过宽
 
 ```bash
-chmod 600 ~/vc-course/keys/<私钥文件>
+source ~/vc-course/course-env.sh
+chmod 600 "$OPENSTACK_KEY"
 ```
 
 再次检查文件所有者和路径。不要上传私钥截图或内容。
@@ -434,6 +444,6 @@ chmod 600 ~/vc-course/keys/<私钥文件>
 
 - OpenStack临时实例和不再使用的安全组、密钥对、浮动IP应清理。
 - Rocky中的KVM客户机保持关闭并保留到课程结束，不删除镜像。
-- 为Rocky创建VMware快照`VC-01-KVM模块完成`。
+- 为Rocky创建VMware检查点`VC-V1-KVM模块完成`；恢复记录中简称`VC-V1`。
 - 模块二开始前确认Rocky仍有足够磁盘空间安装Docker和保存镜像。
 

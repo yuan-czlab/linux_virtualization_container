@@ -323,6 +323,8 @@ VMware VMnet8（实际网段以本机为准）
 
 > <img src="./images/桥接、NAT、仅主机模式关系图.png" width="600">
 
+交互观察：打开[VMware三种网络模式与课程三机拓扑动画](../animations/01-vmware-network-modes/index.html)，依次切换NAT、桥接和仅主机模式，观察同网段通信、外网访问和外部主动访问的路径。动画中的地址只用于说明关系，实验1仍应记录本机实际VMnet8参数。
+
 > **<img src="./images/VMware虚拟网络编辑器中的VMnet8实际参数.png" width="600">**
 
 ## 2.4 创建Rocky Linux虚拟机
@@ -391,7 +393,8 @@ df -h
 ```bash
 nmcli device status
 nmcli connection show --active
-ping -c 3 <实际NAT网关>
+NAT_GATEWAY=$(ip route show default | awk 'NR==1 {print $3}')
+ping -c 3 "$NAT_GATEWAY"
 ```
 
 如果没有地址，先检查VMware虚拟网卡是否连接到NAT、安装器是否启用了网卡，再检查NetworkManager连接。静态IP、网关和DNS的修改方法在实验8集中学习，避免第一次课同时承担安装和网络规划两项高风险操作。
@@ -496,23 +499,31 @@ Ubuntu 22.04 Desktop的软件源通常配置在`/etc/apt/sources.list`。不要�
 
 ## 2.7 三机基础连通性验证
 
-分别用`ip -br addr`记录三台机器的DHCP地址，下面用`<ROCKY_SERVER_IP>`、`<ROCKY_WEB_IP>`、`<UBUNTU_CLIENT_IP>`和`<VMNET8_GATEWAY>`表示。必须替换占位符。
+分别用`ip -br addr`记录三台机器的DHCP地址。网关可从默认路由自动取得；在`ubuntu-client`通过提示输入两台Rocky的实际地址：
 
 两台Rocky分别测试网关；`ubuntu-client`测试两台服务器：
 
 ```bash
-ping -c 3 <VMNET8_GATEWAY>
-ping -c 3 <VMNET8_GATEWAY>
-ping -c 3 <ROCKY_SERVER_IP>
-ping -c 3 <ROCKY_WEB_IP>
+VMNET8_GATEWAY=$(ip route show default | awk 'NR==1 {print $3}')
+ping -c 3 "$VMNET8_GATEWAY"
+
+# ubuntu-client继续执行
+read -r -p 'rocky-server当前IPv4地址：' ROCKY_SERVER_IP
+read -r -p 'rocky-web当前IPv4地址：' ROCKY_WEB_IP
+ping -c 3 "$ROCKY_SERVER_IP"
+ping -c 3 "$ROCKY_WEB_IP"
 ```
 
 Windows宿主机执行：
 
 ```powershell
-ping <ROCKY_SERVER_IP>
-ping <ROCKY_WEB_IP>
-ping <UBUNTU_CLIENT_IP>
+$RockyServerIp = Read-Host '请输入rocky-server当前IPv4地址'
+$RockyWebIp = Read-Host '请输入rocky-web当前IPv4地址'
+$UbuntuClientIp = Read-Host '请输入ubuntu-client当前IPv4地址'
+
+ping $RockyServerIp
+ping $RockyWebIp
+ping $UbuntuClientIp
 ```
 
 验证顺序是“本机地址→NAT网关→同一VMnet8中的其他虚拟机”，不要一开始只测试互联网地址。实验8会为三台虚拟机配置稳定静态地址和hosts解析。
@@ -807,6 +818,8 @@ command -v ls
 
 因此`/bin`并没有消失。输入`/bin/ls`时，系统最终通常执行`/usr/bin/ls`。不同CPU架构的库目录名称可能不同，不能假设所有系统都一定存在`/lib64`。
 
+交互观察：打开[Linux目录树、路径与链接动画](../animations/02-linux-filesystem-paths-links/index.html)，先完成“目录树与/bin”和“绝对/相对路径”两个主题。每一步先根据当前目录预测目标，再到Rocky中使用`pwd`、`ls -ld`和`readlink -f`验证。
+
 ### 磁盘目录和虚拟目录
 
 `/etc`、`/home`和`/var`等内容通常保存在磁盘文件系统中；`/proc`和`/sys`主要由内核动态提供，不是普通磁盘数据。`/dev`中的设备文件也不是设备内容本身，而是访问设备的接口。
@@ -880,9 +893,9 @@ EOF
 
 cat > ~/course-practice/m1/ch04/incoming/server-list.csv <<'EOF'
 hostname,role,ip
-rocky-server,data-and-ops,<ROCKY_SERVER_IP>
-rocky-web,web,<ROCKY_WEB_IP>
-ubuntu-client,client,<UBUNTU_CLIENT_IP>
+rocky-server,data-and-ops,待实验8确定
+rocky-web,web,待实验8确定
+ubuntu-client,client,待实验8确定
 EOF
 
 printf '该文件为过期临时说明，确认后删除。\n' \
@@ -1080,7 +1093,7 @@ find ~/course-practice/m1/ch04 -maxdepth 3 -printf '%M %u:%g %p\n' | sort
 
 # 第5章 文件查看、查找与链接
 
-### 本章短练习准备
+### 操作素材准备
 
 本章使用独立目录并一次性创建日志、文档和链接练习所需的输入：
 
@@ -1203,6 +1216,8 @@ whereis ls
 
 文件名是目录中的记录，inode保存文件类型、权限、所有者、时间和数据块位置等元数据。
 
+继续打开[Linux目录树、路径与链接动画](../animations/02-linux-filesystem-paths-links/index.html)的“inode与链接”主题，先预测创建硬链接、创建软链接和删除原文件后的inode与可读性，再执行下面的真实命令。
+
 ```bash
 mkdir -p ~/course-practice/m1/ch05/data/link-lab
 rm -f ~/course-practice/m1/ch05/data/link-lab/{origin,hard-link,soft-link}.txt
@@ -1276,7 +1291,7 @@ ls -l ~/course-practice/m1/ch05/data/link-lab
 
 # 第6章 vim与归档恢复
 
-### 本章短练习准备
+### 操作素材准备
 
 本章不修改实验2的正式项目，先建立可重复练习的配置和文档：
 
@@ -1518,6 +1533,8 @@ groups rocky-server
 
 root用户的UID为0，拥有极高权限。管理员日常操作应使用普通账号，需要时通过sudo临时提权。
 
+交互观察：打开[Linux身份与权限判定动画](../animations/03-linux-permissions/index.html)的“身份与匹配”主题。分别代入`dev01`、`dev02`和`auditor`，先判断内核会选择owner、group还是other，再继续学习账号文件与管理命令。
+
 ## 7.2 账号相关文件
 
 ### `/etc/passwd`
@@ -1678,6 +1695,8 @@ grep -E 'dev01|dev02|auditor|juniorops' \
 
 目录有`r`但无`x`时，可能看到名称却无法访问属性或内容；有`x`但无`r`时，知道准确名称可能访问对象，但不能正常列出目录。
 
+继续使用[Linux身份与权限判定动画](../animations/03-linux-permissions/index.html)的“文件/目录rwx”“chmod与umask”和“共享目录”主题。动画中的判断必须在后续练习或实验4中通过真实账号、`stat`、`namei -l`和退出码验证。
+
 ## 8.3 chmod数字法
 
 ```text
@@ -1686,7 +1705,7 @@ w = 2
 x = 1
 ```
 
-### 本章短练习准备
+### 操作素材准备
 
 下面的对象全部位于个人练习目录中。命令会创建输入文件并统一设置初始权限，可以按顺序执行：
 
@@ -1725,9 +1744,9 @@ stat -c '%A %a %n' ~/course-practice/m1/ch08/{check.sh,shared.txt,secret.txt,con
 
 ## 8.5 所有者与所属组
 
-`chown`和`chgrp`的基本格式如下。真实项目文件的所有者和组由实验4设置；不要对不明来源的系统目录递归执行这些命令。
+`chown`和`chgrp`的基本格式如下。中文词表示需要替换的参数，不能原样执行。真实项目文件的所有者和组由实验4设置；不要对不明来源的系统目录递归执行这些命令。
 
-```bash
+```text
 chown 用户名 文件
 chgrp 组名 文件
 chown 用户名:组名 文件
@@ -2159,12 +2178,15 @@ tree --version
 如果镜像配置不可用，恢复本次修改前的配置：
 
 ```bash
+sudo ls -dt /root/yum-repos-backup-* 2>/dev/null
+read -r -p '输入本次确认要恢复的Rocky仓库备份目录：' backup_dir
+sudo test -d "$backup_dir"
 sudo cp -a "$backup_dir"/. /etc/yum.repos.d/
 sudo dnf clean all
 sudo dnf makecache
 ```
 
-`backup_dir`变量只在当前Shell会话中有效。重新登录后，应先执行`sudo ls -dt /root/yum-repos-backup-* | head -1`确认实际备份目录，再赋值恢复。不要在未确认路径时执行批量删除。
+不要用`head -1`自动选择备份，因为最新目录未必就是要恢复的版本。应核对时间和内容后输入明确路径；不要在未确认路径时执行批量删除。
 
 ### Ubuntu 22.04 Desktop镜像配置
 
@@ -2204,6 +2226,9 @@ tree --version
 如果镜像不可用，回退并重新刷新索引：
 
 ```bash
+sudo ls -lt /etc/apt/sources.list.backup.* 2>/dev/null
+read -r -p '输入本次确认要恢复的sources.list备份文件：' backup_file
+sudo test -f "$backup_file"
 sudo cp -a "$backup_file" /etc/apt/sources.list
 sudo apt clean
 sudo apt update
@@ -2329,6 +2354,8 @@ systemctl show chronyd -p CanReload
 - running也不代表已经设置开机自启。
 - reload要求Unit明确支持重新加载配置，通常比restart影响小。Rocky Linux 9的`chronyd.service`通常显示`CanReload=no`，因此不要对它机械执行`systemctl reload chronyd`。
 
+交互观察：打开[systemd服务状态、依赖与journal排障动画](../animations/04-systemd-journal/index.html)。先完成“运行与自启”，分别预测`start`、`enable`和`enable --now`执行后的active/enabled组合，再用`is-active`和`is-enabled`独立验证。
+
 `enable --now`可以同时启用并立即启动：
 
 ```bash
@@ -2342,6 +2369,8 @@ systemctl cat chronyd
 systemctl show chronyd -p ActiveState -p SubState -p MainPID
 systemctl list-dependencies chronyd
 ```
+
+依赖关系与启动排序不能混为一谈：`Wants`和`Requires`主要回答“启动当前Unit时还需要拉入谁”，`After`和`Before`回答“当两者都在同一事务中时谁先执行”。`After=B`不会单独把B拉入事务；`Requires=B`也不单独规定A必须排在B之后。需要表达“拉入B并在B之后启动A”时，应按实际强弱要求组合`Wants/Requires`与`After`。
 
 不要直接修改`/usr/lib/systemd/system`中的供应商Unit。需要覆盖参数时使用：
 

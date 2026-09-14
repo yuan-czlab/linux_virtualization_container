@@ -1,0 +1,565 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VMware三种网络模式与课程三机拓扑</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #07101f;
+      --panel: rgba(15, 27, 48, .88);
+      --panel-2: rgba(23, 39, 67, .82);
+      --line: #52647f;
+      --text: #edf4ff;
+      --muted: #9fb0c8;
+      --blue: #55b8ff;
+      --blue-2: #207bc8;
+      --purple: #b28cff;
+      --green: #5de6a0;
+      --yellow: #ffc85b;
+      --red: #ff6d7a;
+      --shadow: 0 20px 55px rgba(0, 0, 0, .32);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--text);
+      font-family: "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+      background:
+        radial-gradient(circle at 16% 12%, rgba(32, 123, 200, .24), transparent 31%),
+        radial-gradient(circle at 88% 78%, rgba(178, 140, 255, .18), transparent 30%),
+        linear-gradient(145deg, #050b16, var(--bg) 56%, #0c1730);
+    }
+
+    button { font: inherit; }
+
+    .app {
+      min-height: 100vh;
+      display: grid;
+      grid-template-rows: auto auto 1fr auto;
+      gap: 14px;
+      padding: 22px clamp(18px, 3vw, 44px) 18px;
+    }
+
+    header {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 24px;
+    }
+
+    .eyebrow {
+      margin: 0 0 6px;
+      color: var(--blue);
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: .18em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(25px, 3vw, 42px);
+      line-height: 1.12;
+      letter-spacing: -.02em;
+    }
+
+    .course-tag {
+      flex: none;
+      padding: 9px 13px;
+      border: 1px solid rgba(85, 184, 255, .34);
+      border-radius: 999px;
+      color: #c9eaff;
+      background: rgba(32, 123, 200, .13);
+      font-size: 13px;
+    }
+
+    .mode-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px;
+      border: 1px solid rgba(123, 150, 188, .2);
+      border-radius: 16px;
+      background: rgba(8, 17, 32, .58);
+      box-shadow: var(--shadow);
+    }
+
+    .mode-button {
+      min-width: 132px;
+      padding: 11px 18px;
+      border: 1px solid transparent;
+      border-radius: 11px;
+      color: var(--muted);
+      background: transparent;
+      cursor: pointer;
+      transition: .2s ease;
+    }
+
+    .mode-button:hover { color: var(--text); background: rgba(255,255,255,.05); }
+    .mode-button.active {
+      color: #061321;
+      background: var(--blue);
+      box-shadow: 0 8px 24px rgba(85, 184, 255, .25);
+      font-weight: 800;
+    }
+
+    .recommend {
+      margin-left: auto;
+      padding: 8px 12px;
+      border-radius: 10px;
+      color: #072114;
+      background: var(--green);
+      font-size: 12px;
+      font-weight: 900;
+    }
+
+    main {
+      min-height: 0;
+      display: grid;
+      grid-template-columns: minmax(580px, 1.7fr) minmax(300px, .72fr);
+      gap: 14px;
+    }
+
+    .diagram-card, .lesson-card {
+      border: 1px solid rgba(123, 150, 188, .22);
+      border-radius: 20px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .diagram-card {
+      position: relative;
+      min-height: 570px;
+    }
+
+    .diagram-heading {
+      position: absolute;
+      z-index: 4;
+      top: 18px;
+      left: 20px;
+      right: 20px;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      pointer-events: none;
+    }
+
+    .diagram-heading h2 { margin: 0 0 4px; font-size: 20px; }
+    .diagram-heading p { margin: 0; color: var(--muted); font-size: 13px; }
+
+    .status-pill {
+      padding: 7px 11px;
+      border-radius: 999px;
+      color: var(--green);
+      background: rgba(93, 230, 160, .11);
+      border: 1px solid rgba(93, 230, 160, .28);
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    svg { width: 100%; height: 100%; min-height: 570px; display: block; }
+    .host-boundary { fill: rgba(39, 64, 101, .18); stroke: #405574; stroke-width: 2; stroke-dasharray: 8 7; }
+    .node rect { stroke-width: 2; filter: drop-shadow(0 8px 12px rgba(0,0,0,.2)); }
+    .node .main { fill: #132b49; stroke: var(--blue); }
+    .node.switch .main { fill: #2b2050; stroke: var(--purple); }
+    .node.gateway .main { fill: #433418; stroke: var(--yellow); }
+    .node.external .main { fill: #123725; stroke: var(--green); }
+    .node.blocked .main { fill: #3a1d2a; stroke: var(--red); }
+    .node-title { fill: var(--text); font-size: 17px; font-weight: 800; text-anchor: middle; }
+    .node-sub { fill: var(--muted); font-size: 12px; text-anchor: middle; }
+    .zone-title { fill: #88a1c1; font-size: 12px; font-weight: 800; letter-spacing: .12em; }
+    .link { fill: none; stroke: var(--line); stroke-width: 4; stroke-linecap: round; transition: .25s ease; }
+    .link.available { stroke: #486b82; }
+    .link.active { stroke: var(--green); filter: drop-shadow(0 0 7px rgba(93,230,160,.65)); }
+    .link.denied { stroke: var(--red); stroke-dasharray: 8 8; }
+    .link.dim { opacity: .18; }
+    .link-label { fill: #a9b7cb; font-size: 12px; text-anchor: middle; }
+    .packet { fill: #fff; stroke: var(--green); stroke-width: 4; filter: drop-shadow(0 0 8px var(--green)); }
+    .packet.denied { stroke: var(--red); filter: drop-shadow(0 0 8px var(--red)); }
+    .node.focus .main { filter: drop-shadow(0 0 13px rgba(93, 230, 160, .8)); stroke: var(--green); }
+
+    .lesson-card {
+      display: grid;
+      grid-template-rows: auto auto 1fr auto;
+      padding: 22px;
+    }
+
+    .step-counter { color: var(--blue); font-size: 13px; font-weight: 900; letter-spacing: .08em; }
+    .lesson-card h2 { margin: 8px 0 10px; font-size: clamp(22px, 2.2vw, 30px); line-height: 1.22; }
+    .lesson-card .explain { margin: 0; color: #c9d5e6; font-size: 16px; line-height: 1.75; }
+
+    .question {
+      align-self: end;
+      margin-top: 18px;
+      padding: 16px;
+      border-left: 4px solid var(--yellow);
+      border-radius: 0 12px 12px 0;
+      background: rgba(255, 200, 91, .08);
+    }
+
+    .question small { display: block; margin-bottom: 5px; color: var(--yellow); font-weight: 900; }
+    .question p { margin: 0; color: #f8e6ba; line-height: 1.55; }
+
+    .controls {
+      display: grid;
+      grid-template-columns: 44px 44px 1fr 44px;
+      gap: 9px;
+      margin-top: 18px;
+    }
+
+    .control {
+      height: 44px;
+      border: 1px solid rgba(134, 158, 192, .3);
+      border-radius: 11px;
+      color: var(--text);
+      background: var(--panel-2);
+      cursor: pointer;
+    }
+
+    .control:hover { border-color: var(--blue); }
+    .control.play { color: #061321; background: var(--blue); border-color: var(--blue); font-weight: 900; }
+
+    footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .legend { display: flex; flex-wrap: wrap; gap: 15px; }
+    .legend span { display: inline-flex; align-items: center; gap: 6px; }
+    .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+
+    @media (max-width: 920px) {
+      .app { min-height: auto; }
+      header { align-items: flex-start; flex-direction: column; gap: 10px; }
+      main { grid-template-columns: 1fr; }
+      .mode-bar { flex-wrap: wrap; }
+      .recommend { display: none; }
+      .diagram-card, svg { min-height: 510px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      * { scroll-behavior: auto !important; transition: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div>
+        <p class="eyebrow">Linux实验1 · 虚拟化容器实验1/4</p>
+        <h1>VMware 三种网络模式与课程三机拓扑</h1>
+      </div>
+      <div class="course-tag">概念动画 · 实际网段以机房环境为准</div>
+    </header>
+
+    <nav class="mode-bar" aria-label="网络模式">
+      <button class="mode-button active" data-mode="nat">NAT 模式</button>
+      <button class="mode-button" data-mode="bridged">桥接模式</button>
+      <button class="mode-button" data-mode="hostonly">仅主机模式</button>
+      <span class="recommend">课程初装：NAT + DHCP</span>
+    </nav>
+
+    <main>
+      <section class="diagram-card">
+        <div class="diagram-heading">
+          <div>
+            <h2 id="modeTitle">NAT：共享宿主机的外网出口</h2>
+            <p id="modeSubtitle">VMnet8 私有网段 · 示例 192.168.80.0/24</p>
+          </div>
+          <span class="status-pill" id="reachability">三机互通 · 可访问互联网</span>
+        </div>
+
+        <svg viewBox="0 0 1050 590" role="img" aria-labelledby="svgTitle svgDesc">
+          <title id="svgTitle">VMware网络模式动态拓扑</title>
+          <desc id="svgDesc">展示Windows宿主机、三台课程虚拟机、VMware虚拟网络、校园网和互联网之间的数据包路径。</desc>
+
+          <rect class="host-boundary" x="30" y="92" width="750" height="465" rx="24" />
+          <text class="zone-title" x="52" y="122">WINDOWS 宿主机 / VMWARE WORKSTATION</text>
+          <text class="zone-title" x="830" y="122">外部网络</text>
+
+          <path id="path-host-switch" class="link available" d="M145 225 C230 225 280 265 377 292" />
+          <path id="path-rocky1-switch" class="link available" d="M184 454 C240 405 316 346 404 326" />
+          <path id="path-rocky2-switch" class="link available" d="M449 454 L449 346" />
+          <path id="path-ubuntu-switch" class="link available" d="M714 454 C660 405 585 348 494 326" />
+          <path id="path-switch-gateway" class="link available" d="M521 303 L630 303" />
+          <path id="path-gateway-lan" class="link available" d="M744 278 C798 241 829 218 866 211" />
+          <path id="path-switch-lan" class="link available dim" d="M514 284 C650 209 756 189 866 200" />
+          <path id="path-lan-internet" class="link available" d="M923 241 L923 327" />
+
+          <text id="label-external-link" class="link-label" x="798" y="252">地址转换后发出</text>
+          <text id="label-vm-link" class="link-label" x="300" y="392">虚拟网卡</text>
+
+          <g id="node-host" class="node">
+            <rect class="main" x="65" y="164" width="160" height="92" rx="16" />
+            <text class="node-title" x="145" y="200">Windows 宿主机</text>
+            <text id="hostIp" class="node-sub" x="145" y="224">VMnet8：192.168.80.1</text>
+            <text class="node-sub" x="145" y="242">物理网卡另有地址</text>
+          </g>
+
+          <g id="node-switch" class="node switch">
+            <rect class="main" x="376" y="264" width="146" height="82" rx="16" />
+            <text id="switchName" class="node-title" x="449" y="299">VMnet8</text>
+            <text id="switchRole" class="node-sub" x="449" y="322">虚拟交换网络</text>
+          </g>
+
+          <g id="node-gateway" class="node gateway">
+            <rect class="main" x="630" y="260" width="146" height="86" rx="16" />
+            <text id="gatewayName" class="node-title" x="703" y="296">NAT 网关</text>
+            <text id="gatewayIp" class="node-sub" x="703" y="319">192.168.80.2</text>
+          </g>
+
+          <g id="node-rocky1" class="node">
+            <rect class="main" x="79" y="446" width="210" height="82" rx="16" />
+            <text class="node-title" x="184" y="480">rocky-server</text>
+            <text id="rocky1Ip" class="node-sub" x="184" y="505">192.168.80.10</text>
+          </g>
+
+          <g id="node-rocky2" class="node">
+            <rect class="main" x="344" y="446" width="210" height="82" rx="16" />
+            <text class="node-title" x="449" y="480">rocky-web</text>
+            <text id="rocky2Ip" class="node-sub" x="449" y="505">192.168.80.20</text>
+          </g>
+
+          <g id="node-ubuntu" class="node">
+            <rect class="main" x="609" y="446" width="210" height="82" rx="16" />
+            <text class="node-title" x="714" y="480">ubuntu-client</text>
+            <text id="ubuntuIp" class="node-sub" x="714" y="505">192.168.80.30</text>
+          </g>
+
+          <g id="node-lan" class="node external">
+            <rect class="main" x="847" y="164" width="152" height="78" rx="16" />
+            <text id="lanTitle" class="node-title" x="923" y="198">校园网</text>
+            <text id="lanSub" class="node-sub" x="923" y="220">物理网络</text>
+          </g>
+
+          <g id="node-internet" class="node external">
+            <rect class="main" x="847" y="328" width="152" height="78" rx="39" />
+            <text class="node-title" x="923" y="362">互联网</text>
+            <text id="internetSub" class="node-sub" x="923" y="384">可访问</text>
+          </g>
+
+          <g id="packetLayer" aria-hidden="true"></g>
+        </svg>
+      </section>
+
+      <aside class="lesson-card">
+        <div class="step-counter" id="stepCounter">第 1 / 4 步</div>
+        <div>
+          <h2 id="stepTitle">先认清两个网络</h2>
+          <p class="explain" id="stepText">虚拟机连接VMnet8私有网段；Windows宿主机还通过物理网卡连接校园网。两侧地址不是同一个网段。</p>
+        </div>
+        <div class="question">
+          <small>观察与判断</small>
+          <p id="questionText">三台虚拟机是否必须使用完全相同的IP地址？为什么？</p>
+        </div>
+        <div class="controls">
+          <button class="control" id="prev" aria-label="上一步">←</button>
+          <button class="control" id="restart" aria-label="重新开始">↺</button>
+          <button class="control play" id="play">▶ 播放</button>
+          <button class="control" id="next" aria-label="下一步">→</button>
+        </div>
+      </aside>
+    </main>
+
+    <footer>
+      <div class="legend">
+        <span><i class="dot" style="background:var(--blue)"></i>宿主机/虚拟机</span>
+        <span><i class="dot" style="background:var(--purple)"></i>虚拟网络</span>
+        <span><i class="dot" style="background:var(--green)"></i>当前可达路径</span>
+        <span><i class="dot" style="background:var(--red)"></i>被阻断路径</span>
+      </div>
+      <span>实验1由DHCP获得并记录地址；实验8再按实际VMnet8参数配置静态地址</span>
+    </footer>
+  </div>
+
+  <script>
+    const modes = {
+      nat: {
+        title: 'NAT：共享宿主机的外网出口',
+        subtitle: 'VMnet8 私有网段 · 实际子网和地址由本机VMware决定',
+        reachability: '三机互通 · 可访问互联网',
+        switchName: 'VMnet8', switchRole: 'NAT 私有网络',
+        hostIp: 'VMnet8：192.168.80.1', gatewayName: 'NAT 网关', gatewayIp: '192.168.80.2',
+        ips: ['DHCP地址 A · 实验8再固定', 'DHCP地址 B · 实验8再固定', 'DHCP地址 C · 实验8再固定'],
+        externalLabel: '地址转换后发出', lanTitle: '校园网', lanSub: '物理网络', internetSub: '可访问',
+        gatewayVisible: true, direct: false, blocked: false,
+        steps: [
+          { title: '先认清两个网络', text: '虚拟机连接VMnet8私有网段；Windows宿主机还通过物理网卡连接校园网。两侧地址不是同一个网段。', q: '三台虚拟机是否必须使用完全相同的IP地址？为什么？', focus: ['node-switch','node-host'], path: null },
+          { title: '同一VMnet8内直接通信', text: 'rocky-server发给rocky-web的数据先到虚拟交换网络，再转发到目标虚拟机，不需要经过NAT网关或互联网。', q: '如果两台虚拟机掩码错误，即使看起来地址相近，还能保证直接通信吗？', focus: ['node-rocky1','node-switch','node-rocky2'], path: 'M184 446 C240 405 316 346 404 326 C420 345 440 390 449 446' },
+          { title: '访问外网时执行地址转换', text: 'ubuntu-client的数据经过VMnet8和NAT网关。网关把虚拟机私有地址转换成宿主机对外地址，再送往校园网和互联网。', q: '校园网设备最终看到的源地址更接近虚拟机地址，还是宿主机对外地址？', focus: ['node-ubuntu','node-switch','node-gateway','node-lan','node-internet'], path: 'M714 446 C660 405 585 348 494 326 L630 303 C798 241 829 218 866 211 L923 241 L923 328' },
+          { title: '外部主动访问默认受限', text: 'NAT会记录由内部发起的连接并允许返回流量；外部设备通常不能直接发起到某台虚拟机的连接，除非配置端口转发。', q: '若要让校园网访问rocky-web的80端口，需要增加什么配置？还要检查哪些安全层？', focus: ['node-internet','node-gateway'], path: 'M923 328 L923 241 C829 218 798 241 744 278 L704 303', denied: true, deniedLink: 'path-gateway-lan' }
+        ]
+      },
+      bridged: {
+        title: '桥接：虚拟机成为校园网中的独立主机',
+        subtitle: 'VMnet0 桥接到宿主机物理网卡 · 示例地址仅用于概念说明',
+        reachability: '与物理网络同层 · 可被外部访问',
+        switchName: 'VMnet0', switchRole: '桥接到物理网卡',
+        hostIp: '校园网：10.20.30.40', gatewayName: '物理网卡', gatewayIp: '桥接出口',
+        ips: ['校园网地址 A（示例）', '校园网地址 B（示例）', '校园网地址 C（示例）'],
+        externalLabel: '二层桥接，不做NAT', lanTitle: '校园网', lanSub: '虚拟机直接加入', internetSub: '经校园网访问',
+        gatewayVisible: false, direct: true, blocked: false,
+        steps: [
+          { title: '虚拟机直接加入物理网络', text: 'VMnet0把虚拟网卡桥接到宿主机物理网卡。三台虚拟机像三台独立电脑一样出现在校园网中。', q: '桥接后，虚拟机与宿主机是否仍然共用同一个IP地址？', focus: ['node-switch','node-lan'], path: null },
+          { title: '访问外网时不经过VMware NAT', text: 'ubuntu-client的数据经VMnet0和物理网卡直接进入校园网，再由校园网网关转发。VMware不修改源IP。', q: '此时虚拟机的默认网关应该是VMware NAT网关，还是校园网网关？', focus: ['node-ubuntu','node-switch','node-lan','node-internet'], path: 'M714 446 C660 405 585 348 494 326 C650 209 756 189 866 200 L923 241 L923 328' },
+          { title: '外部可以直接寻址虚拟机', text: '只要校园网路由、接入策略、虚拟机防火墙和服务监听都允许，其他主机可以直接访问虚拟机地址。', q: '能ping通但访问不了80端口，应从哪些层继续检查？', focus: ['node-lan','node-switch','node-rocky2'], path: 'M866 200 C756 189 650 209 514 284 C485 340 460 390 449 446' },
+          { title: '便利也带来环境风险', text: '桥接依赖校园网允许多个地址接入，也可能遇到DHCP限制、地址冲突、无线网卡桥接限制和更大的暴露面。', q: '为什么课程初装不把桥接作为统一默认方案？', focus: ['node-rocky1','node-rocky2','node-ubuntu','node-lan'], path: null }
+        ]
+      },
+      hostonly: {
+        title: '仅主机：建立不通外网的隔离实验网',
+        subtitle: 'VMnet1 私有网段 · 示例 192.168.56.0/24',
+        reachability: '三机与宿主机互通 · 默认无互联网',
+        switchName: 'VMnet1', switchRole: '仅主机私有网络',
+        hostIp: 'VMnet1：192.168.56.1', gatewayName: '无NAT网关', gatewayIp: '外部出口关闭',
+        ips: ['192.168.56.10', '192.168.56.20', '192.168.56.30'],
+        externalLabel: '没有默认外部出口', lanTitle: '校园网', lanSub: '不与VMnet1桥接', internetSub: '默认不可访问',
+        gatewayVisible: true, direct: false, blocked: true,
+        steps: [
+          { title: '隔离网只连接宿主机与虚拟机', text: 'VMnet1为Windows创建一个虚拟适配器，并把三台虚拟机接入同一私有网段；它不桥接物理网卡，也不提供NAT出口。', q: '“仅主机”中的“主机”指Windows宿主机还是某台Rocky虚拟机？', focus: ['node-host','node-switch'], path: null },
+          { title: '隔离网内的虚拟机仍可互通', text: 'rocky-server、rocky-web和ubuntu-client位于同一VMnet1中，地址和掩码正确时仍可彼此访问。', q: '隔离网络为什么特别适合故障注入或安全练习？', focus: ['node-rocky1','node-switch','node-rocky2'], path: 'M184 446 C240 405 316 346 404 326 C420 345 440 390 449 446' },
+          { title: '宿主机可以管理虚拟机', text: 'Windows上的VMnet1虚拟适配器也在此网段，因此宿主机可以SSH到Rocky，或浏览rocky-web的站点。', q: '如果删除或禁用了Windows的VMnet1适配器，虚拟机之间是否一定也会中断？', focus: ['node-host','node-switch','node-rocky1'], path: 'M145 225 C230 225 280 265 377 292 C320 346 240 405 184 446' },
+          { title: '访问互联网的路径被截断', text: '数据能够到达VMnet1，但这里没有NAT或桥接出口。需要软件源和镜像下载的实验不适合只使用这一张网卡。', q: '若既要隔离实验网又要临时下载软件，可以给虚拟机怎样配置第二张网卡？', focus: ['node-ubuntu','node-switch','node-gateway'], path: 'M714 446 C660 405 585 348 494 326 L630 303', denied: true, deniedLink: 'path-switch-gateway' }
+        ]
+      }
+    };
+
+    let currentMode = 'nat';
+    let stepIndex = 0;
+    let timer = null;
+
+    const $ = (id) => document.getElementById(id);
+    const buttons = [...document.querySelectorAll('.mode-button')];
+    const linkIds = ['path-host-switch','path-rocky1-switch','path-rocky2-switch','path-ubuntu-switch','path-switch-gateway','path-gateway-lan','path-switch-lan','path-lan-internet'];
+    const nodeIds = ['node-host','node-switch','node-gateway','node-rocky1','node-rocky2','node-ubuntu','node-lan','node-internet'];
+
+    function setText(id, value) { $(id).textContent = value; }
+
+    function clearVisuals() {
+      nodeIds.forEach(id => $(id).classList.remove('focus'));
+      linkIds.forEach(id => $(id).classList.remove('active', 'denied'));
+      $('packetLayer').replaceChildren();
+    }
+
+    function animatePacket(path, denied = false) {
+      if (!path || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+      const ns = 'http://www.w3.org/2000/svg';
+      const circle = document.createElementNS(ns, 'circle');
+      circle.setAttribute('r', '7');
+      circle.setAttribute('class', denied ? 'packet denied' : 'packet');
+      const motion = document.createElementNS(ns, 'animateMotion');
+      motion.setAttribute('dur', '2.2s');
+      motion.setAttribute('path', path);
+      motion.setAttribute('fill', 'freeze');
+      motion.setAttribute('calcMode', 'spline');
+      motion.setAttribute('keySplines', '.3 0 .2 1');
+      circle.appendChild(motion);
+      $('packetLayer').appendChild(circle);
+      motion.beginElement();
+    }
+
+    function renderMode() {
+      const mode = modes[currentMode];
+      buttons.forEach(button => button.classList.toggle('active', button.dataset.mode === currentMode));
+      setText('modeTitle', mode.title);
+      setText('modeSubtitle', mode.subtitle);
+      setText('reachability', mode.reachability);
+      setText('switchName', mode.switchName);
+      setText('switchRole', mode.switchRole);
+      setText('hostIp', mode.hostIp);
+      setText('gatewayName', mode.gatewayName);
+      setText('gatewayIp', mode.gatewayIp);
+      setText('rocky1Ip', mode.ips[0]);
+      setText('rocky2Ip', mode.ips[1]);
+      setText('ubuntuIp', mode.ips[2]);
+      setText('label-external-link', mode.externalLabel);
+      setText('lanTitle', mode.lanTitle);
+      setText('lanSub', mode.lanSub);
+      setText('internetSub', mode.internetSub);
+
+      $('node-gateway').style.opacity = mode.gatewayVisible ? '1' : '.18';
+      $('path-switch-gateway').classList.toggle('dim', mode.direct);
+      $('path-gateway-lan').classList.toggle('dim', mode.direct || mode.blocked);
+      $('path-switch-lan').classList.toggle('dim', !mode.direct);
+      $('path-lan-internet').classList.toggle('dim', mode.blocked);
+      $('node-lan').classList.toggle('blocked', mode.blocked);
+      $('node-internet').classList.toggle('blocked', mode.blocked);
+      renderStep();
+    }
+
+    function renderStep() {
+      const steps = modes[currentMode].steps;
+      const step = steps[stepIndex];
+      clearVisuals();
+      setText('stepCounter', `第 ${stepIndex + 1} / ${steps.length} 步`);
+      setText('stepTitle', step.title);
+      setText('stepText', step.text);
+      setText('questionText', step.q);
+      step.focus.forEach(id => $(id).classList.add('focus'));
+      if (step.deniedLink) $(step.deniedLink).classList.add('denied');
+      animatePacket(step.path, step.denied);
+    }
+
+    function stop() {
+      if (timer) clearInterval(timer);
+      timer = null;
+      $('play').textContent = '▶ 播放';
+    }
+
+    function next() {
+      const length = modes[currentMode].steps.length;
+      stepIndex = (stepIndex + 1) % length;
+      renderStep();
+    }
+
+    function prev() {
+      const length = modes[currentMode].steps.length;
+      stepIndex = (stepIndex - 1 + length) % length;
+      renderStep();
+    }
+
+    function togglePlay() {
+      if (timer) return stop();
+      $('play').textContent = '❚❚ 暂停';
+      next();
+      timer = setInterval(next, 5200);
+    }
+
+    buttons.forEach(button => button.addEventListener('click', () => {
+      stop();
+      currentMode = button.dataset.mode;
+      stepIndex = 0;
+      renderMode();
+    }));
+
+    $('prev').addEventListener('click', () => { stop(); prev(); });
+    $('next').addEventListener('click', () => { stop(); next(); });
+    $('restart').addEventListener('click', () => { stop(); stepIndex = 0; renderStep(); });
+    $('play').addEventListener('click', togglePlay);
+
+    document.addEventListener('keydown', event => {
+      if (event.key === 'ArrowRight') { stop(); next(); }
+      if (event.key === 'ArrowLeft') { stop(); prev(); }
+      if (event.key === ' ') { event.preventDefault(); togglePlay(); }
+      if (['1','2','3'].includes(event.key)) {
+        stop();
+        currentMode = ['nat','bridged','hostonly'][Number(event.key) - 1];
+        stepIndex = 0;
+        renderMode();
+      }
+    });
+
+    renderMode();
+  </script>
+</body>
+</html>

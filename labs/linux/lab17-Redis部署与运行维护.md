@@ -126,7 +126,8 @@ EXIT
 ```bash
 REDIS_CONF=$(rpm -ql redis | grep '/redis.conf$' | head -1)
 printf 'redis_conf=%s\n' "$REDIS_CONF"
-sudo cp -p "$REDIS_CONF" ~/m1-project/backup/redis/redis.conf.before-auth
+test -f ~/m1-project/backup/redis/redis.conf.before-auth || \
+  sudo cp -p "$REDIS_CONF" ~/m1-project/backup/redis/redis.conf.before-auth
 sudo grep -nE '^(bind|protected-mode|port|requirepass|save|appendonly|dir|dbfilename)' "$REDIS_CONF" | sed -n '1,100p'
 ```
 
@@ -135,6 +136,8 @@ sudo grep -nE '^(bind|protected-mode|port|requirepass|save|appendonly|dir|dbfile
 #### 步骤2：编辑配置
 
 ```bash
+REDIS_CONF=$(rpm -ql redis | grep '/redis.conf$' | head -1)
+test -n "$REDIS_CONF"
 sudo vim "$REDIS_CONF"
 ```
 
@@ -189,6 +192,8 @@ EXIT
 ### 任务五：持久化检查
 
 ```bash
+REDIS_CONF=$(rpm -ql redis | grep '/redis.conf$' | head -1)
+test -n "$REDIS_CONF"
 sudo grep -nE '^(save|appendonly|appendfilename|dir|dbfilename)' "$REDIS_CONF" | sed -n '1,100p'
 ```
 
@@ -236,6 +241,8 @@ EXIT
 使用错误密码执行AUTH，记录错误；再使用正确密码恢复。检查：
 
 ```bash
+REDIS_CONF=$(rpm -ql redis | grep '/redis.conf$' | head -1)
+test -n "$REDIS_CONF"
 systemctl status redis --no-pager
 sudo ss -lntp | grep ':6379'
 sudo journalctl -u redis -n 50 --no-pager
@@ -245,6 +252,8 @@ sudo grep -nE '^(bind|protected-mode|port|requirepass|save|appendonly)' "$REDIS_
 保存不含密码的证据：
 
 ```bash
+REDIS_CONF=$(rpm -ql redis | grep '/redis.conf$' | head -1)
+test -n "$REDIS_CONF"
 {
     redis-server --version
     systemctl is-active redis

@@ -92,7 +92,7 @@ for service in mysqld mongod redis sshd; do
     printf '%-10s %s\n' "$service" "$(systemctl is-active "$service" 2>/dev/null || true)"
 done
 sudo ss -lntp | grep -E ':(22|3306|27017|6379)\b' || true
-curl --fail -H 'Host: techcorp.local' http://rocky-web/health
+curl --fail -H 'Host: techcorp.test' http://rocky-web/health
 df -h /
 free -h
 ```
@@ -208,7 +208,7 @@ check_ports() {
 
 check_web() {
     if curl --silent --show-error --fail --max-time 3 \
-        -H 'Host: techcorp.local' http://rocky-web/health >/dev/null; then
+        -H 'Host: techcorp.test' http://rocky-web/health >/dev/null; then
         ok 'rocky-web的Nginx健康检查返回成功'
     else
         crit 'rocky-web的Nginx健康检查失败'
@@ -264,7 +264,7 @@ echo $?
 
 ```bash
 getent hosts rocky-web
-curl --fail -H 'Host: techcorp.local' http://rocky-web/health
+curl --fail -H 'Host: techcorp.test' http://rocky-web/health
 ```
 
 ```bash
@@ -305,6 +305,7 @@ systemctl is-active redis || true
 ```bash
 ./scripts/server-health.sh > ~/m1-project/logs/health-fault.log 2>&1
 FAULT_CODE=$?
+printf '%s\n' "$FAULT_CODE" > ~/m1-project/evidence/lab19-fault-exit.txt
 cat ~/m1-project/logs/health-fault.log
 printf 'fault_exit_code=%s\n' "$FAULT_CODE"
 ```
@@ -322,9 +323,10 @@ printf 'fault_exit_code=%s\n' "$FAULT_CODE"
 sudo systemctl start redis
 systemctl is-active redis
 sudo ss -lntp | grep ':6379'
-curl --fail -H 'Host: techcorp.local' http://rocky-web/health
+curl --fail -H 'Host: techcorp.test' http://rocky-web/health
 ./scripts/server-health.sh > ~/m1-project/logs/health-recovered.log 2>&1
 RECOVERED_CODE=$?
+printf '%s\n' "$RECOVERED_CODE" > ~/m1-project/evidence/lab19-recovered-exit.txt
 cat ~/m1-project/logs/health-recovered.log
 printf 'recovered_exit_code=%s\n' "$RECOVERED_CODE"
 ```
@@ -370,6 +372,8 @@ git log --oneline --decorate -n 5
 ### 任务六：保存实验结果
 
 ```bash
+FAULT_CODE=$(cat ~/m1-project/evidence/lab19-fault-exit.txt)
+RECOVERED_CODE=$(cat ~/m1-project/evidence/lab19-recovered-exit.txt)
 {
     printf '=== syntax ===\n'
     bash -n ~/m1-project/git-lab/scripts/server-health.sh

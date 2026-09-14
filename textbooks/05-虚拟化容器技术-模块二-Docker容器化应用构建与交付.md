@@ -41,6 +41,29 @@
 
 每章完成后应能够说明镜像、容器、网络、卷和编排清单之间的关系，并通过状态、日志、网络、数据和跨主机运行结果证明交付有效。
 
+本模块继续使用Linux课程留下的`rocky-server`和`ubuntu-client`：原静态网络、SSH、firewalld、SELinux、`~/m1-project`与Linux服务成果均保留，容器课程对象统一放在`~/vc-course`。KVM客户机在Docker阶段正常关机释放资源，但KVM定义、镜像和`VC-V1`检查点不删除。
+
+### 代码块与任务标记
+
+| 标记 | 是否执行 | 状态边界 |
+|---|---|---|
+| 观察命令 | 可以执行 | 只查询宿主机、Docker或Kubernetes状态 |
+| 本章短练习 | 按顺序执行 | 使用`~/course-practice/vc-m2/chXX`和`vc-practice-*`命名对象，完成后按本章清单清理 |
+| 实验衔接 | 转入对应实验后执行 | 安装Docker、导入正式镜像、创建项目网络/卷、构建镜像、运行Compose或修改集群资源 |
+
+短练习绝不执行`docker system prune`、`docker volume prune`、`docker compose down -v`或跨Namespace删除。未标为短练习的变更命令应在实验6—11中执行；清理前先通过名称、label、Compose项目或Namespace确认对象归属。
+
+### 第6—11章学练顺序
+
+| 章节 | 必学内容 | 本章短练习 | 对应实验 |
+|---|---|---|---|
+| 第6章 | 镜像/容器/守护进程、namespace、cgroup、权限与双发行版安装 | 只读核对Linux-L4继承和内核能力 | 实验6 |
+| 第7章 | 标签、摘要、生命周期、日志、Registry与save/load | 检查一张已导入课程镜像的身份和配置 | 实验7 |
+| 第8章 | bridge、自定义网络、DNS、端口、绑定挂载、卷与恢复 | 创建并删除带课程label的空网络和卷 | 实验8 |
+| 第9章 | 构建上下文、层、缓存、非root、多阶段与秘密边界 | 使用本地基础镜像构建无联网练习镜像 | 实验9 |
+| 第10章 | Compose项目、变量、依赖、健康、更新与数据边界 | 只执行Compose配置展开，不启动项目 | 实验10 |
+| 第11章 | Pod、Deployment、Service、控制循环、Namespace与RBAC | 阅读并客户端预检最小Deployment清单 | 实验11 |
+
 ## 学习环境与双发行版分工
 
 | Docker主机 | 系统与主账号 | 主要任务 | 注意事项 |
@@ -139,6 +162,8 @@ sudo docker version
 ## 6.5 软件来源与版本固定
 
 课堂安装应由教师提前确定软件仓库、版本和离线包，不让学生临时搜索不明脚本。安装基线至少记录：
+
+Docker上游安装页明确列出RHEL和Ubuntu支持范围，并未把Rocky Linux单独列为官方支持项。本课程在Rocky 9上使用RHEL仓库属于基于二进制兼容性的教学环境选择，必须由教师在本学期镜像上实机验证，不能把“仓库可以添加”表述成“上游对Rocky提供同等级官方支持”。若验证失败，使用教师已经测试的固定RPM集合，不临时改用来源不明的安装脚本。
 
 ```bash
 cat /etc/os-release
@@ -245,6 +270,25 @@ OCI制定镜像格式和运行时等开放规范，使镜像能够在不同兼�
 
 Docker由客户端、守护进程、镜像、容器、网络、卷和仓库等对象组成。Rocky与Ubuntu安装方式不同，但核心Docker对象和命令一致。课堂环境必须固定版本、保留离线路径并明确Docker管理权限的风险。
 
+### 本章短练习：核对继承状态与内核能力
+
+在`rocky-server`和`ubuntu-client`分别执行：
+
+```bash
+P=~/course-practice/vc-m2/ch06
+mkdir -p "$P"
+{
+  hostnamectl --static
+  test -d ~/m1-project && echo 'Linux project present' || echo 'Linux project missing'
+  ip -brief address
+  systemctl is-active firewalld 2>/dev/null || systemctl is-active ufw 2>/dev/null || true
+  stat -fc '%T' /sys/fs/cgroup
+  lsns | sed -n '1,8p'
+} | tee "$P/linux-container-prerequisites.txt"
+```
+
+比较两台主机的发行版与防护工具，说明Docker为什么依赖Linux内核能力。此练习不安装Docker；正式双发行版安装和版本固定在实验6完成。
+
 ### 思考与练习
 
 1. 为什么Docker客户端存在，不代表Docker服务正常？
@@ -266,7 +310,9 @@ registry.example.edu/vc/web:2026.09
 
 标签是可读版本指针，可能被重新指向；摘要根据镜像内容计算，更适合精确确认内容。课程镜像必须使用教师发布的固定标签，镜像清单同时记录摘要、架构、归档文件和SHA-256。
 
-```bash
+以下是查询语法模板，先把`镜像引用`替换成课程清单中的完整镜像名：
+
+```text
 sudo docker image ls
 sudo docker image inspect 镜像引用
 sudo docker image inspect 镜像引用 --format '{{json .RepoDigests}}'
@@ -280,7 +326,9 @@ sudo docker image inspect 镜像引用 --format '{{json .RepoDigests}}'
 
 ## 7.3 容器生命周期
 
-```bash
+以下是生命周期命令格式，`镜像引用`不能原样输入：
+
+```text
 sudo docker create --name demo 镜像引用
 sudo docker start demo
 sudo docker stop demo
@@ -302,7 +350,9 @@ sudo docker rm demo
 
 ## 7.4 状态、日志与容器内检查
 
-```bash
+以下是观察命令格式，中文词需要替换成实际容器和命令：
+
+```text
 sudo docker ps
 sudo docker ps -a
 sudo docker inspect 容器名
@@ -317,7 +367,9 @@ sudo docker stats --no-stream
 
 容器内部监听端口不会自动向宿主机或外部网络开放。`-p 8081:80`表示把宿主机8081端口映射到容器80端口。验证应包含：
 
-```bash
+以下是验证格式，`容器名`需要替换后执行：
+
+```text
 sudo docker port 容器名
 sudo ss -tlnp | grep 8081
 curl --fail http://127.0.0.1:8081/
@@ -338,9 +390,9 @@ curl --fail http://127.0.0.1:8081/
 | `docker export` | 容器文件系统 | 否 | 导出扁平文件系统 |
 | `docker import` | 文件系统归档 | 否 | 创建新基础镜像 |
 
-课堂离线交付使用`save/load`。示例：
+课堂离线交付使用`save/load`。以下为命令格式，先替换`镜像引用`：
 
-```bash
+```text
 sudo docker save -o vc-images.tar 镜像引用
 sha256sum vc-images.tar > vc-images.tar.sha256
 sha256sum -c vc-images.tar.sha256
@@ -361,9 +413,9 @@ U盘只是传输介质，不是版本管理。离线包也必须有版本目录�
 
 ## 7.9 镜像清理原则
 
-清理前先确认容器引用关系：
+清理前先确认容器引用关系。以下命令中的`镜像引用`需要先替换：
 
-```bash
+```text
 sudo docker ps -a --filter ancestor=镜像引用
 sudo docker image ls
 sudo docker system df
@@ -400,7 +452,7 @@ registry.example.edu/vc/api:2026-fall-v2
 
 同一个镜像名称可能对应一个manifest list，根据客户端架构选择`linux/amd64`或`linux/arm64`等具体镜像。机房以x86_64为主时，离线包仍应在清单标明`linux/amd64`，避免在ARM教师机导出后拿到课堂无法运行的内容。
 
-```bash
+```text
 sudo docker image inspect 镜像引用 --format '{{.Architecture}}/{{.Os}}'
 ```
 
@@ -439,6 +491,24 @@ sudo docker image inspect 镜像引用 --format '{{.Architecture}}/{{.Os}}'
 ### 本章小结
 
 镜像是可版本化交付物，容器是运行实例。固定标签、摘要、清单和校验值共同保证班级环境一致；课程Registry与`save/load`离线包构成两条互相备份的交付路径。
+
+### 本章短练习：检查本地课程镜像身份
+
+实验6后本机应至少有一张固定标签课程镜像：
+
+```bash
+P=~/course-practice/vc-m2/ch07
+mkdir -p "$P"
+sudo docker image ls --digests | tee "$P/image-list.txt"
+IMAGE=$(sudo docker image ls --format '{{.Repository}}:{{.Tag}}' | grep -vE ':(<none>|latest)$' | head -1)
+printf 'selected_image=%s\n' "$IMAGE" | tee "$P/selected-image.txt"
+test -n "$IMAGE"
+sudo docker image inspect "$IMAGE" \
+  --format 'id={{.Id}} repoDigests={{json .RepoDigests}} arch={{.Architecture}} user={{json .Config.User}} cmd={{json .Config.Cmd}}' \
+  | tee "$P/image-inspect.txt"
+```
+
+若没有可选固定标签镜像，返回实验6的在线或离线导入步骤，不用`latest`临时替代。短练习只读，不删除镜像。
 
 ### 思考与练习
 
@@ -492,9 +562,9 @@ Gateway ── vc-front-net
 → 主机防火墙和远端路径
 ```
 
-常用命令：
+常用命令格式如下，中文词需要替换成实际对象名称：
 
-```bash
+```text
 sudo docker inspect 容器名 --format '{{json .NetworkSettings.Networks}}'
 sudo docker network inspect 网络名
 sudo docker logs 容器名
@@ -515,9 +585,9 @@ sudo docker exec 容器名 命令
 | 可移植性 | 依赖宿主路径 | Compose中更易描述 |
 | 权限关注 | UID/GID、SELinux、只读 | 容器用户、备份与卷生命周期 |
 
-推荐使用明确路径和只读标记：
+推荐使用明确路径和只读标记。以下是语法模板，路径和镜像引用必须替换后才能执行：
 
-```bash
+```text
 sudo docker run --mount \
   type=bind,src=/明确路径,dst=/容器路径,readonly \
   镜像引用
@@ -619,9 +689,9 @@ veth是一对虚拟以太网接口，数据从一端进入会从另一端出来�
 
 ## 8.14 Docker与宿主机防火墙
 
-Docker为了实现端口发布会调整宿主机网络规则。不同Docker和发行版版本可能使用iptables兼容层或nftables后端。排障时不要只查看firewalld服务是否运行，还应检查容器端口发布、Docker网络规则以及从远端到宿主机的实际路径。
+Docker为了实现端口发布会调整宿主机网络规则。Docker官方明确提醒：发布的容器端口可能绕过UFW或firewalld中看似生效的规则，因此“防火墙服务正在运行”或“zone没有开放端口”都不能单独证明容器端口被阻止。排障时应同时检查绑定地址、`docker port`、Docker网络规则、`DOCKER-USER`链以及从远端到宿主机的实际路径。
 
-安全设计原则是：只发布必须被外部访问的入口；数据库和缓存留在后端网络；需要来源限制时在经过验证的规则位置配置。不能因为规则复杂就关闭防火墙。
+安全设计原则是：只发布必须被外部访问的入口；优先绑定明确的宿主机地址；数据库和缓存留在后端网络；需要来源限制时，在经过验证的`DOCKER-USER`链或上游防火墙配置并从另一主机实测。不能因为规则复杂就关闭防火墙。
 
 ## 8.15 存储驱动与卷的区别
 
@@ -636,9 +706,9 @@ sudo docker system df -v
 
 ## 8.16 UID、GID与挂载权限
 
-宿主目录的数字UID/GID会被容器进程用于权限判断。容器内用户名与宿主用户名即使文字相同，数字ID也未必相同。排障应比较：
+宿主目录的数字UID/GID会被容器进程用于权限判断。容器内用户名与宿主用户名即使文字相同，数字ID也未必相同。以下是排查格式，中文词需要替换成实际容器和路径：
 
-```bash
+```text
 id
 sudo docker exec 容器名 id
 ls -ln 宿主路径
@@ -656,6 +726,24 @@ sudo docker exec 容器名 ls -ln 容器路径
 ### 本章小结
 
 Docker网络负责容器连接与服务发现，端口发布负责从宿主机进入容器；绑定挂载和命名卷负责把数据从容器生命周期中分离。真正的数据持久化必须通过删除重建和恢复测试证明。
+
+### 本章短练习：创建可识别的网络与卷
+
+```bash
+P=~/course-practice/vc-m2/ch08
+mkdir -p "$P"
+RUN=$(date +%Y%m%d%H%M%S)
+NET="vc-practice-ch08-net-$RUN"
+VOL="vc-practice-ch08-data-$RUN"
+sudo docker network create --label course.practice=ch08 "$NET"
+sudo docker volume create --label course.practice=ch08 "$VOL"
+sudo docker network inspect "$NET" > "$P/network.json"
+sudo docker volume inspect "$VOL" > "$P/volume.json"
+sudo docker network rm "$NET"
+sudo docker volume rm "$VOL"
+```
+
+说明网络与卷为何拥有独立生命周期。时间戳名称用于避免碰撞，删除命令只引用本次变量；正式容器通信与数据库恢复在实验8完成。
 
 ### 思考与练习
 
@@ -747,7 +835,9 @@ Docker按指令计算缓存。变化频繁的源码应放在依赖安装之后�
 
 ## 9.7 多阶段构建
 
-```dockerfile
+以下是结构模板，`build-image`、`runtime-image`、构建命令和产物路径都必须按真实项目替换，不能直接构建：
+
+```text
 FROM build-image AS builder
 WORKDIR /src
 COPY . .
@@ -763,7 +853,9 @@ CMD ["/app/产物"]
 
 ## 9.8 构建、标记和验收
 
-```bash
+以下命令展示一般构建与验收流程，`课程标签`必须替换为本学期固定标签：
+
+```text
 sudo docker build -t vc/techcorp-api:课程标签 .
 sudo docker image inspect vc/techcorp-api:课程标签
 sudo docker history vc/techcorp-api:课程标签
@@ -846,6 +938,28 @@ LABEL org.opencontainers.image.source="课程仓库路径"
 
 Dockerfile把应用镜像构建变成可审查、可重复的工程过程。构建上下文、缓存顺序、基础镜像、非root用户和多阶段构建共同影响速度、体积、安全与可维护性。
 
+### 本章短练习：使用本地基础镜像完成无联网构建
+
+```bash
+P=~/course-practice/vc-m2/ch09
+mkdir -p "$P"
+BASE_IMAGE=$(sudo docker image ls --format '{{.Repository}}:{{.Tag}}' | grep -vE ':(<none>|latest)$' | head -1)
+test -n "$BASE_IMAGE"
+cat > "$P/Dockerfile" <<'EOF'
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+LABEL course.practice="ch09"
+EOF
+sudo docker build --pull=false \
+  --build-arg BASE_IMAGE="$BASE_IMAGE" \
+  -t vc-practice/ch09:1 "$P"
+sudo docker image inspect vc-practice/ch09:1 \
+  --format 'base-input='"$BASE_IMAGE"' id={{.Id}} labels={{json .Config.Labels}}'
+sudo docker image rm vc-practice/ch09:1
+```
+
+构建只复用本地层，不执行下载或安装。正式应用源码、非root用户、缓存优化和跨主机运行在实验9完成。
+
 ### 思考与练习
 
 1. 为什么`EXPOSE 8080`不会自动开放宿主机8080端口？
@@ -915,7 +1029,9 @@ README.md
 
 ## 10.6 常用生命周期命令
 
-```bash
+以下是Compose生命周期命令格式，涉及单个服务的两行必须替换`服务名`：
+
+```text
 sudo docker compose config
 sudo docker compose pull
 sudo docker compose up -d
@@ -993,7 +1109,9 @@ sudo docker network ls
 
 Compose配置可能同时受到Shell环境、`.env`、`--env-file`、Compose中的`environment`和镜像默认值影响。具体优先级应按当前Compose官方文档核对，但排障原则稳定：先查看最终展开配置和容器实际环境，再判断变量来自哪里。
 
-```bash
+第二行是检查语法模板，`容器名`需要替换成`docker compose ps`显示的实际名称：
+
+```text
 sudo docker compose --env-file .env config
 sudo docker inspect 容器名 --format '{{json .Config.Env}}'
 ```
@@ -1053,6 +1171,28 @@ Docker默认日志会占用宿主机磁盘。`docker compose logs`适合聚合�
 
 Compose把多条运行命令转化为声明式项目文件，使多服务应用可复现、可迁移和可维护。配置解析、健康检查、固定镜像、数据备份、最小更新和业务验证共同构成交付闭环。
 
+### 本章短练习：展开Compose配置而不启动
+
+```bash
+P=~/course-practice/vc-m2/ch10
+mkdir -p "$P"
+IMAGE=$(sudo docker image ls --format '{{.Repository}}:{{.Tag}}' | grep -vE ':(<none>|latest)$' | head -1)
+test -n "$IMAGE"
+printf 'PRACTICE_IMAGE=%s\n' "$IMAGE" > "$P/.env"
+cat > "$P/compose.yaml" <<'YAML'
+services:
+  inspect-only:
+    image: ${PRACTICE_IMAGE}
+    labels:
+      course.practice: ch10
+YAML
+cd "$P"
+sudo docker compose --env-file .env config | tee compose.resolved.yaml
+sudo docker compose ps -a
+```
+
+`ps`应为空，因为本练习没有执行`up`。检查变量是否已展开、服务名与镜像是否正确；正式多服务项目和数据卷在实验10完成。
+
 ### 思考与练习
 
 1. `depends_on`为什么不能保证依赖服务永远可用？
@@ -1089,7 +1229,9 @@ Namespace中的资源
 
 Namespace为同一集群中的资源提供逻辑分组和名称范围。课程为每位学生或每组提供独立Namespace和配额。Namespace不是完整安全边界，权限仍由RBAC、网络策略等机制决定。
 
-```bash
+以下是权限检查格式，`课程命名空间`必须替换成分配值：
+
+```text
 kubectl config current-context
 kubectl get namespace
 kubectl auth can-i get pods -n 课程命名空间
@@ -1144,14 +1286,14 @@ spec:
     spec:
       containers:
         - name: web
-          image: 教师发布的固定镜像
+          image: <K8S_IMAGE>
           ports:
             - containerPort: 8080
 ```
 
-正式应用前先检查文件和目标Namespace：
+这是资源结构示例，保存为`vc-web.yaml`前必须把`<K8S_IMAGE>`替换成课程清单中的固定镜像。正式应用前再检查文件和目标Namespace。以下命令中的`课程命名空间`同样必须替换，不能原样执行：
 
-```bash
+```text
 kubectl apply --dry-run=client -f vc-web.yaml
 kubectl apply -f vc-web.yaml -n 课程命名空间
 kubectl get deployment,pod -n 课程命名空间
@@ -1159,7 +1301,9 @@ kubectl get deployment,pod -n 课程命名空间
 
 ## 11.7 观察、日志与扩缩容
 
-```bash
+以下是观察与扩缩容的命令格式，先替换Pod名称和课程命名空间：
+
+```text
 kubectl get deployment,pod,service -n 课程命名空间
 kubectl describe pod Pod名称 -n 课程命名空间
 kubectl logs Pod名称 -n 课程命名空间 --tail=50
@@ -1256,7 +1400,9 @@ Pod从Pending进入Running，最终可能Succeeded或Failed。一个Pod内的容
 
 检查顺序：
 
-```bash
+以下是Pod排障命令格式，先替换`Pod名称`；在共享集群中还应加上分配的`-n`参数：
+
+```text
 kubectl get pod Pod名称 -o wide
 kubectl describe pod Pod名称
 kubectl logs Pod名称 --previous
@@ -1320,7 +1466,9 @@ Namespace提供名称和管理范围，RBAC决定身份能对哪些资源执行�
 
 每次批量查询或删除前确认context和Namespace：
 
-```bash
+以下是权限确认格式，先替换`课程命名空间`：
+
+```text
 kubectl config current-context
 kubectl config view --minify --output 'jsonpath={..namespace}'; echo
 kubectl auth can-i delete deployments -n 课程命名空间
@@ -1343,6 +1491,38 @@ kubectl命令能否连接API
 ### 本章小结
 
 Kubernetes通过声明式对象和控制循环在集群中管理容器。实验重点是Namespace、Deployment、Pod、Service、日志、扩缩容与清理，让学生建立从单机容器到集群编排的清晰入口，为后续云计算课程留下真实操作基础。
+
+### 本章短练习：阅读并预检Deployment清单
+
+```bash
+P=~/course-practice/vc-m2/ch11
+mkdir -p "$P"
+cat > "$P/deployment.yaml" <<'YAML'
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vc-practice-ch11
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: vc-practice-ch11
+  template:
+    metadata:
+      labels:
+        app: vc-practice-ch11
+    spec:
+      containers:
+        - name: app
+          image: registry.example.test/vc/api:course-fixed
+          ports:
+            - containerPort: 8080
+YAML
+grep -nE 'kind:|name:|replicas:|matchLabels:|labels:|image:|containerPort:' "$P/deployment.yaml"
+command -v kubectl || echo 'kubectl将在实验11按教师环境准备'
+```
+
+核对selector与Pod label完全一致，并把镜像占位符替换为教师发布的固定镜像。只有已配置课程context时，才可执行`kubectl apply --dry-run=client -f "$P/deployment.yaml"`；短练习不向集群提交资源。
 
 ### 模块综合问题
 
@@ -1369,6 +1549,13 @@ Kubernetes通过声明式对象和控制循环在集群中管理容器。实验�
 | Kubernetes上下文 | `kubectl config current-context`、`kubectl auth can-i` |
 | Kubernetes资源 | `kubectl apply/get/describe/logs/scale/delete` |
 
-## 官方资料方向
+## 官方参考资料
 
-课后查阅资料时，优先选择Docker和Kubernetes官方文档，并结合教师发布的课程镜像清单。镜像、安装仓库和集群版本可能更新，课堂环境以本学期经过验证的固定版本为准。
+- [Docker Engine：RHEL安装说明](https://docs.docker.com/engine/install/rhel/)
+- [Docker Engine：Ubuntu安装说明](https://docs.docker.com/engine/install/ubuntu/)
+- [Docker：数据包过滤与防火墙](https://docs.docker.com/engine/network/packet-filtering-firewalls/)
+- [Docker Compose文档](https://docs.docker.com/compose/)
+- [Kubernetes：Deployment](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/)
+- [Kubernetes：Service](https://kubernetes.io/docs/concepts/services-networking/service/)
+
+镜像、安装仓库、Compose行为和集群版本可能更新。理解原理与核对当前限制时以上游官方文档为准；课堂执行以本学期已经实机验证的固定版本、课程镜像清单和实验手册为准。

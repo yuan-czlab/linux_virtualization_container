@@ -53,6 +53,8 @@ rsync source  backup/   在backup中形成source目录
 
 cron五个时间字段依次为分钟、小时、日、月、星期。
 
+实验开始前打开[rsync增量同步、cron与恢复闭环动画](../../animations/08-rsync-cron-backup-restore/index.html)。完成“路径语义”和“增量与删除”后再执行任务二；完成“定时执行”和“恢复验证”后再编写脚本与crontab。每一步先预测目录树、变化清单或证据结果，再使用本实验创建的文件验证。
+
 ## 四、实验环境
 
 - Rocky Linux 9，rocky-server登录。

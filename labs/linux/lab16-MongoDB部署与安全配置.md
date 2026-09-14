@@ -62,6 +62,8 @@ mongosh连接主机与27017端口
 
 MongoDB用户创建在哪个数据库，通常就需要把该数据库作为`authenticationDatabase`。用户可以在认证数据库中保存身份，同时获得对其他数据库的角色。
 
+开始操作前打开[MongoDB文档模型、认证、RBAC与备份动画](../../animations/14-mongodb-document-auth-rbac/index.html)，依次完成“文档模型”“认证数据库”和“RBAC与监听”。做到备份任务时再复用“备份与恢复”，先预测每个失败发生在连接、认证还是授权阶段。
+
 ### 3. 平台边界
 
 MongoDB 8.0 Community支持RHEL/Rocky Linux 9的64位平台。x86_64上的现代MongoDB还要求CPU提供相应指令集；MongoDB 5.0及以后要求AVX。机房必须在开课前抽测，不能等学生安装后才发现CPU不兼容。
@@ -259,7 +261,8 @@ exit
 #### 步骤6：备份配置
 
 ```bash
-sudo cp -p /etc/mongod.conf ~/m1-project/backup/mongodb/mongod.conf.before-auth
+test -f ~/m1-project/backup/mongodb/mongod.conf.before-auth || \
+  sudo cp -p /etc/mongod.conf ~/m1-project/backup/mongodb/mongod.conf.before-auth
 sudo grep -nE '^(net:|  port:|  bindIp:|security:|  authorization:)' /etc/mongod.conf
 ```
 

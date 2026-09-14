@@ -173,7 +173,25 @@ sudo virsh domifaddr course-vm01 --source lease
 sudo virsh domifaddr course-vm02 --source lease
 ```
 
-把地址分别记为`<VM01_IP>`和`<VM02_IP>`。
+自动提取两台客户机的IPv4地址和`course-vm01`网卡MAC，并保存到统一参数文件：
+
+```bash
+VM01_IP=$(sudo virsh domifaddr course-vm01 --source lease | awk '/ipv4/ {split($4,a,"/"); print a[1]; exit}')
+VM02_IP=$(sudo virsh domifaddr course-vm02 --source lease | awk '/ipv4/ {split($4,a,"/"); print a[1]; exit}')
+VM01_MAC=$(sudo virsh domiflist course-vm01 | awk '/network/ {print $5; exit}')
+
+if [[ -z "$VM01_IP" || -z "$VM02_IP" || -z "$VM01_MAC" ]]; then
+  echo 'IP或MAC尚未取得：等待客户机和DHCP租约就绪后重试'
+else
+  sed -i '/^export \(VM01_IP\|VM02_IP\|VM01_MAC\)=/d' ~/vc-course/course-env.sh
+  {
+    printf 'export VM01_IP=%q\n' "$VM01_IP"
+    printf 'export VM02_IP=%q\n' "$VM02_IP"
+    printf 'export VM01_MAC=%q\n' "$VM01_MAC"
+  } >> ~/vc-course/course-env.sh
+  printf 'vm01=%s vm02=%s mac01=%s\n' "$VM01_IP" "$VM02_IP" "$VM01_MAC"
+fi
+```
 
 #### 步骤6：从客户机内部确认
 
@@ -195,32 +213,43 @@ cat /etc/resolv.conf
 #### 步骤7：从Rocky宿主机访问客户机
 
 ```bash
-ping -c 3 <VM01_IP>
-ping -c 3 <VM02_IP>
-ssh student@<VM01_IP> 'hostname; ip -brief address'
-ssh student@<VM02_IP> 'hostname; ip -brief address'
+source ~/vc-course/course-env.sh
+ping -c 3 "$VM01_IP"
+ping -c 3 "$VM02_IP"
+ssh student@"$VM01_IP" 'hostname; ip -brief address'
+ssh student@"$VM02_IP" 'hostname; ip -brief address'
 ```
 
 若ICMP被客户机策略限制，以SSH或目标服务连接作为功能证据，同时记录ICMP限制。
 
 #### 步骤8：验证客户机之间通信
 
-进入`course-vm01`执行：
+从Rocky宿主机让`course-vm01`执行到`course-vm02`的ICMP验证：
 
 ```bash
-ping -c 3 <VM02_IP>
-ssh student@<VM02_IP> 'hostname; date -Is'
+source ~/vc-course/course-env.sh
+ssh student@"$VM01_IP" "ping -c 3 '$VM02_IP'"
 ```
 
-进入`course-vm02`反向验证`<VM01_IP>`。
+再反向验证：
+
+```bash
+source ~/vc-course/course-env.sh
+ssh student@"$VM02_IP" "ping -c 3 '$VM01_IP'"
+```
 
 #### 步骤9：观察外部访问边界
 
 从Ubuntu VMware虚拟机尝试：
 
 ```bash
-ping -c 2 <VM01_IP> || true
+VM01_IP=$(ssh rocky-server \
+  'source ~/vc-course/course-env.sh && printf "%s\n" "$VM01_IP"')
+[[ "$VM01_IP" =~ ^[0-9]+(\.[0-9]+){3}$ ]]
+ping -c 2 "$VM01_IP" || true
 ```
+
+这里通过Linux课程已经建立的SSH别名从`rocky-server`读取参数，不依赖前一个终端中的临时变量。地址校验失败时停止本步骤，回到步骤5检查租约和参数文件。
 
 如果不能直接访问，不把它判定为KVM网络失败。结合拓扑解释：Ubuntu与KVM客户机之间没有到嵌套NAT网段的直接路由。
 
@@ -265,16 +294,18 @@ sudo firewall-cmd --query-port=8080/tcp
 
 #### 步骤12：从另一台客户机和宿主机验证
 
-在`course-vm02`：
+从Rocky宿主机让`course-vm02`发起访问：
 
 ```bash
-curl --fail http://<VM01_IP>:8080/ | grep KVM_NETWORK_OK
+source ~/vc-course/course-env.sh
+ssh student@"$VM02_IP" "curl --fail 'http://$VM01_IP:8080/'" | grep KVM_NETWORK_OK
 ```
 
 在Rocky宿主机：
 
 ```bash
-curl --fail http://<VM01_IP>:8080/ | grep KVM_NETWORK_OK
+source ~/vc-course/course-env.sh
+curl --fail "http://$VM01_IP:8080/" | grep KVM_NETWORK_OK
 ```
 
 回到`course-vm01`查看日志：
@@ -294,29 +325,32 @@ tail -n 20 ~/lab04-http.log
 在Rocky宿主机：
 
 ```bash
+source ~/vc-course/course-env.sh
 {
   sudo virsh list
   sudo virsh net-info default
   sudo virsh domiflist course-vm01
   sudo virsh net-dhcp-leases default
-  curl -sS -o /dev/null -w 'http=%{http_code}\n' http://<VM01_IP>:8080/
+  curl -sS -o /dev/null -w 'http=%{http_code}\n' "http://$VM01_IP:8080/"
 } > ~/vc-course/evidence/lab04-good-state.txt
 ```
 
 #### 步骤14：注入虚拟网卡断开故障
 
-先从`domiflist`记录`course-vm01`的接口MAC，记为`<VM01_MAC>`。执行：
+使用步骤5已经记录的`course-vm01`接口MAC：
 
 ```bash
-sudo virsh domif-setlink course-vm01 <VM01_MAC> down
-sudo virsh domif-getlink course-vm01 <VM01_MAC>
+source ~/vc-course/course-env.sh
+sudo virsh domif-setlink course-vm01 "$VM01_MAC" down
+sudo virsh domif-getlink course-vm01 "$VM01_MAC"
 ```
 
 重新访问：
 
 ```bash
-ping -c 2 <VM01_IP> || true
-curl --connect-timeout 3 http://<VM01_IP>:8080/ || true
+source ~/vc-course/course-env.sh
+ping -c 2 "$VM01_IP" || true
+curl --connect-timeout 3 "http://$VM01_IP:8080/" || true
 ```
 
 预期：虚拟机仍然running，但网络和HTTP访问失败。这证明“虚拟机状态正常”不能代表业务可用。
@@ -324,9 +358,10 @@ curl --connect-timeout 3 http://<VM01_IP>:8080/ || true
 #### 步骤15：按层次采集证据
 
 ```bash
+source ~/vc-course/course-env.sh
 sudo virsh domstate course-vm01
 sudo virsh domiflist course-vm01
-sudo virsh domif-getlink course-vm01 <VM01_MAC>
+sudo virsh domif-getlink course-vm01 "$VM01_MAC"
 sudo virsh net-info default
 sudo virsh net-dhcp-leases default
 ```
@@ -336,15 +371,17 @@ sudo virsh net-dhcp-leases default
 #### 步骤16：恢复并复测
 
 ```bash
-sudo virsh domif-setlink course-vm01 <VM01_MAC> up
-sudo virsh domif-getlink course-vm01 <VM01_MAC>
+source ~/vc-course/course-env.sh
+sudo virsh domif-setlink course-vm01 "$VM01_MAC" up
+sudo virsh domif-getlink course-vm01 "$VM01_MAC"
 ```
 
 等待客户机恢复连接，执行：
 
 ```bash
-ping -c 3 <VM01_IP>
-curl --fail http://<VM01_IP>:8080/ | grep KVM_NETWORK_OK
+source ~/vc-course/course-env.sh
+ping -c 3 "$VM01_IP"
+curl --fail "http://$VM01_IP:8080/" | grep KVM_NETWORK_OK
 ```
 
 如果地址变化，重新通过DHCP租约获得实际地址后复测。
@@ -412,7 +449,8 @@ lab04-学号-姓名/
 ```bash
 sudo virsh net-info default
 sudo virsh domiflist course-vm01
-sudo virsh domif-getlink course-vm01 <VM01_MAC>
+source ~/vc-course/course-env.sh
+sudo virsh domif-getlink course-vm01 "$VM01_MAC"
 sudo virsh net-dhcp-leases default
 ```
 
@@ -448,7 +486,10 @@ DHCP地址可能变化。每次以`net-dhcp-leases`和客户机内部地址为�
 在`course-vm01`停止HTTP服务并删除临时运行时端口规则：
 
 ```bash
-kill "$(cat ~/lab04-http.pid)" 2>/dev/null || true
+if test -f ~/lab04-http.pid; then
+  HTTP_PID=$(cat ~/lab04-http.pid)
+  ps -p "$HTTP_PID" -o args= 2>/dev/null | grep -Fq 'http.server 8080' && kill "$HTTP_PID" || true
+fi
 sudo firewall-cmd --remove-port=8080/tcp 2>/dev/null || true
 ```
 

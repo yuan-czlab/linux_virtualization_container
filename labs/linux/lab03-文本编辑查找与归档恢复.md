@@ -49,6 +49,8 @@
 - 硬链接是同一个inode的另一个文件名，删除一个名称后数据仍可通过其他硬链接访问。
 - 软链接保存目标路径，可以跨文件系统，也可以指向目录；目标消失后软链接会失效。
 
+操作前打开[Linux目录树、路径与链接动画](../../animations/02-linux-filesystem-paths-links/index.html)并切换到“inode与链接”。先预测删除原文件后的结果，再在本实验中用`ls -li`、`stat`和`cat`验证。
+
 ### 3. 归档与压缩
 
 `tar`先把多个文件组织成一个归档，也可以调用gzip等算法压缩。常用组合：
@@ -207,6 +209,8 @@ cat ~/m1-project/links/app.conf.soft
 mkdir -p ~/m1-project/backup/archives
 ARCHIVE=~/m1-project/backup/archives/m1-project-$(date +%Y%m%d-%H%M%S).tar.gz
 tar --exclude='m1-project/backup/archives' -czf "$ARCHIVE" -C ~ m1-project
+printf '%s\n' "$(readlink -f "$ARCHIVE")" \
+  > ~/m1-project/evidence/lab03-latest-archive.path
 printf 'archive=%s\n' "$ARCHIVE"
 ls -lh "$ARCHIVE"
 tar -tzf "$ARCHIVE" | sed -n '1,30p'
@@ -219,7 +223,9 @@ tar -tzf "$ARCHIVE" | sed -n '1,30p'
 #### 步骤9：恢复到新目录
 
 ```bash
+ARCHIVE=$(cat ~/m1-project/evidence/lab03-latest-archive.path)
 RESTORE_DIR=/tmp/lab03-restore
+test -s "$ARCHIVE"
 test ! -e "$RESTORE_DIR"
 echo "restore_name_available=$?"
 ```
@@ -227,11 +233,19 @@ echo "restore_name_available=$?"
 只有`restore_name_available=0`时才继续。若目录已存在，不要在当前登录Shell中使用`exit`；先确认它是上次本实验的残留，再按文末清理步骤删除，或者改用一个新的、已确认不存在的恢复目录。确认后执行：
 
 ```bash
-mkdir -p "$RESTORE_DIR"
-tar -xzf "$ARCHIVE" -C "$RESTORE_DIR"
-find "$RESTORE_DIR/m1-project" -maxdepth 2 -type f -printf '%P\n' | sort
-cmp ~/m1-project/config/app.conf "$RESTORE_DIR/m1-project/config/app.conf"
-echo $?
+ARCHIVE=$(cat ~/m1-project/evidence/lab03-latest-archive.path)
+RESTORE_DIR=/tmp/lab03-restore
+if [[ ! -s "$ARCHIVE" ]]; then
+  echo "归档不存在或为空：$ARCHIVE"
+elif [[ -e "$RESTORE_DIR" ]]; then
+  echo "恢复目录已存在，未覆盖：$RESTORE_DIR"
+else
+  mkdir -p "$RESTORE_DIR"
+  tar -xzf "$ARCHIVE" -C "$RESTORE_DIR"
+  find "$RESTORE_DIR/m1-project" -maxdepth 2 -type f -printf '%P\n' | sort
+  cmp ~/m1-project/config/app.conf "$RESTORE_DIR/m1-project/config/app.conf"
+  echo $?
+fi
 ```
 
 恢复到新目录可以避免覆盖正在使用的数据。
@@ -241,7 +255,12 @@ echo $?
 #### 步骤10：生成校验值
 
 ```bash
-sha256sum "$ARCHIVE" | tee ~/m1-project/evidence/lab03-archive.sha256
+ARCHIVE=$(cat ~/m1-project/evidence/lab03-latest-archive.path)
+if [[ -s "$ARCHIVE" ]]; then
+  sha256sum "$ARCHIVE" | tee ~/m1-project/evidence/lab03-archive.sha256
+else
+  echo "归档不存在或为空：$ARCHIVE"
+fi
 ```
 
 校验值可以帮助判断归档文件在复制或保存后是否发生变化，但不能证明业务数据一定满足需求，因此仍需要实际恢复。

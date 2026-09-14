@@ -53,6 +53,8 @@ systemd作为PID 1
 
 enabled不代表当前一定运行，active也不代表一定开机自启。
 
+开始任务前打开[systemd服务状态、依赖与journal排障动画](../../animations/04-systemd-journal/index.html)。依次完成运行与自启、依赖与顺序、进程与信号、日志证据链四个主题；每一步先判断状态或下一条取证命令，再在`course-demo.service`中验证。
+
 ## 四、实验环境
 
 - Rocky Linux 9，rocky-server具备sudo权限。

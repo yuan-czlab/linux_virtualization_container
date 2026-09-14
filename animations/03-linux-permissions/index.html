@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Linux身份与权限判定</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #081019; --panel: rgba(15,28,44,.94); --panel2: #142a40;
+      --text: #eff7ff; --muted: #9fb1c5; --line: #496079;
+      --blue: #61a5ff; --green: #62e6a5; --yellow: #ffd166;
+      --purple: #bd95ff; --red: #ff7180; --cyan: #65dcf6;
+      --shadow: 0 22px 58px rgba(0,0,0,.35);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh; color: var(--text);
+      font-family: "Microsoft YaHei","PingFang SC",system-ui,sans-serif;
+      background:
+        radial-gradient(circle at 12% 10%, rgba(97,165,255,.2), transparent 30%),
+        radial-gradient(circle at 90% 86%, rgba(189,149,255,.15), transparent 30%),
+        linear-gradient(145deg,#050a11,var(--bg) 56%,#0c1930);
+    }
+    button { font: inherit; }
+    .app {
+      min-height: 100vh; display: grid; grid-template-rows: auto auto 1fr auto;
+      gap: 14px; padding: 22px clamp(18px,3vw,44px) 18px;
+    }
+    header { display: flex; justify-content: space-between; align-items: flex-end; gap: 20px; }
+    .eyebrow { margin: 0 0 6px; color: var(--blue); font-size: 13px; font-weight: 900; letter-spacing: .16em; }
+    h1 { margin: 0; font-size: clamp(26px,3vw,42px); line-height: 1.1; }
+    .tag { padding: 9px 13px; border: 1px solid rgba(98,230,165,.3); border-radius: 999px; color: var(--green); background: rgba(98,230,165,.08); font-size: 13px; }
+    .tabs { display: flex; gap: 9px; padding: 9px; border: 1px solid rgba(130,155,185,.22); border-radius: 16px; background: rgba(7,15,27,.62); box-shadow: var(--shadow); }
+    .tab { min-width: 140px; padding: 11px 16px; border: 1px solid transparent; border-radius: 11px; color: var(--muted); background: transparent; cursor: pointer; transition: .2s; }
+    .tab:hover { color: var(--text); background: rgba(255,255,255,.05); }
+    .tab.active { color: #06151e; background: var(--blue); font-weight: 900; box-shadow: 0 8px 22px rgba(97,165,255,.22); }
+    main { min-height: 0; display: grid; grid-template-columns: minmax(620px,1.65fr) minmax(310px,.72fr); gap: 14px; }
+    .visual-card,.lesson-card { border: 1px solid rgba(130,155,185,.22); border-radius: 20px; background: var(--panel); box-shadow: var(--shadow); overflow: hidden; }
+    .visual-card { min-height: 570px; padding: 22px; }
+    .visual-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 18px; }
+    .visual-top h2 { margin: 0; font-size: 20px; }
+    .concept { padding: 7px 10px; border: 1px solid rgba(101,220,246,.28); border-radius: 999px; color: var(--cyan); background: rgba(101,220,246,.08); font-size: 12px; font-weight: 800; }
+    #visual { min-height: 475px; display: grid; align-content: center; }
+    .lesson-card { display: grid; grid-template-rows: auto auto 1fr auto; padding: 22px; }
+    .counter { color: var(--blue); font-size: 13px; font-weight: 900; letter-spacing: .08em; }
+    .lesson-card h2 { margin: 8px 0 10px; font-size: clamp(22px,2.2vw,30px); line-height: 1.22; }
+    .explain { margin: 0; color: #ccd9e7; font-size: 16px; line-height: 1.72; }
+    .question { align-self: end; margin-top: 18px; padding: 16px; border-left: 4px solid var(--yellow); border-radius: 0 12px 12px 0; background: rgba(255,209,102,.08); }
+    .question small { display: block; color: var(--yellow); font-weight: 900; margin-bottom: 5px; }
+    .question p { margin: 0; color: #f7e8bc; line-height: 1.55; }
+    .controls { display: grid; grid-template-columns: 44px 44px 1fr 44px; gap: 9px; margin-top: 18px; }
+    .control { height: 44px; border: 1px solid rgba(134,158,192,.3); border-radius: 11px; color: var(--text); background: var(--panel2); cursor: pointer; }
+    .control:hover { border-color: var(--blue); }
+    .control.play { color: #06151e; background: var(--blue); border-color: var(--blue); font-weight: 900; }
+    footer { display: flex; justify-content: space-between; gap: 18px; color: var(--muted); font-size: 12px; }
+
+    .card { padding: 15px; border: 2px solid var(--line); border-radius: 14px; background: #10243a; transition: .25s; }
+    .card strong { display: block; margin-bottom: 5px; }
+    .card small { color: var(--muted); }
+    .card.active { border-color: var(--green); background: rgba(98,230,165,.1); box-shadow: 0 0 24px rgba(98,230,165,.18); transform: translateY(-2px); }
+    .card.deny { border-color: var(--red); background: rgba(255,113,128,.09); }
+    .badge { display: inline-block; margin-top: 7px; padding: 4px 7px; border-radius: 7px; color: #06151e; background: var(--green); font-size: 11px; font-weight: 900; }
+    .badge.deny { color: #fff; background: var(--red); }
+    .arrow { color: var(--green); font-size: 26px; text-align: center; font-weight: 900; }
+    .terminal { padding: 14px 17px; border: 1px solid #293d51; border-radius: 12px; background: #03090f; color: #dae7f3; font: 14px/1.6 Consolas,monospace; }
+    .terminal b { color: var(--green); }
+
+    /* identity */
+    .identity { display: grid; grid-template-columns: 1fr 64px 1.2fr; gap: 12px; align-items: center; }
+    .principal { display: grid; gap: 10px; }
+    .file-card { border-color: var(--purple); }
+    .mode-line { display: grid; grid-template-columns: 42px repeat(3,1fr); gap: 7px; margin-top: 14px; }
+    .mode-cell { padding: 11px 5px; border: 2px solid var(--line); border-radius: 10px; text-align: center; }
+    .mode-cell.head { border: 0; color: var(--muted); font-size: 11px; }
+    .mode-cell.selected { border-color: var(--green); color: var(--green); background: rgba(98,230,165,.1); }
+    .mode-cell.skipped { opacity: .28; }
+    .decision { grid-column: 1/-1; display: grid; grid-template-columns: repeat(3,1fr); gap: 9px; margin-top: 10px; }
+    .rule { padding: 12px; border: 1px solid var(--line); border-radius: 11px; color: var(--muted); text-align: center; }
+    .rule.hit { border-color: var(--green); color: var(--text); }
+
+    /* rwx */
+    .rwx-grid { display: grid; grid-template-columns: 90px repeat(3,1fr); gap: 9px; }
+    .rwx-cell { min-height: 76px; padding: 10px; border: 2px solid var(--line); border-radius: 12px; display: grid; align-content: center; text-align: center; background: #10243a; }
+    .rwx-cell.head { min-height: 54px; border-color: transparent; background: transparent; color: var(--muted); }
+    .rwx-cell strong { color: var(--cyan); }
+    .rwx-cell.active { border-color: var(--green); background: rgba(98,230,165,.1); }
+    .rwx-cell.warn { border-color: var(--yellow); background: rgba(255,209,102,.08); }
+    .rwx-note { margin-top: 14px; padding: 13px; border-radius: 12px; text-align: center; background: rgba(97,165,255,.08); color: #cbdcff; }
+    .path-chain { display: flex; justify-content: center; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 16px; }
+    .path-part { padding: 11px; border: 2px solid var(--green); border-radius: 10px; background: rgba(98,230,165,.08); }
+
+    /* mode */
+    .mode-demo { display: grid; gap: 17px; }
+    .octets { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; }
+    .octet { border: 2px solid var(--line); border-radius: 14px; padding: 14px; text-align: center; background: #10243a; }
+    .octet.active { border-color: var(--green); }
+    .octet .number { display: block; color: var(--yellow); font-size: 31px; font-weight: 900; }
+    .bits { display: flex; justify-content: center; gap: 7px; margin-top: 9px; }
+    .bit { width: 31px; height: 31px; display: grid; place-items: center; border-radius: 8px; color: #06151e; background: var(--green); font-weight: 900; }
+    .bit.off { color: var(--muted); background: #25394e; }
+    .equation { padding: 14px; border-radius: 12px; background: #03090f; text-align: center; font: 16px Consolas,monospace; }
+    .equation em { color: var(--green); font-style: normal; }
+    .warning { padding: 14px; border: 1px solid var(--red); border-radius: 12px; color: #ffc5ca; background: rgba(255,113,128,.08); text-align: center; }
+
+    /* shared directory */
+    .share { display: grid; gap: 14px; }
+    .share-head { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: center; }
+    .people { display: grid; grid-template-columns: repeat(4,1fr); gap: 9px; }
+    .person { padding: 12px 7px; border: 2px solid var(--line); border-radius: 12px; text-align: center; background: #10243a; }
+    .person.allow { border-color: var(--green); }
+    .person.read { border-color: var(--yellow); }
+    .person.deny { border-color: var(--red); opacity: .65; }
+    .files { display: flex; justify-content: center; flex-wrap: wrap; gap: 10px; }
+    .file { min-width: 160px; padding: 13px; border: 2px solid var(--purple); border-radius: 12px; text-align: center; background: rgba(189,149,255,.08); }
+    .pipeline { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px; }
+    .gate { padding: 12px; border: 2px solid var(--line); border-radius: 11px; text-align: center; }
+    .gate.pass { border-color: var(--green); }
+    .gate.future { border-style: dashed; border-color: var(--yellow); }
+
+    @keyframes pulse { 50% { box-shadow: 0 0 28px rgba(98,230,165,.45); transform: scale(1.025); } }
+    .pulse { animation: pulse 1.25s ease-in-out infinite; }
+    @media (max-width: 980px) {
+      .app { min-height: auto; }
+      header { align-items: flex-start; flex-direction: column; }
+      .tabs { flex-wrap: wrap; }
+      main { grid-template-columns: 1fr; }
+      .visual-card { min-height: 540px; }
+    }
+    @media (max-width: 650px) {
+      .tab { min-width: 0; flex: 1 1 45%; }
+      .identity { grid-template-columns: 1fr; }
+      .arrow { transform: rotate(90deg); }
+      .decision,.people { grid-template-columns: repeat(2,1fr); }
+      .rwx-grid { grid-template-columns: 70px repeat(3,1fr); font-size: 12px; }
+    }
+    @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div>
+        <p class="eyebrow">模块一 · 第7—9章 · Linux实验4</p>
+        <h1>Linux身份与权限判定</h1>
+      </div>
+      <div class="tag">最小权限 · 用真实账号验证允许与拒绝</div>
+    </header>
+
+    <nav class="tabs" aria-label="动画主题">
+      <button class="tab active" data-scene="identity">1　身份与匹配</button>
+      <button class="tab" data-scene="rwx">2　文件/目录 rwx</button>
+      <button class="tab" data-scene="mode">3　chmod与umask</button>
+      <button class="tab" data-scene="share">4　共享目录</button>
+    </nav>
+
+    <main>
+      <section class="visual-card">
+        <div class="visual-top">
+          <h2 id="visualTitle"></h2>
+          <span class="concept" id="conceptTag"></span>
+        </div>
+        <div id="visual" aria-live="polite"></div>
+      </section>
+
+      <aside class="lesson-card">
+        <div class="counter" id="counter"></div>
+        <div>
+          <h2 id="stepTitle"></h2>
+          <p class="explain" id="stepText"></p>
+        </div>
+        <div class="question">
+          <small>先判断，再验证</small>
+          <p id="questionText"></p>
+        </div>
+        <div class="controls">
+          <button class="control" id="prev" aria-label="上一步">←</button>
+          <button class="control" id="restart" aria-label="重新开始">↺</button>
+          <button class="control play" id="play">▶ 播放</button>
+          <button class="control" id="next" aria-label="下一步">→</button>
+        </div>
+      </aside>
+    </main>
+
+    <footer>
+      <span>权限排障：确认身份 → 检查每级目录x → 选择u/g/o → 检查ACL和特殊位 → 后续检查SELinux</span>
+      <span>键盘：←/→ · 空格 · 1/2/3/4切换主题</span>
+    </footer>
+  </div>
+
+  <script>
+    const scenes = {
+      identity: {
+        title: '内核先看身份，再选择唯一一组权限',
+        tag: 'UID · GID · supplementary groups',
+        steps: [
+          { title:'用户名最终映射为数字ID', text:'内核主要依据UID、主GID和附加组判断权限。用户名与组名便于人阅读，系统通过账号数据库把它们解析为数字ID。', q:'dev01加入project-dev后，为什么已有登录会话可能仍未获得新组身份？', user:'dev01', uid:'1001', groups:'dev01, project-dev', match:'none', mode:'rw-r-----', owner:'dev01', group:'project-dev', result:'先读取当前进程身份' },
+          { title:'第一步：先匹配所有者', text:'如果进程的有效UID等于文件所有者UID，系统只使用owner权限位，不会再把group或other权限补进来。', q:'所有者权限为---、other权限为r--时，文件所有者能读取吗？', user:'dev01', uid:'1001', groups:'dev01, project-dev', match:'owner', mode:'rw-r-----', owner:'dev01', group:'project-dev', result:'命中owner：使用rw-' },
+          { title:'不是所有者，再检查所属组', text:'有效UID不匹配所有者时，只要进程的主组或任一附加组匹配文件所属组，就使用group权限位。', q:'dev02的主组是dev02、附加组包含project-dev，是否能读取这个文件？', user:'dev02', uid:'1002', groups:'dev02, project-dev', match:'group', mode:'rw-r-----', owner:'dev01', group:'project-dev', result:'命中group：使用r--' },
+          { title:'前两项都不匹配才使用other', text:'auditor既不是dev01，也暂未加入project-dev，因此传统权限使用other位。这里other为---，访问被拒绝。', q:'把group改为---、other改为r--，属于project-dev的dev02会使用哪一组？', user:'auditor', uid:'1003', groups:'auditor', match:'other', mode:'rw-r-----', owner:'dev01', group:'project-dev', result:'命中other：---，拒绝读取', deny:true },
+          { title:'sudo临时改变有效身份', text:'sudo先检查授权规则，再以指定身份执行获批命令。它不是把root密码共享给所有人，也不表示用户能执行任意命令。', q:'juniorops只获准执行systemctl is-active nginx，能否用sudo重启nginx？', user:'juniorops → sudo', uid:'有效UID临时变为0', groups:'只执行规则匹配的命令', match:'sudo', mode:'命令级授权', owner:'root', group:'root', result:'规则匹配才允许；操作写入日志' }
+        ]
+      },
+      rwx: {
+        title: '相同字母作用在文件和目录上含义不同',
+        tag: 'read · write · execute/traverse',
+        steps: [
+          { title:'r：读取内容与列出名称', text:'文件的r允许读取内容；目录的r允许列出目录项名称。但目录缺少x时，即使看到名称，也可能无法读取对象属性或进入子目录。', q:'目录权限只有r--时，ls能否像正常目录一样完整显示属性？', focus:'r', note:'目录 r 没有 x：可能看到名字，但不能正常访问对象' },
+          { title:'w：修改内容与修改目录项', text:'文件的w控制修改文件内容；目录的w控制创建、删除、重命名目录项，实际操作通常还需要目录x。', q:'一个只读文件位于你拥有wx权限的目录中，你可能删除它吗？', focus:'w', note:'删除文件主要由父目录的 w+x 决定，不由文件自身w决定' },
+          { title:'x：执行文件与穿越目录', text:'文件的x允许把合适格式的文件作为程序执行；目录的x表示穿越，可以进入目录或按已知名称访问其中对象。', q:'目录有x但没有r，知道完整文件名时是否可能访问该文件？', focus:'x', note:'目录 x 是路径访问的关键，不等于“执行目录”' },
+          { title:'访问对象要穿过路径的每一级', text:'读取/srv/course-share/project.conf不仅检查文件本身，还必须对/srv和/srv/course-share等路径目录具有x权限。任一级被阻断都会失败。', q:'目标文件是644，但父目录是700且属于root，普通用户能读取吗？', focus:'path', note:'每一级目录都要允许穿越（x）' },
+          { title:'删除检查的是父目录', text:'rm删除的是“文件名→inode”目录项，所以重点检查父目录w+x。Sticky bit可以进一步限制多人可写目录中的删除行为。', q:'为什么chmod 444 file不能保证文件绝对不会被删除？', focus:'delete', note:'父目录权限决定能否删除目录项；文件权限决定能否修改内容' }
+        ]
+      },
+      mode: {
+        title: '权限位是三组独立的位集合',
+        tag: 'u · g · o / bit mask',
+        steps: [
+          { title:'r=4、w=2、x=1表示三个二进制位', text:'每一组权限由r、w、x三个开关组成。把已开启的位相加可得到0—7，但应始终同时说清对应动作。', q:'数字5代表哪两个权限？', values:[7,5,0], labels:['owner','group','other'], equation:'rwx = 4+2+1 = 7' },
+          { title:'chmod 750分配三类主体权限', text:'第一位7给所有者rwx，第二位5给所属组r-x，第三位0让其他用户没有传统权限。', q:'脚本设为750后，属于所属组但不是所有者的用户能修改脚本吗？', values:[7,5,0], labels:['u：rwx','g：r-x','o：---'], equation:'chmod 750 check.sh' },
+          { title:'配置文件常用640而不是可执行权限', text:'普通配置文件通常不需要x。640表示所有者读写、组只读、其他无权访问。权限设计取决于业务角色，不存在万能数字。', q:'给普通文本配置增加x权限，会自动把它变成正确程序吗？', values:[6,4,0], labels:['u：rw-','g：r--','o：---'], equation:'chmod 640 app.conf' },
+          { title:'umask按位屏蔽默认权限', text:'新普通文件从666屏蔽，新目录从777屏蔽。umask 0022移除组和其他用户的w，因此常见结果分别是644和755；严格原理是位屏蔽，不是任意十进制减法。', q:'umask 0077下，新文件和新目录通常分别是什么权限？', values:[0,2,2], labels:['u不屏蔽','g屏蔽w','o屏蔽w'], equation:'file: 666 & ~022 = 644　dir: 777 & ~022 = 755', mask:true },
+          { title:'不要用777绕过设计', text:'chmod 777把读、写、执行开放给所有用户，既不能修复错误的所有者、ACL或SELinux，也会制造篡改风险。应先识别主体、对象和所需动作。', q:'遇到Permission denied时，第一步应该改成777，还是先确认当前身份和路径权限？', values:[7,7,7], labels:['所有者','所属组','其他用户'], equation:'chmod 777：通常是危险的“暂时能用”', danger:true }
+        ]
+      },
+      share: {
+        title: '共享目录需要组合传统权限、特殊位和ACL',
+        tag: '/srv/course-share',
+        steps: [
+          { title:'SGID让新文件继承项目组', text:'目录设置2770后，前面的2表示SGID。dev01和dev02创建的新文件通常继承目录所属组project-dev，便于同组持续协作。', q:'如果没有SGID，新文件默认更可能使用创建者的哪个组？', state:'sgid' },
+          { title:'协作还需要合理umask', text:'SGID只解决所属组继承；若创建者umask屏蔽了组写权限，新文件仍可能无法由同组成员修改。协作示例使用umask 0002。', q:'目录有SGID，但新文件权限为644，dev02为什么仍不能修改？', state:'umask' },
+          { title:'Sticky限制删除别人的文件', text:'多人可写目录增加Sticky bit后，通常只有文件所有者、目录所有者或root能删除该目录项。3770同时包含SGID和Sticky。', q:'dev02能修改组可写的dev01.txt，是否必然也能删除它？', state:'sticky' },
+          { title:'ACL表达额外的审计角色', text:'传统u/g/o只有一个所属组槽位。ACL可额外授予project-audit组读取和穿越权限，同时让juniorops继续被拒绝。ACL有效权限还会受mask影响。', q:'getfacl显示auditor有r--，但路径目录没有x，能否读取目标文件？', state:'acl' },
+          { title:'最终必须用真实身份验证', text:'配置看起来正确不等于访问一定成功。应使用sudo -u或独立登录会话验证dev01、dev02、auditor和juniorops的允许与拒绝，并记录退出码。SELinux是后续模块的另一道独立判定。', q:'为什么只提交ls -l截图不足以证明权限方案正确？', state:'verify' }
+        ]
+      }
+    };
+
+    let sceneKey = 'identity', stepIndex = 0, timer = null;
+    const byId = id => document.getElementById(id);
+    const esc = value => String(value).replace(/[&<>"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]));
+
+    function identityVisual(s) {
+      const cells = [
+        ['type','-'], ['owner',s.mode.length >= 9 ? s.mode.slice(0,3) : s.mode],
+        ['group',s.mode.length >= 9 ? s.mode.slice(3,6) : '—'], ['other',s.mode.length >= 9 ? s.mode.slice(6,9) : '—']
+      ];
+      const match = s.match;
+      return '<div class="identity"><div class="principal"><div class="card active"><strong>当前进程：' + esc(s.user) + '</strong><small>UID：' + esc(s.uid) + '<br>组：' + esc(s.groups) + '</small></div><div class="terminal"><b>$</b> id ' + esc(s.user.split(' ')[0]) + '</div></div><div class="arrow">→</div><div class="card file-card"><strong>project.conf</strong><small>owner：' + esc(s.owner) + '<br>group：' + esc(s.group) + '<br>mode：' + esc(s.mode) + '</small><div class="mode-line">' +
+        cells.map(c => '<div class="mode-cell ' + (c[0] === match ? 'selected' : (['owner','group','other'].includes(c[0]) && match !== 'none' && match !== 'sudo' ? 'skipped' : '')) + '">' + esc(c[1]) + '</div>').join('') +
+        '</div></div><div class="decision"><div class="rule ' + (match==='owner'?'hit':'') + '">① UID匹配owner？</div><div class="rule ' + (match==='group'?'hit':'') + '">② 任一GID匹配group？</div><div class="rule ' + (match==='other'?'hit':'') + '">③ 否则使用other</div></div><div class="card ' + (s.deny?'deny':'active') + '" style="grid-column:1/-1;text-align:center"><strong>' + esc(s.result) + '</strong><span class="badge ' + (s.deny?'deny':'') + '">' + (s.deny?'DENIED':'DECISION') + '</span></div></div>';
+    }
+
+    function rwxVisual(s) {
+      if (s.focus === 'path') {
+        return '<div><div class="path-chain"><span class="path-part">/（x）</span><span class="arrow">→</span><span class="path-part">srv（x）</span><span class="arrow">→</span><span class="path-part">course-share（x）</span><span class="arrow">→</span><span class="path-part pulse">project.conf（r）</span></div><div class="terminal"><b>$</b> namei -l /srv/course-share/project.conf</div><div class="rwx-note">' + esc(s.note) + '</div></div>';
+      }
+      if (s.focus === 'delete') {
+        return '<div><div class="path-chain"><div class="card"><strong>project.conf：444</strong><small>文件内容不可写</small></div><span class="arrow">位于</span><div class="card active pulse"><strong>/srv/course-share：770</strong><small>父目录允许w+x</small></div><span class="arrow">→</span><div class="card deny"><strong>rm检查目录项</strong><small>若无Sticky等限制，可能删除</small></div></div><div class="rwx-note">' + esc(s.note) + '</div></div>';
+      }
+      const rights = ['r','w','x'];
+      const fileText = {r:'读取文件内容',w:'修改文件内容',x:'作为程序执行'};
+      const dirText = {r:'列出目录项名称',w:'创建/删除/重命名',x:'进入并按名称访问'};
+      return '<div><div class="rwx-grid"><div class="rwx-cell head"></div>' +
+        rights.map(x=>'<div class="rwx-cell head"><strong>'+x+'</strong></div>').join('') +
+        '<div class="rwx-cell head"><strong>普通文件</strong></div>' + rights.map(x=>'<div class="rwx-cell '+(x===s.focus?'active pulse':'')+'">'+fileText[x]+'</div>').join('') +
+        '<div class="rwx-cell head"><strong>目录</strong></div>' + rights.map(x=>'<div class="rwx-cell '+(x===s.focus?'warn pulse':'')+'">'+dirText[x]+'</div>').join('') +
+        '</div><div class="rwx-note">' + esc(s.note) + '</div></div>';
+    }
+
+    function bitHtml(value) {
+      return [4,2,1].map(bit => '<span class="bit ' + ((value & bit)?'':'off') + '">' + ({4:'r',2:'w',1:'x'}[bit]) + '</span>').join('');
+    }
+    function modeVisual(s) {
+      return '<div class="mode-demo"><div class="octets">' + s.values.map((v,i)=>'<div class="octet '+(s.danger?'deny':'active')+'"><small>'+esc(s.labels[i])+'</small><span class="number">'+v+'</span><div class="bits">'+bitHtml(v)+'</div></div>').join('') +
+        '</div><div class="equation"><em>' + esc(s.equation) + '</em></div>' +
+        (s.danger?'<div class="warning">777不是通用修复。它扩大了所有用户的权限，也不会绕过SELinux。</div>':'<div class="terminal"><b>$</b> stat -c &quot;%A %a %U:%G %n&quot; 目标文件</div>') + '</div>';
+    }
+
+    function shareVisual(s) {
+      const classes = {
+        sgid:['allow','allow','deny','deny'],
+        umask:['allow','allow','deny','deny'],
+        sticky:['allow','allow','deny','deny'],
+        acl:['allow','allow','read','deny'],
+        verify:['allow','allow','read','deny']
+      }[s.state];
+      const labels = ['dev01<br><small>project-dev</small>','dev02<br><small>project-dev</small>','auditor<br><small>project-audit</small>','juniorops<br><small>无项目组</small>'];
+      let files = '';
+      if (s.state==='sgid') files='<div class="file pulse">dev01.txt<br><small>dev01:project-dev</small></div>';
+      if (s.state==='umask') files='<div class="file">dev01.txt<br><small>664 · 同组可写</small></div><div class="file deny">错误示例<br><small>644 · 同组只读</small></div>';
+      if (s.state==='sticky') files='<div class="file">dev01.txt<br><small>dev02可协作修改</small></div><div class="card deny">dev02执行rm<br><span class="badge deny">Sticky拒绝</span></div>';
+      if (s.state==='acl') files='<div class="file">project.conf<br><small>传统权限：660</small></div><div class="card active">ACL：project-audit:r--<br><small>目录另需rx</small></div>';
+      if (s.state==='verify') files='<div class="pipeline"><span class="gate pass">身份 id</span><span class="arrow">→</span><span class="gate pass">路径每级x</span><span class="arrow">→</span><span class="gate pass">u/g/o + ACL</span><span class="arrow">→</span><span class="gate future">SELinux<br><small>模块二</small></span></div>';
+      return '<div class="share"><div class="share-head"><div class="card active"><strong>/srv/course-share</strong><small>root:project-dev · ' + (s.state==='sticky'?'3770（SGID + Sticky）':'2770（SGID）') + '</small></div><span class="badge">团队共享</span></div><div class="people">' +
+        labels.map((x,i)=>'<div class="person '+classes[i]+'">'+x+'</div>').join('') + '</div><div class="files">'+files+'</div><div class="terminal"><b>$</b> sudo -u 目标用户 执行真实读取、写入或删除命令；记录退出码</div></div>';
+    }
+
+    function stop() { if (timer) clearInterval(timer); timer=null; byId('play').textContent='▶ 播放'; }
+    function render() {
+      const scene=scenes[sceneKey], s=scene.steps[stepIndex];
+      document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.scene===sceneKey));
+      byId('visualTitle').textContent=scene.title; byId('conceptTag').textContent=scene.tag;
+      byId('counter').textContent='第 '+(stepIndex+1)+' / '+scene.steps.length+' 步';
+      byId('stepTitle').textContent=s.title; byId('stepText').textContent=s.text; byId('questionText').textContent=s.q;
+      byId('visual').innerHTML=sceneKey==='identity'?identityVisual(s):sceneKey==='rwx'?rwxVisual(s):sceneKey==='mode'?modeVisual(s):shareVisual(s);
+    }
+    function next(){stepIndex=(stepIndex+1)%scenes[sceneKey].steps.length;render();}
+    function prev(){stepIndex=(stepIndex-1+scenes[sceneKey].steps.length)%scenes[sceneKey].steps.length;render();}
+    function togglePlay(){if(timer)return stop();byId('play').textContent='❚❚ 暂停';next();timer=setInterval(next,5700);}
+    document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{stop();sceneKey=t.dataset.scene;stepIndex=0;render();}));
+    byId('prev').addEventListener('click',()=>{stop();prev();});
+    byId('next').addEventListener('click',()=>{stop();next();});
+    byId('restart').addEventListener('click',()=>{stop();stepIndex=0;render();});
+    byId('play').addEventListener('click',togglePlay);
+    document.addEventListener('keydown',e=>{
+      if(e.key==='ArrowRight'){stop();next();} if(e.key==='ArrowLeft'){stop();prev();}
+      if(e.key===' '){e.preventDefault();togglePlay();}
+      if(['1','2','3','4'].includes(e.key)){stop();sceneKey=['identity','rwx','mode','share'][Number(e.key)-1];stepIndex=0;render();}
+    });
+    render();
+  </script>
+</body>
+</html>

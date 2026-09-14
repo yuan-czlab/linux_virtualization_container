@@ -46,6 +46,8 @@ SSH客户端连接服务器22端口
 → 为用户创建远程Shell或文件传输会话
 ```
 
+实验开始前打开[SSH信任、认证与文件传输动画](../../animations/07-ssh-trust-auth-transfer/index.html)，依次完成“主机身份”和“用户认证”；进入任务四、任务五前再完成“配置与命令”和“文件传输”。每一步先回答右侧判断题，再用本实验的`ssh -vv`、服务端journal、`ssh -G`和SHA256结果验证。
+
 | 文件或对象 | 所在位置 | 作用 |
 |---|---|---|
 | 服务器主机私钥 | `/etc/ssh/ssh_host_*_key` | 证明服务器身份，不得复制给学生 |
@@ -121,13 +123,14 @@ sudo ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
 
 #### 步骤4：测试端口
 
-在`ubuntu-client`执行，分别替换两个实际IP：
+在`ubuntu-client`执行。地址直接读取实验8生成的变量文件：
 
 ```bash
+source ~/m1-project/course-env.sh
 ip -brief address
-ip route get <ROCKY_SERVER_IP>
-nc -vz -w 3 <ROCKY_SERVER_IP> 22
-nc -vz -w 3 <ROCKY_WEB_IP> 22
+ip route get "$ROCKY_SERVER_IP"
+nc -vz -w 3 "$ROCKY_SERVER_IP" 22
+nc -vz -w 3 "$ROCKY_WEB_IP" 22
 ```
 
 如果失败，依次检查虚拟机IP、sshd状态、22端口监听、VMware NAT和firewalld。
@@ -135,8 +138,8 @@ nc -vz -w 3 <ROCKY_WEB_IP> 22
 #### 步骤5：密码连接并确认主机身份
 
 ```bash
-ssh rocky-server@<ROCKY_SERVER_IP>
-ssh rocky-web@<ROCKY_WEB_IP>
+ssh rocky-server@"$ROCKY_SERVER_IP"
+ssh rocky-web@"$ROCKY_WEB_IP"
 ```
 
 首次连接会显示主机指纹。分别与对应Rocky控制台记录的指纹核对，确认后输入`yes`，密码均为课堂口令`123456`。
@@ -186,8 +189,9 @@ ssh-keygen -lf ~/.ssh/linux-course-ed25519.pub
 使用`ssh-copy-id`部署公钥：
 
 ```bash
-ssh-copy-id -i ~/.ssh/linux-course-ed25519.pub rocky-server@<ROCKY_SERVER_IP>
-ssh-copy-id -i ~/.ssh/linux-course-ed25519.pub rocky-web@<ROCKY_WEB_IP>
+source ~/m1-project/course-env.sh
+ssh-copy-id -i ~/.ssh/linux-course-ed25519.pub rocky-server@"$ROCKY_SERVER_IP"
+ssh-copy-id -i ~/.ssh/linux-course-ed25519.pub rocky-web@"$ROCKY_WEB_IP"
 ```
 
 在两台Rocky控制台分别检查：
@@ -212,8 +216,8 @@ chown -R "$USER:$USER" ~/.ssh
 在Ubuntu客户端执行：
 
 ```bash
-ssh -i ~/.ssh/linux-course-ed25519 rocky-server@<ROCKY_SERVER_IP>
-ssh -i ~/.ssh/linux-course-ed25519 rocky-web@<ROCKY_WEB_IP>
+ssh -i ~/.ssh/linux-course-ed25519 rocky-server@"$ROCKY_SERVER_IP"
+ssh -i ~/.ssh/linux-course-ed25519 rocky-web@"$ROCKY_WEB_IP"
 ```
 
 如果设置了私钥口令，客户端会要求输入私钥口令，而不是服务器账号密码。
@@ -232,31 +236,29 @@ exit
 
 #### 步骤9：编辑Ubuntu SSH配置
 
-编辑：
+先备份已有配置，再根据实验8保存的地址生成课程配置。这里不使用待替换占位符：
 
-```text
-~/.ssh/config
-```
-
-加入：
-
-```text
+```bash
+source ~/m1-project/course-env.sh
+test -f ~/.ssh/config && cp -a ~/.ssh/config ~/.ssh/config.before-lab10
+cat > ~/.ssh/config <<EOF
 Host rocky-server
-    HostName <ROCKY_SERVER_IP>
+    HostName $ROCKY_SERVER_IP
     User rocky-server
     Port 22
     IdentityFile ~/.ssh/linux-course-ed25519
     IdentitiesOnly yes
 
 Host rocky-web
-    HostName <ROCKY_WEB_IP>
+    HostName $ROCKY_WEB_IP
     User rocky-web
     Port 22
     IdentityFile ~/.ssh/linux-course-ed25519
     IdentitiesOnly yes
+EOF
 ```
 
-把两个IP占位符替换为实际地址。测试：
+测试：
 
 ```bash
 chmod 600 ~/.ssh/config
@@ -328,9 +330,10 @@ chmod 666 ~/.ssh/authorized_keys
 这是故障注入，不是最终配置。在Ubuntu新开终端，执行：
 
 ```bash
+source ~/m1-project/course-env.sh
 ssh -vv -o PreferredAuthentications=publickey \
   -o PasswordAuthentication=no \
-  -i ~/.ssh/linux-course-ed25519 rocky-server@<ROCKY_SERVER_IP>
+  -i ~/.ssh/linux-course-ed25519 rocky-server@"$ROCKY_SERVER_IP"
 ```
 
 该命令强制只使用公钥并关闭密码回退，因此权限错误时应明确失败。观察调试信息中客户端是否提供了正确公钥，以及服务端为何拒绝认证。
@@ -352,9 +355,10 @@ chown -R "$USER:$USER" ~/.ssh
 再次在Ubuntu执行：
 
 ```bash
+source ~/m1-project/course-env.sh
 ssh -vv -o PreferredAuthentications=publickey \
   -o PasswordAuthentication=no \
-  -i ~/.ssh/linux-course-ed25519 rocky-server@<ROCKY_SERVER_IP>
+  -i ~/.ssh/linux-course-ed25519 rocky-server@"$ROCKY_SERVER_IP"
 ```
 
 > **验收点**：记录故障现象、客户端证据、服务端日志、根因、修复和密钥认证复测。

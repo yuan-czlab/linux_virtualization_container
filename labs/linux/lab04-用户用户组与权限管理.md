@@ -59,6 +59,8 @@
 
 sudo不是共享root密码，而是根据规则授权指定用户执行指定命令，并留下日志。授权文件必须使用`visudo`检查语法。
 
+开始任务前打开[Linux身份与权限判定动画](../../animations/03-linux-permissions/index.html)，依次完成身份匹配、文件/目录rwx、chmod与umask、共享目录四个主题。每个主题先预测允许或拒绝，再使用本实验创建的真实账号验证。
+
 ## 四、实验环境
 
 - Rocky Linux 9，rocky-server具备sudo权限。
@@ -367,7 +369,7 @@ mkdir -p ~/m1-project/evidence
 
 ```bash
 ls -ld /srv/course-share
-id <用户>
+id dev01
 ```
 
 ### Q4：sudoers修改后sudo报语法错误

@@ -110,17 +110,19 @@ pwd
 #### 步骤2：确认镜像
 
 ```bash
+source ~/vc-course/course-env.sh
+VC_GATEWAY_IMAGE="$COURSE_REGISTRY/vc/gateway:$COURSE_TAG"
+VC_API_IMAGE="$COURSE_REGISTRY/vc/techcorp-api:$COURSE_TAG"
+VC_MYSQL_IMAGE="$COURSE_REGISTRY/vc/mysql:$COURSE_TAG"
+VC_REDIS_IMAGE="$COURSE_REGISTRY/vc/redis:$COURSE_TAG"
+sudo docker image inspect "$VC_GATEWAY_IMAGE" "$VC_API_IMAGE" \
+  "$VC_MYSQL_IMAGE" "$VC_REDIS_IMAGE" >/dev/null
 sudo docker image ls --digests
 ```
 
 确认以下课程镜像均存在：
 
-```text
-<COURSE_REGISTRY>/vc/gateway:<COURSE_TAG>
-<COURSE_REGISTRY>/vc/techcorp-api:<COURSE_TAG>
-<COURSE_REGISTRY>/vc/mysql:<COURSE_TAG>
-<COURSE_REGISTRY>/vc/redis:<COURSE_TAG>
-```
+命令会核验`gateway`、`techcorp-api`、`mysql`和`redis`四个本学期固定标签镜像；任意一个缺失都会返回非0。
 
 缺少时从学校仓库拉取或导入实验10离线镜像包。不得临时改为Docker Hub上的浮动镜像。
 
@@ -129,11 +131,14 @@ sudo docker image ls --digests
 #### 步骤3：创建可提交模板
 
 ```bash
-cat > .env.example <<'EOF'
-VC_GATEWAY_IMAGE=<COURSE_REGISTRY>/vc/gateway:<COURSE_TAG>
-VC_API_IMAGE=<COURSE_REGISTRY>/vc/techcorp-api:<COURSE_TAG>
-VC_MYSQL_IMAGE=<COURSE_REGISTRY>/vc/mysql:<COURSE_TAG>
-VC_REDIS_IMAGE=<COURSE_REGISTRY>/vc/redis:<COURSE_TAG>
+source ~/vc-course/course-env.sh
+cd ~/vc-course/lab10/techcorp-stack
+cat > .env.example <<EOF
+VC_GATEWAY_IMAGE=$COURSE_REGISTRY/vc/gateway:$COURSE_TAG
+VC_API_IMAGE=$COURSE_REGISTRY/vc/techcorp-api:$COURSE_TAG
+VC_MYSQL_IMAGE=$COURSE_REGISTRY/vc/mysql:$COURSE_TAG
+VC_REDIS_IMAGE=$COURSE_REGISTRY/vc/redis:$COURSE_TAG
+VC_BIND_IP=CHANGE_ME
 VC_DB_NAME=vcdb
 VC_DB_USER=vcuser
 VC_DB_PASSWORD=replace_me
@@ -145,14 +150,20 @@ EOF
 复制为本地实验文件并填写教师规定的实验密码：
 
 ```bash
+source ~/vc-course/course-env.sh
+cd ~/vc-course/lab10/techcorp-stack
 cp .env.example .env
+sed -i "s/^VC_BIND_IP=.*/VC_BIND_IP=$UBUNTU_CLIENT_IP/" .env
 chmod 600 .env
 vim .env
 ```
 
+除三个实验密码外，还要确认`VC_BIND_IP`等于当前Ubuntu固定地址；任何`CHANGE_ME`或`replace_me`未处理时都不能启动项目。
+
 创建忽略规则：
 
 ```bash
+cd ~/vc-course/lab10/techcorp-stack
 cat > .gitignore <<'EOF'
 .env
 backup/*.tar
@@ -168,6 +179,7 @@ EOF
 #### 步骤4：创建compose.yaml
 
 ```bash
+cd ~/vc-course/lab10/techcorp-stack
 cat > compose.yaml <<'YAML'
 name: vcstack
 
@@ -175,7 +187,7 @@ services:
   gateway:
     image: ${VC_GATEWAY_IMAGE}
     ports:
-      - "8088:80"
+      - "${VC_BIND_IP}:8088:80"
     depends_on:
       api:
         condition: service_healthy
@@ -258,9 +270,14 @@ YAML
 #### 步骤5：检查YAML和变量解析
 
 ```bash
-sudo docker compose --env-file .env config --quiet
-sudo docker compose --env-file .env config --services
-sudo docker compose --env-file .env config --images
+cd ~/vc-course/lab10/techcorp-stack
+if grep -Eq '=(CHANGE_ME|replace_me)$' .env; then
+  echo '.env仍有未填写项，停止解析和启动'
+else
+  sudo docker compose --env-file .env config --quiet
+  sudo docker compose --env-file .env config --services
+  sudo docker compose --env-file .env config --images
+fi
 ```
 
 不要把完整`docker compose config`输出提交，因为解析后的环境变量可能包含实验密码。
@@ -268,6 +285,7 @@ sudo docker compose --env-file .env config --images
 检查计划创建的镜像而不启动：
 
 ```bash
+cd ~/vc-course/lab10/techcorp-stack
 sudo docker compose --env-file .env pull --policy missing
 ```
 
@@ -280,6 +298,7 @@ sudo docker compose --env-file .env pull --policy missing
 #### 步骤6：检查宿主机端口与旧项目
 
 ```bash
+cd ~/vc-course/lab10/techcorp-stack
 sudo ss -lntp | grep ':8088' || true
 sudo docker compose --env-file .env ps -a
 ```
@@ -289,6 +308,7 @@ sudo docker compose --env-file .env ps -a
 #### 步骤7：启动项目
 
 ```bash
+cd ~/vc-course/lab10/techcorp-stack
 sudo docker compose --env-file .env up -d
 sudo docker compose --env-file .env ps -a
 ```
@@ -296,6 +316,7 @@ sudo docker compose --env-file .env ps -a
 首次启动MySQL可能需要几十秒。重复观察健康状态：
 
 ```bash
+cd ~/vc-course/lab10/techcorp-stack
 sudo docker compose --env-file .env ps
 ```
 
@@ -333,11 +354,14 @@ sudo docker port vcstack-db-1
 #### 步骤10：从宿主机访问
 
 ```bash
-curl --fail http://127.0.0.1:8088/health
-curl --fail http://127.0.0.1:8088/api/info
-curl --fail http://127.0.0.1:8088/api/visits
-curl --fail http://127.0.0.1:8088/api/visits
+source ~/vc-course/course-env.sh
+curl --fail "http://$UBUNTU_CLIENT_IP:8088/health"
+curl --fail "http://$UBUNTU_CLIENT_IP:8088/api/info"
+curl --fail "http://$UBUNTU_CLIENT_IP:8088/api/visits"
+curl --fail "http://$UBUNTU_CLIENT_IP:8088/api/visits"
 ```
+
+Compose把8088绑定到Ubuntu指定IPv4地址。Docker发布端口可能绕过UFW规则，因此不能只凭`ufw status`判断暴露边界；本实验依靠隔离VMnet8，生产环境还要配置`DOCKER-USER`链或上游防火墙。
 
 预期：健康接口成功，info能够报告MySQL和Redis连接状态，visits连续调用时计数增加。
 
@@ -346,9 +370,10 @@ curl --fail http://127.0.0.1:8088/api/visits
 在Rocky客户端：
 
 ```bash
-curl --fail http://<UBUNTU_IP>:8088/health
-curl --fail http://<UBUNTU_IP>:8088/api/info
-curl --fail http://<UBUNTU_IP>:8088/api/visits
+source ~/vc-course/course-env.sh
+curl --fail "http://$UBUNTU_CLIENT_IP:8088/health"
+curl --fail "http://$UBUNTU_CLIENT_IP:8088/api/info"
+curl --fail "http://$UBUNTU_CLIENT_IP:8088/api/visits"
 ```
 
 访问失败时先证明Ubuntu本机可用，再检查宿主机网络、端口发布和防火墙。
@@ -356,6 +381,7 @@ curl --fail http://<UBUNTU_IP>:8088/api/visits
 #### 步骤12：验证MySQL数据
 
 ```bash
+cd ~/vc-course/lab10/techcorp-stack
 set -a
 . ./.env
 set +a
@@ -370,6 +396,7 @@ unset VC_DB_PASSWORD VC_DB_ROOT_PASSWORD VC_REDIS_PASSWORD
 #### 步骤13：验证Redis
 
 ```bash
+cd ~/vc-course/lab10/techcorp-stack
 VC_REDIS_PASSWORD_VALUE=$(awk -F= '$1=="VC_REDIS_PASSWORD" {print substr($0,index($0,"=")+1)}' .env)
 sudo docker compose --env-file .env exec -T cache \
   redis-cli -a "$VC_REDIS_PASSWORD_VALUE" PING
@@ -385,6 +412,7 @@ unset VC_REDIS_PASSWORD_VALUE
 #### 步骤14：查看多服务日志
 
 ```bash
+cd ~/vc-course/lab10/techcorp-stack
 sudo docker compose --env-file .env logs --tail 50 gateway api
 sudo docker compose --env-file .env logs --tail 30 db cache
 ```
@@ -392,6 +420,7 @@ sudo docker compose --env-file .env logs --tail 30 db cache
 持续跟随API日志并从另一终端发送请求：
 
 ```bash
+cd ~/vc-course/lab10/techcorp-stack
 sudo docker compose --env-file .env logs -f api
 ```
 
@@ -400,9 +429,11 @@ sudo docker compose --env-file .env logs -f api
 #### 步骤15：重建单个服务
 
 ```bash
+cd ~/vc-course/lab10/techcorp-stack
 sudo docker compose --env-file .env up -d --no-deps --force-recreate api
 sudo docker compose --env-file .env ps api
-curl --fail http://127.0.0.1:8088/api/info
+source ~/vc-course/course-env.sh
+curl --fail "http://$UBUNTU_CLIENT_IP:8088/api/info"
 ```
 
 确认重建API不会删除MySQL和Redis卷。
@@ -410,11 +441,13 @@ curl --fail http://127.0.0.1:8088/api/info
 #### 步骤16：停止和恢复整个项目
 
 ```bash
+cd ~/vc-course/lab10/techcorp-stack
 sudo docker compose --env-file .env stop
 sudo docker compose --env-file .env ps -a
 sudo docker compose --env-file .env start
 sudo docker compose --env-file .env ps
-curl --fail http://127.0.0.1:8088/api/visits
+source ~/vc-course/course-env.sh
+curl --fail "http://$UBUNTU_CLIENT_IP:8088/api/visits"
 ```
 
 ### 任务七：故障注入与排查
@@ -424,18 +457,21 @@ curl --fail http://127.0.0.1:8088/api/visits
 备份文件：
 
 ```bash
+cd ~/vc-course/lab10/techcorp-stack
 cp compose.yaml backup/compose.yaml.good
 ```
 
 临时把`VC_GATEWAY_IMAGE`在`.env`中改成不存在的标签，执行：
 
 ```bash
+cd ~/vc-course/lab10/techcorp-stack
 sudo docker compose --env-file .env pull gateway
 ```
 
 记录`manifest unknown`或同类错误。恢复`.env`正确值，再验证：
 
 ```bash
+cd ~/vc-course/lab10/techcorp-stack
 sudo docker compose --env-file .env config --images
 sudo docker compose --env-file .env up -d
 ```
@@ -445,10 +481,12 @@ sudo docker compose --env-file .env up -d
 教师可临时修改API的`DB_PASSWORD`为错误值并重建API：
 
 ```bash
+cd ~/vc-course/lab10/techcorp-stack
 sudo docker compose --env-file .env up -d --no-deps --force-recreate api
 sudo docker compose --env-file .env ps api
 sudo docker compose --env-file .env logs --tail 80 api
-curl -i http://127.0.0.1:8088/api/info
+source ~/vc-course/course-env.sh
+curl -i "http://$UBUNTU_CLIENT_IP:8088/api/info"
 ```
 
 根据API日志和健康状态判断认证失败。恢复正确变量后重建API并复测。
@@ -458,16 +496,19 @@ curl -i http://127.0.0.1:8088/api/info
 先停止项目：
 
 ```bash
+cd ~/vc-course/lab10/techcorp-stack
 sudo docker compose --env-file .env stop
 ```
 
 使用明确临时容器占用8088：
 
 ```bash
+cd ~/vc-course/lab10/techcorp-stack
+source ~/vc-course/course-env.sh
 sudo docker run -d \
   --name vc-port-blocker \
-  -p 8088:80 \
-  <COURSE_REGISTRY>/vc/web:<COURSE_TAG>
+  -p "$UBUNTU_CLIENT_IP:8088:80" \
+  "$COURSE_REGISTRY/vc/web:$COURSE_TAG"
 sudo docker compose --env-file .env start gateway || true
 sudo ss -lntp | grep ':8088'
 sudo docker container ls --format '{{.Names}} {{.Ports}}'
@@ -476,10 +517,12 @@ sudo docker container ls --format '{{.Names}} {{.Ports}}'
 确认冲突后清理明确对象：
 
 ```bash
+cd ~/vc-course/lab10/techcorp-stack
 sudo docker stop vc-port-blocker
 sudo docker rm vc-port-blocker
 sudo docker compose --env-file .env start
-curl --fail http://127.0.0.1:8088/health
+source ~/vc-course/course-env.sh
+curl --fail "http://$UBUNTU_CLIENT_IP:8088/health"
 ```
 
 ### 任务八：备份与可重复交付
@@ -487,6 +530,7 @@ curl --fail http://127.0.0.1:8088/health
 #### 步骤20：导出数据库逻辑备份
 
 ```bash
+cd ~/vc-course/lab10/techcorp-stack
 VC_DB_ROOT_PASSWORD_VALUE=$(awk -F= '$1=="VC_DB_ROOT_PASSWORD" {print substr($0,index($0,"=")+1)}' .env)
 sudo docker compose --env-file .env exec -T db \
   mysqldump -uroot -p"$VC_DB_ROOT_PASSWORD_VALUE" --databases vcdb \
@@ -499,6 +543,7 @@ sha256sum backup/vcdb.sql > backup/SHA256SUMS
 #### 步骤21：停止并删除容器但保留卷
 
 ```bash
+cd ~/vc-course/lab10/techcorp-stack
 sudo docker compose --env-file .env down
 sudo docker compose --env-file .env ps -a
 sudo docker volume ls --filter name=vcstack
@@ -507,9 +552,11 @@ sudo docker volume ls --filter name=vcstack
 不得使用`down -v`。重新创建：
 
 ```bash
+cd ~/vc-course/lab10/techcorp-stack
 sudo docker compose --env-file .env up -d
 sudo docker compose --env-file .env ps
-curl --fail http://127.0.0.1:8088/api/visits
+source ~/vc-course/course-env.sh
+curl --fail "http://$UBUNTU_CLIENT_IP:8088/api/visits"
 ```
 
 数据和访问计数应按照课程应用设计保持。
@@ -517,6 +564,7 @@ curl --fail http://127.0.0.1:8088/api/visits
 #### 步骤22：生成配置与资源清单
 
 ```bash
+cd ~/vc-course/lab10/techcorp-stack
 {
   date -Is
   sha256sum compose.yaml .env.example .gitignore
@@ -581,6 +629,7 @@ lab10-学号-姓名/
 ### 1. Compose提示变量未设置
 
 ```bash
+cd ~/vc-course/lab10/techcorp-stack
 ls -la .env .env.example
 grep -E '^[A-Z0-9_]+=' .env | sed 's/=.*/=<hidden>/'
 sudo docker compose --env-file .env config --quiet
@@ -591,6 +640,7 @@ sudo docker compose --env-file .env config --quiet
 ### 2. db一直为unhealthy
 
 ```bash
+cd ~/vc-course/lab10/techcorp-stack
 sudo docker compose --env-file .env ps db
 sudo docker compose --env-file .env logs --tail 100 db
 sudo docker inspect vcstack-db-1 --format '{{json .State.Health}}'
@@ -603,6 +653,7 @@ sudo docker inspect vcstack-db-1 --format '{{json .State.Health}}'
 依次检查API状态、健康、网络和日志：
 
 ```bash
+cd ~/vc-course/lab10/techcorp-stack
 sudo docker compose --env-file .env ps api
 sudo docker compose --env-file .env logs --tail 100 gateway api
 sudo docker inspect vcstack-api-1 --format '{{json .NetworkSettings.Networks}}'
@@ -615,8 +666,10 @@ sudo docker inspect vcstack-api-1 --format '{{json .NetworkSettings.Networks}}'
 ### 5. 改了Compose但容器未更新
 
 ```bash
+cd ~/vc-course/lab10/techcorp-stack
 sudo docker compose --env-file .env config --quiet
-sudo docker compose --env-file .env up -d --force-recreate <服务名>
+SERVICE_NAME='api'
+sudo docker compose --env-file .env up -d --force-recreate "$SERVICE_NAME"
 ```
 
 先确认改的是当前目录中的文件和当前项目。
@@ -634,8 +687,10 @@ sudo docker compose --env-file .env up -d --force-recreate <服务名>
 - 项目保持运行或按教师要求停止，不删除卷：
 
 ```bash
+cd ~/vc-course/lab10/techcorp-stack
 sudo docker compose --env-file .env stop
 ```
 
+- 在Ubuntu的Compose配置、镜像、卷备份和运行证据均验收通过后创建VMware检查点`VC-V3-Compose项目完成`；恢复记录中简称`VC-V3`。
 - 实验11将使用同一项目完成Rocky/Ubuntu迁移和综合排障。
 

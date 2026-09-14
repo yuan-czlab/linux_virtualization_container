@@ -18,7 +18,7 @@
 
 ## 一、项目情境
 
-TechCorp已经能用Compose在单台Linux主机运行多服务应用。下一阶段需要理解云平台如何在集群中维持期望副本、替换异常实例并提供稳定访问入口。你将连接教师预建Kubernetes集群，使用指定命名空间部署课程应用、查看Pod和日志、通过Service访问并完成扩缩容。随后把Compose项目从Ubuntu交付到Rocky或反向迁移，在无Docker Hub条件下完成部署、故障排查、恢复和答辩。
+TechCorp已经能用Compose在单台Linux主机运行多服务应用。下一阶段需要理解云平台如何在集群中维持期望副本、替换异常实例并提供稳定访问入口。你将连接教师预建Kubernetes集群，使用指定命名空间部署课程应用、查看Pod和日志、通过Service访问并完成扩缩容。随后按正式主流程把Compose项目从Ubuntu交付到Rocky，在无Docker Hub条件下完成部署、故障排查、恢复和答辩。Rocky到Ubuntu的反向迁移可在完成主流程后作为拓展，不能替代正式验收。
 
 ## 二、实验目标
 
@@ -86,7 +86,7 @@ Context：<K8S_CONTEXT>
 - 学生在Ubuntu或Rocky安装与集群版本兼容的`kubectl`客户端。
 - 集群能够拉取教师课程应用镜像。
 - 实验10的Compose项目、`.env.example`、数据备份和镜像均保留。
-- Rocky和Ubuntu至少有一台作为源环境、一台作为目标环境。
+- `ubuntu-client`是正式主流程的源环境，`rocky-server`是目标环境；两台主机均保留实验6的Docker基线和Linux课程的SSH管理路径。
 - 最终项目端口由教师统一分配，避免小组冲突。
 
 ## 五、项目任务
@@ -115,8 +115,10 @@ kubectl version --client
 教师提供个人kubeconfig后保存：
 
 ```bash
+source ~/vc-course/course-env.sh
 mkdir -p ~/.kube ~/vc-course/lab11/k8s ~/vc-course/evidence
-install -m 600 <教师提供的kubeconfig路径> ~/.kube/config
+[[ "$KUBECONFIG_SOURCE" != 'CHANGE_ME' && -r "$KUBECONFIG_SOURCE" ]]
+install -m 600 "$KUBECONFIG_SOURCE" ~/.kube/config
 ```
 
 不得输出或提交完整kubeconfig。
@@ -124,10 +126,11 @@ install -m 600 <教师提供的kubeconfig路径> ~/.kube/config
 #### 步骤2：检查Context和权限
 
 ```bash
+source ~/vc-course/course-env.sh
 kubectl config current-context
 kubectl config get-contexts
 kubectl cluster-info
-kubectl auth can-i get pods -n <K8S_NAMESPACE>
+kubectl auth can-i get pods -n "$K8S_NAMESPACE"
 kubectl auth can-i delete namespaces
 ```
 
@@ -138,12 +141,15 @@ kubectl auth can-i delete namespaces
 先确认教师分配值，再执行：
 
 ```bash
-kubectl config set-context --current --namespace=<K8S_NAMESPACE>
+source ~/vc-course/course-env.sh
+[[ "$K8S_CONTEXT" != 'CHANGE_ME' && "$K8S_NAMESPACE" != 'CHANGE_ME' ]]
+kubectl config use-context "$K8S_CONTEXT"
+kubectl config set-context --current --namespace="$K8S_NAMESPACE"
 kubectl config view --minify \
   --output 'jsonpath={..namespace}'; echo
 ```
 
-后续命令仍建议在关键删除操作中显式写`-n <K8S_NAMESPACE>`。
+后续命令仍建议在关键删除操作中显式写`-n "$K8S_NAMESPACE"`。
 
 > **验收点**：Context正确、个人命名空间正确、权限没有越过课程边界。
 
@@ -151,10 +157,12 @@ kubectl config view --minify \
 
 #### 步骤4：创建课程应用清单
 
-将`<K8S_IMAGE>`替换为教师发布、集群能够拉取的固定镜像：
+清单中的镜像从统一参数文件写入，必须是教师发布、集群能够拉取的固定镜像：
 
 ```bash
-cat > ~/vc-course/lab11/k8s/vc-api.yaml <<'YAML'
+source ~/vc-course/course-env.sh
+[[ "$K8S_IMAGE" != 'CHANGE_ME' ]]
+cat > ~/vc-course/lab11/k8s/vc-api.yaml <<YAML
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -173,7 +181,7 @@ spec:
     spec:
       containers:
         - name: api
-          image: <K8S_IMAGE>
+          image: $K8S_IMAGE
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -263,7 +271,9 @@ kubectl logs deployment/vc-api --tail=50
 
 ```bash
 kubectl get pods -l app=vc-api
-kubectl logs <POD_NAME> --tail=50
+POD_NAME=$(kubectl get pods -l app=vc-api \
+  -o jsonpath='{.items[0].metadata.name}')
+test -n "$POD_NAME" && kubectl logs "$POD_NAME" --tail=50
 ```
 
 ### 任务四：访问Service
@@ -306,17 +316,28 @@ kubectl get pods -l app=vc-api -o wide
 
 #### 步骤11：删除一个Pod观察恢复
 
-先取得一个明确Pod名称：
+自动取得自己命名空间中一个明确的Pod名称并显示：
 
 ```bash
-kubectl get pods -l app=vc-api
+POD_NAME=$(kubectl get pods -l app=vc-api \
+  -o jsonpath='{.items[0].metadata.name}')
+printf 'selected_pod=%s\n' "$POD_NAME"
+printf '%s\n' "$POD_NAME" > ~/vc-course/evidence/lab11-selected-pod.txt
 ```
 
-选择自己命名空间中的一个Pod：
+确认输出不是空值，并且名称带有当前Deployment生成的`vc-api-`前缀。
+
+执行删除前重新读取并验证对象，防止换终端后变量丢失或旧Pod名称已经失效：
 
 ```bash
-kubectl delete pod <POD_NAME>
-kubectl get pods -l app=vc-api -w
+POD_NAME=$(cat ~/vc-course/evidence/lab11-selected-pod.txt)
+if [[ -n "$POD_NAME" ]] && \
+   [[ "$(kubectl get pod "$POD_NAME" -o jsonpath='{.metadata.labels.app}' 2>/dev/null)" == 'vc-api' ]]; then
+  kubectl delete pod "$POD_NAME"
+  kubectl get pods -l app=vc-api -w
+else
+  echo '所选Pod不存在或不属于vc-api，未执行删除'
+fi
 ```
 
 看到旧Pod删除且新Pod创建后按`Ctrl+C`。Deployment期望副本仍为3。
@@ -360,9 +381,10 @@ kubectl config view --minify \
 执行：
 
 ```bash
+source ~/vc-course/course-env.sh
 kubectl delete -f ~/vc-course/lab11/k8s/vc-api.yaml \
-  -n <K8S_NAMESPACE>
-kubectl get all -n <K8S_NAMESPACE>
+  -n "$K8S_NAMESPACE"
+kubectl get all -n "$K8S_NAMESPACE"
 ```
 
 不要执行删除整个命名空间或集群范围资源的命令。
@@ -377,13 +399,15 @@ kubectl get all -n <K8S_NAMESPACE>
 cd ~/vc-course/lab10/techcorp-stack
 sudo docker compose --env-file .env up -d
 sudo docker compose --env-file .env ps
-curl --fail http://127.0.0.1:8088/health
-curl --fail http://127.0.0.1:8088/api/info
+source ~/vc-course/course-env.sh
+curl --fail "http://$UBUNTU_CLIENT_IP:8088/health"
+curl --fail "http://$UBUNTU_CLIENT_IP:8088/api/info"
 ```
 
 逻辑备份：
 
 ```bash
+cd ~/vc-course/lab10/techcorp-stack
 VC_DB_ROOT_PASSWORD_VALUE=$(awk -F= '$1=="VC_DB_ROOT_PASSWORD" {print substr($0,index($0,"=")+1)}' .env)
 sudo docker compose --env-file .env exec -T db \
   mysqldump -uroot -p"$VC_DB_ROOT_PASSWORD_VALUE" --databases vcdb \
@@ -397,6 +421,7 @@ test -s backup/vcdb-final.sql
 获取Compose实际镜像清单：
 
 ```bash
+cd ~/vc-course/lab10/techcorp-stack
 sudo docker compose --env-file .env config --images \
   | sort -u | tee evidence/compose-images.txt
 ```
@@ -411,12 +436,16 @@ install -d -m 700 "$VC_DELIVERY_DIR"
 教师提供经过审核的明确导出命令。示例：
 
 ```bash
+cd ~/vc-course/lab10/techcorp-stack
+source ~/vc-course/course-env.sh
+VC_DELIVERY_DIR="$(readlink -f ~/vc-course/lab11/delivery)"
+test -d "$VC_DELIVERY_DIR"
 sudo docker save \
   -o "$VC_DELIVERY_DIR/vcstack-images.tar" \
-  <COURSE_REGISTRY>/vc/gateway:<COURSE_TAG> \
-  <COURSE_REGISTRY>/vc/techcorp-api:<COURSE_TAG> \
-  <COURSE_REGISTRY>/vc/mysql:<COURSE_TAG> \
-  <COURSE_REGISTRY>/vc/redis:<COURSE_TAG>
+  "$COURSE_REGISTRY/vc/gateway:$COURSE_TAG" \
+  "$COURSE_REGISTRY/vc/techcorp-api:$COURSE_TAG" \
+  "$COURSE_REGISTRY/vc/mysql:$COURSE_TAG" \
+  "$COURSE_REGISTRY/vc/redis:$COURSE_TAG"
 sudo chown "$(id -u):$(id -g)" "$VC_DELIVERY_DIR/vcstack-images.tar"
 cp backup/vcdb-final.sql "$VC_DELIVERY_DIR/"
 ```
@@ -426,6 +455,10 @@ cp backup/vcdb-final.sql "$VC_DELIVERY_DIR/"
 `.env`中的实际凭据不得进入公开交付包。复制可公开配置、镜像清单并生成项目归档：
 
 ```bash
+cd ~/vc-course/lab10/techcorp-stack
+VC_DELIVERY_DIR="$(readlink -f ~/vc-course/lab11/delivery)"
+test -s "$VC_DELIVERY_DIR/vcstack-images.tar"
+test -s "$VC_DELIVERY_DIR/vcdb-final.sql"
 cp compose.yaml .env.example .gitignore "$VC_DELIVERY_DIR/"
 cp evidence/compose-images.txt "$VC_DELIVERY_DIR/image-manifest.txt"
 tar -czf "$VC_DELIVERY_DIR/vcstack-project.tar.gz" \
@@ -445,7 +478,20 @@ unset VC_DELIVERY_DIR
 
 #### 步骤18：传输并校验
 
-把源主机的`~/vc-course/lab11/delivery/`目录完整复制到另一发行版的`~/vc-course/final-delivery/`。在目标主机执行：
+先在Ubuntu源主机确认交付目录存在且Rocky目标目录尚未被旧成果占用：
+
+```bash
+source ~/vc-course/course-env.sh
+test -d ~/vc-course/lab11/delivery
+ssh rocky-server \
+  'mkdir -p ~/vc-course && test ! -e ~/vc-course/final-delivery && install -d -m 700 ~/vc-course/final-delivery'
+scp -r ~/vc-course/lab11/delivery/. \
+  rocky-server:~/vc-course/final-delivery/
+ssh rocky-server \
+  'test -s ~/vc-course/final-delivery/SHA256SUMS && test -s ~/vc-course/final-delivery/vcstack-images.tar'
+```
+
+`delivery/.`表示复制交付目录中的内容，而不是再套一层`delivery`目录。如果目标目录已存在，远程命令会在创建前停止；先登录Rocky检查并归档旧成果，不直接覆盖或删除。传输完成后，在Rocky目标主机执行：
 
 ```bash
 cd ~/vc-course/final-delivery
@@ -457,30 +503,39 @@ sudo docker image ls --digests
 复制`.env.example`为`.env`并填入教师实验值：
 
 ```bash
+cd ~/vc-course/final-delivery
 cp .env.example .env
+TARGET_BIND_IP=$(ip route get 1.1.1.1 | awk 'NR==1 {for(i=1;i<=NF;i++) if($i=="src") print $(i+1)}')
+sed -i "s/^VC_BIND_IP=.*/VC_BIND_IP=$TARGET_BIND_IP/" .env
 chmod 600 .env
 vim .env
 ```
 
+确认`TARGET_BIND_IP`是目标主机固定地址，`.env`中不再含`CHANGE_ME`或`replace_me`。
+
 #### 步骤19：在目标主机启动
 
 ```bash
+cd ~/vc-course/final-delivery
 sudo docker compose --env-file .env config --quiet
 sudo docker compose --env-file .env up -d
 sudo docker compose --env-file .env ps
-curl --fail http://127.0.0.1:8088/health
-curl --fail http://127.0.0.1:8088/api/info
+TARGET_BIND_IP=$(awk -F= '$1=="VC_BIND_IP" {print substr($0,index($0,"=")+1)}' .env)
+curl --fail "http://$TARGET_BIND_IP:8088/health"
+curl --fail "http://$TARGET_BIND_IP:8088/api/info"
 ```
 
 如果需要恢复源数据库数据，在目标MySQL健康后执行：
 
 ```bash
+cd ~/vc-course/final-delivery
 VC_DB_ROOT_PASSWORD_VALUE=$(awk -F= '$1=="VC_DB_ROOT_PASSWORD" {print substr($0,index($0,"=")+1)}' .env)
 sudo docker compose --env-file .env exec -T db \
   mysql -uroot -p"$VC_DB_ROOT_PASSWORD_VALUE" \
   < vcdb-final.sql
 unset VC_DB_ROOT_PASSWORD_VALUE
-curl --fail http://127.0.0.1:8088/api/info
+TARGET_BIND_IP=$(awk -F= '$1=="VC_BIND_IP" {print substr($0,index($0,"=")+1)}' .env)
+curl --fail "http://$TARGET_BIND_IP:8088/api/info"
 ```
 
 从另一台主机访问目标地址，形成外部功能证据。
@@ -612,7 +667,9 @@ kubectl cluster-info
 ### 2. Pod为ImagePullBackOff
 
 ```bash
-kubectl describe pod <POD_NAME>
+POD_NAME=$(kubectl get pods -l app=vc-api \
+  -o jsonpath='{.items[0].metadata.name}')
+test -n "$POD_NAME" && kubectl describe pod "$POD_NAME"
 kubectl get events --sort-by=.metadata.creationTimestamp | tail -n 30
 ```
 
@@ -623,8 +680,10 @@ kubectl get events --sort-by=.metadata.creationTimestamp | tail -n 30
 查看探针和应用日志：
 
 ```bash
-kubectl describe pod <POD_NAME>
-kubectl logs <POD_NAME> --tail=100
+POD_NAME=$(kubectl get pods -l app=vc-api \
+  -o jsonpath='{.items[0].metadata.name}')
+test -n "$POD_NAME" && kubectl describe pod "$POD_NAME"
+test -n "$POD_NAME" && kubectl logs "$POD_NAME" --tail=100
 ```
 
 Running只说明容器进程存在，不代表应用通过就绪检查。
@@ -644,6 +703,7 @@ kubectl get endpointslice -l kubernetes.io/service-name=vc-api
 先做离线清单和配置检查：
 
 ```bash
+cd ~/vc-course/final-delivery
 sha256sum -c SHA256SUMS
 sudo docker image ls --digests
 sudo docker compose --env-file .env config --quiet
@@ -678,4 +738,4 @@ sudo docker compose --env-file .env down
 ```
 
 - 默认不加`-v`，数据卷是否删除由教师统一决定。
-- 分别为Rocky和Ubuntu创建最终快照`VC-03-课程综合项目完成`。
+- 分别为Rocky和Ubuntu创建最终快照`VC-FINAL-课程综合项目完成`。该快照是课程归档点，不替代实验10形成的`VC-V3`恢复起点。

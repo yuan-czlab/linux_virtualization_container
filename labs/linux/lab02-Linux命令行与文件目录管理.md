@@ -92,6 +92,8 @@ echo $?
 
 Shell会先展开通配符，再把匹配结果交给命令。删除前必须先检查匹配范围。
 
+开始任务前打开[Linux目录树、路径与链接动画](../../animations/02-linux-filesystem-paths-links/index.html)，完成“目录树与/bin”和“绝对/相对路径”两个主题。动画用于预测路径解析结果，随后必须在`rocky-server`中用真实命令验证。
+
 ## 四、实验环境
 
 - 使用实验1保留的Rocky Linux 9虚拟机。
@@ -392,7 +394,7 @@ cat ~/m1-project/evidence/lab02-summary.txt
 
 ```bash
 pwd
-ls -ld <目标的父目录>
+ls -ld ~/m1-project ~/m1-project/backup
 ```
 
 注意Linux路径和文件名区分大小写。
@@ -406,7 +408,8 @@ ls -ld <目标的父目录>
 `cp`默认只复制文件。复制目录时使用：
 
 ```bash
-cp -a <源目录> <目标目录>
+cp -a ~/m1-project/config ~/m1-project/backup/config-copy
+find ~/m1-project/backup/config-copy -maxdepth 2 -type f -print
 ```
 
 `-a`适合保留目录结构和属性。

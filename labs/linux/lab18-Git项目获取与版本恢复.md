@@ -95,7 +95,7 @@ mkdir -p ~/m1-project/evidence ~/m1-project/backup ~/m1-project/git-lab
 cd ~/m1-project/git-lab
 git init
 git config user.name "Student Ops"
-git config user.email "student@lab.local"
+git config user.email "student@example.test"
 git config --local --list
 ```
 
@@ -235,7 +235,11 @@ mkdir -p ~/m1-project/git-server
 git init --bare ~/m1-project/git-server/techcorp.git
 cd ~/m1-project/git-lab
 git branch -M main
-git remote add origin ~/m1-project/git-server/techcorp.git
+if git remote get-url origin >/dev/null 2>&1; then
+  git remote set-url origin ~/m1-project/git-server/techcorp.git
+else
+  git remote add origin ~/m1-project/git-server/techcorp.git
+fi
 git remote -v
 git push -u origin main
 git push origin linux-lab18-v1
@@ -253,10 +257,16 @@ git ls-remote --heads --tags origin
 
 ```bash
 cd ~/m1-project
+test ! -e ~/m1-project/git-review
+```
+
+如果`git-review`已存在，先检查其中是否有未提交成果；不要直接覆盖或删除。确认路径不存在后执行：
+
+```bash
 git clone ~/m1-project/git-server/techcorp.git git-review
 cd ~/m1-project/git-review
 git config user.name "Reviewer Ops"
-git config user.email "reviewer@lab.local"
+git config user.email "reviewer@example.test"
 git status
 git log --oneline -n 3
 ```
@@ -373,12 +383,14 @@ cd ~/m1-project/git-lab
 git config --local user.name
 git config --local user.email
 git config user.name "Student Ops"
-git config user.email "student@lab.local"
+git config user.email "student@example.test"
 ```
 
 ### 故障2：文件明明存在却没有出现在状态中
 
-```bash
+以下为排障命令格式，先把`文件路径`替换为要检查的实际文件：
+
+```text
 git check-ignore -v 文件路径
 ```
 
@@ -403,7 +415,9 @@ git log --oneline --graph --decorate --all -n 10
 
 ### 故障5：把敏感文件加入了暂存区但尚未提交
 
-```bash
+以下为恢复命令格式，先把`文件路径`替换为误暂存的实际文件：
+
+```text
 git restore --staged 文件路径
 git status
 ```

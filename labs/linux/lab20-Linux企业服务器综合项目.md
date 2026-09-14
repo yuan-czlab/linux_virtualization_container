@@ -58,6 +58,8 @@ ubuntu-client
           rocky-server集中保留数据库备份、Git版本和巡检证据。
 ```
 
+综合项目抽取故障卡前，复用[Linux网络与访问分层故障推理动画](../../animations/11-layered-troubleshooting/index.html)的“分层证据”“故障模式”和“修复闭环”。跨主机链路应逐跳验证`ubuntu-client → rocky-web → rocky-server`，不能因为入口恢复就跳过后端和数据服务回归检查。
+
 ### 端口验收基线
 
 | 主机 | 端口 | 服务 | 期望监听 | firewalld |
@@ -308,7 +310,8 @@ command -v python3
 创建服务单元：
 
 ```bash
-sudo tee /etc/systemd/system/techcorp-api.service >/dev/null <<'EOF'
+source ~/m1-project/course-env.sh
+sudo tee /etc/systemd/system/techcorp-api.service >/dev/null <<EOF
 [Unit]
 Description=TechCorp course backend service
 After=network.target
@@ -318,7 +321,7 @@ Type=simple
 User=techcorp
 Group=techcorp
 WorkingDirectory=/srv/techcorp/backend
-ExecStart=/usr/bin/python3 -m http.server 5000 --bind <ROCKY_SERVER_IP>
+ExecStart=/usr/bin/python3 -m http.server 5000 --bind $ROCKY_SERVER_IP
 Restart=on-failure
 RestartSec=3
 NoNewPrivileges=true
@@ -333,16 +336,21 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now techcorp-api
 systemctl status techcorp-api --no-pager
 sudo ss -lntp | grep ':5000'
-curl --fail http://<ROCKY_SERVER_IP>:5000/health.json
+curl --fail "http://$ROCKY_SERVER_IP:5000/health.json"
 ```
 
-创建单元文件时，必须把两处`<ROCKY_SERVER_IP>`替换为实验8记录的`rocky-server`静态IPv4地址，禁止使用`0.0.0.0`。随后在`rocky-server`上仅允许`rocky-web`访问5000端口，将占位符换成实际地址：
+命令从实验8的地址变量文件写入`rocky-server`静态IPv4地址，禁止使用`0.0.0.0`。随后在`rocky-server`上仅允许`rocky-web`访问5000端口：
 
 ```bash
-sudo firewall-cmd --permanent --zone=public \
-  --add-rich-rule='rule family="ipv4" source address="<ROCKY_WEB_IP>/32" port port="5000" protocol="tcp" accept'
+source ~/m1-project/course-env.sh
+IFACE=$(ip route show default | awk 'NR==1 {print $5}')
+ZONE=$(firewall-cmd --get-zone-of-interface="$IFACE" 2>/dev/null)
+if [[ -z "$ZONE" || "$ZONE" == 'no zone' ]]; then ZONE=$(firewall-cmd --get-default-zone); fi
+printf '%s\n' "$ZONE" > ~/m1-project/final/evidence/rocky-server-firewall-zone.txt
+sudo firewall-cmd --permanent --zone="$ZONE" \
+  --add-rich-rule="rule family=ipv4 source address=$ROCKY_WEB_IP/32 port port=5000 protocol=tcp accept"
 sudo firewall-cmd --reload
-sudo firewall-cmd --zone=public --list-rich-rules
+sudo firewall-cmd --zone="$ZONE" --list-rich-rules
 ```
 
 在`rocky-web`确认名称解析和后端访问：
@@ -358,12 +366,22 @@ curl --fail http://rocky-server:5000/health.json
 
 ### 任务四：在`rocky-web`配置Nginx统一入口
 
+配置跨主机入口前，复用[Nginx请求路由、静态资源与反向代理动画](../../animations/12-nginx-request-routing-proxy/index.html)的“监听与Server”“反向代理”和“状态码与日志”。本实验的上游从实验14的`127.0.0.1:5000`变为`rocky-server`实验地址，必须同时验证`rocky-web`到后端的路由、监听、来源限制和SELinux。
+
 备份同名旧配置：
 
 ```bash
 FINAL_BACKUP=$(find "$HOME/m1-project/final/backup" \
   -mindepth 1 -maxdepth 1 -type d | sort | tail -1)
-test -n "$FINAL_BACKUP" || { echo '未找到rocky-web配置备份目录'; exit 1; }
+printf 'final_backup=%s\n' "$FINAL_BACKUP"
+test -n "$FINAL_BACKUP"
+printf '%s\n' "$FINAL_BACKUP" > ~/m1-project/final/evidence/rocky-web-final-backup.path
+```
+
+如果`final_backup`为空或`test`返回非0，停止本任务并返回“项目准备—任务三”创建备份。确认目录存在后再执行：
+
+```bash
+FINAL_BACKUP=$(cat ~/m1-project/final/evidence/rocky-web-final-backup.path)
 if [[ -f /etc/nginx/conf.d/techcorp.conf ]]; then
     sudo cp -p /etc/nginx/conf.d/techcorp.conf \
         "$FINAL_BACKUP/techcorp.conf.before-final"
@@ -376,7 +394,7 @@ fi
 sudo tee /etc/nginx/conf.d/techcorp.conf >/dev/null <<'EOF'
 server {
     listen 80;
-    server_name techcorp.local;
+    server_name techcorp.test;
     root /srv/techcorp/www;
     index index.html;
 
@@ -418,52 +436,61 @@ sudo nginx -t
 sudo systemctl enable --now nginx
 sudo systemctl reload nginx
 systemctl is-active nginx
-curl --fail -H 'Host: techcorp.local' http://127.0.0.1/
-curl --fail -H 'Host: techcorp.local' http://127.0.0.1/health
-curl --fail -H 'Host: techcorp.local' http://127.0.0.1/api/health.json
+curl --fail -H 'Host: techcorp.test' http://127.0.0.1/
+curl --fail -H 'Host: techcorp.test' http://127.0.0.1/health
+curl --fail -H 'Host: techcorp.test' http://127.0.0.1/api/health.json
 ```
 
 在`ubuntu-client`确认`/etc/hosts`包含`rocky-web`实际地址。没有记录时添加：
 
 ```bash
-echo '<ROCKY_WEB_IP> techcorp.local' | sudo tee -a /etc/hosts
-getent hosts techcorp.local
+source ~/m1-project/course-env.sh
+sudo sed -i '/[[:space:]]techcorp\.test\([[:space:]]\|$\)/d' /etc/hosts
+printf '%s %s\n' "$ROCKY_WEB_IP" 'techcorp.test' | sudo tee -a /etc/hosts
+getent hosts techcorp.test
 ```
 
-将`<ROCKY_WEB_IP>`替换为实验8配置的`rocky-web`静态地址，然后从`ubuntu-client`执行：
+然后从`ubuntu-client`执行：
 
 ```bash
-curl --fail http://techcorp.local/
-curl --fail http://techcorp.local/health
-curl --fail http://techcorp.local/api/health.json
+curl --fail http://techcorp.test/
+curl --fail http://techcorp.test/health
+curl --fail http://techcorp.test/api/health.json
 ```
 
 如需课堂图形展示，可以再从Windows宿主机浏览器访问：
 
 ```text
-http://techcorp.local/
-http://techcorp.local/api/health.json
+http://techcorp.test/
+http://techcorp.test/api/health.json
 ```
 
-此时按实验14在Windows hosts文件中加入`<rocky-web的IPv4地址> techcorp.local`，但Windows结果不替代Ubuntu命令行证据。
+此时按实验14在Windows hosts文件中加入`<rocky-web的IPv4地址> techcorp.test`，但Windows结果不替代Ubuntu命令行证据。
 
-> **验收点**：`ubuntu-client`能够解析`techcorp.local`，静态首页、Nginx健康页和跨主机反向代理后端均能访问，访问日志中出现Ubuntu客户端地址。
+> **验收点**：`ubuntu-client`能够解析`techcorp.test`，静态首页、Nginx健康页和跨主机反向代理后端均能访问，访问日志中出现Ubuntu客户端地址。
 
 ### 任务五：在两台Rocky落实网络暴露边界
 
-先在`rocky-web`确认活动zone和接口：
+先在`rocky-web`确认活动zone和接口，并把实际zone保存在本机变量中：
 
 ```bash
+IFACE=$(ip route show default | awk 'NR==1 {print $5}')
+ZONE=$(firewall-cmd --get-zone-of-interface="$IFACE" 2>/dev/null)
+if [[ -z "$ZONE" || "$ZONE" == 'no zone' ]]; then ZONE=$(firewall-cmd --get-default-zone); fi
+printf 'interface=%s zone=%s\n' "$IFACE" "$ZONE"
 sudo firewall-cmd --get-active-zones
 ```
 
-以下以`public`为例；如果活动zone不同，请替换为实际值：
+核对变量与活动zone一致后执行：
 
 ```bash
-sudo firewall-cmd --permanent --zone=public --add-service=ssh
-sudo firewall-cmd --permanent --zone=public --add-service=http
+IFACE=$(ip route show default | awk 'NR==1 {print $5}')
+ZONE=$(firewall-cmd --get-zone-of-interface="$IFACE" 2>/dev/null)
+if [[ -z "$ZONE" || "$ZONE" == 'no zone' ]]; then ZONE=$(firewall-cmd --get-default-zone); fi
+sudo firewall-cmd --permanent --zone="$ZONE" --add-service=ssh
+sudo firewall-cmd --permanent --zone="$ZONE" --add-service=http
 sudo firewall-cmd --reload
-sudo firewall-cmd --zone=public --list-all
+sudo firewall-cmd --zone="$ZONE" --list-all
 ```
 
 检查`rocky-web`监听地址：
@@ -472,13 +499,16 @@ sudo firewall-cmd --zone=public --list-all
 sudo ss -lntp | grep -E ':(22|80)\b'
 ```
 
-再在`rocky-server`检查监听地址、普通规则和来源受限规则：
+再在`rocky-server`重新取得该主机自己的接口与zone，然后检查监听地址、普通规则和来源受限规则：
 
 ```bash
+IFACE=$(ip route show default | awk 'NR==1 {print $5}')
+ZONE=$(firewall-cmd --get-zone-of-interface="$IFACE" 2>/dev/null)
+if [[ -z "$ZONE" || "$ZONE" == 'no zone' ]]; then ZONE=$(firewall-cmd --get-default-zone); fi
 sudo ss -lntp | grep -E ':(22|5000|3306|27017|6379)\b'
-sudo firewall-cmd --zone=public --list-services
-sudo firewall-cmd --zone=public --list-ports
-sudo firewall-cmd --zone=public --list-rich-rules
+sudo firewall-cmd --zone="$ZONE" --list-services
+sudo firewall-cmd --zone="$ZONE" --list-ports
+sudo firewall-cmd --zone="$ZONE" --list-rich-rules
 ```
 
 确认`rocky-server`的普通服务列表不含HTTP，普通端口列表不含`5000/tcp`、`3306/tcp`、`27017/tcp`或`6379/tcp`，5000只出现在限定`rocky-web`源地址的rich rule中。如果数据库端口由先前实验临时开放，应先确认规则的准确写法再删除并重载；不要删除不认识的其他业务规则。
@@ -488,6 +518,8 @@ sudo firewall-cmd --zone=public --list-rich-rules
 > **验收点**：SSH按要求可达，80只由`rocky-web`提供；5000只允许`rocky-web`访问，三种数据库端口不对外提供。
 
 ### 任务六：在`rocky-server`验证MySQL
+
+验证MySQL及后续逻辑备份前，复用[MySQL连接、访问边界与备份恢复动画](../../animations/13-mysql-access-backup/index.html)的“对象与连接”“账号与授权”和“备份与恢复”。综合项目最终要求3306只监听本机，因此不复现实验15的临时远程开放。
 
 ```bash
 systemctl is-active mysqld
@@ -530,6 +562,8 @@ EXIT;
 查询应成功，创建新数据库应因权限不足而失败。若测试库意外创建成功，说明授权范围过大，应返回实验15检查`SHOW GRANTS`并整改。
 
 ### 任务七：在`rocky-server`验证MongoDB
+
+验证MongoDB前复用[MongoDB文档模型、认证、RBAC与备份动画](../../animations/14-mongodb-document-auth-rbac/index.html)的“认证数据库”“RBAC与监听”和“备份与恢复”。综合项目保留`127.0.0.1:27017`本机监听，不把MongoDB开放给`ubuntu-client`。
 
 ```bash
 systemctl is-active mongod
@@ -677,7 +711,9 @@ git push origin main
 如果`git diff --cached`中出现密码、私钥或备份，立即取消暂存并处理：
 
 ```bash
-git restore --staged <文件路径>
+git diff --cached --name-only
+read -r -p '输入要取消暂存的相对路径：' SENSITIVE_PATH
+test -n "$SENSITIVE_PATH" && git restore --staged -- "$SENSITIVE_PATH"
 ```
 
 ### 任务十一：在`rocky-server`运行统一巡检
@@ -766,7 +802,7 @@ sudo setsebool httpd_can_network_connect off
 
 ```bash
 getenforce
-curl -i -H 'Host: techcorp.local' http://127.0.0.1/api/health.json
+curl -i -H 'Host: techcorp.test' http://127.0.0.1/api/health.json
 sudo tail -n 30 /var/log/nginx/techcorp_error.log
 sudo ausearch -m AVC -ts recent | tail -n 30
 ```
@@ -804,6 +840,8 @@ mongosh --host 127.0.0.1 --port 27017
 本卡在`rocky-server`执行。
 
 ```bash
+REDIS_CONF=$(rpm -ql redis | grep '/redis.conf$' | head -1)
+test -n "$REDIS_CONF"
 systemctl status redis --no-pager
 sudo ss -lntp | grep ':6379' || true
 sudo grep -nE '^(bind|protected-mode|port|requirepass)' "$REDIS_CONF"
@@ -817,9 +855,12 @@ redis-cli
 本卡在`rocky-web`执行。
 
 ```bash
-curl --fail -H 'Host: techcorp.local' http://127.0.0.1/health
+curl --fail -H 'Host: techcorp.test' http://127.0.0.1/health
 sudo firewall-cmd --get-active-zones
-sudo firewall-cmd --zone=public --list-all
+IFACE=$(ip route show default | awk 'NR==1 {print $5}')
+ZONE=$(firewall-cmd --get-zone-of-interface="$IFACE" 2>/dev/null)
+if [[ -z "$ZONE" || "$ZONE" == 'no zone' ]]; then ZONE=$(firewall-cmd --get-default-zone); fi
+sudo firewall-cmd --zone="$ZONE" --list-all
 ```
 
 `rocky-web`本机访问正常而`ubuntu-client`访问失败时，再检查客户端地址与路由、`rocky-web`活动zone、接口归属和HTTP服务规则。
@@ -890,9 +931,9 @@ for port in 22 5000 3306 27017 6379; do
 done
 
 for url in \
-    http://techcorp.local/ \
-    http://techcorp.local/health \
-    http://techcorp.local/api/health.json; do
+    http://techcorp.test/ \
+    http://techcorp.test/health \
+    http://techcorp.test/api/health.json; do
     if curl --silent --fail --max-time 3 "$url" >/dev/null; then
         pass "url ${url}"
     else

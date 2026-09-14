@@ -10,7 +10,7 @@
 >
 > 知识前置：实验1中的虚拟化层次、KVM、QEMU和libvirt关系
 >
-> 状态依赖：实验1完成资源调整和嵌套虚拟化检查的`rocky-server`，以及教师发布的轻量qcow2
+> 状态依赖：实验1中本机或本组已验证`vmx/svm`的`rocky-server`，或教师指定远程KVM主机；另需教师发布的轻量qcow2
 >
 > 建议起点：`VC-V0`
 >
@@ -212,7 +212,8 @@ ip -brief address | grep virbr || true
 如果完全没有`default`网络，不要自行从网络复制未知XML。使用教师发布的`default-network.xml`：
 
 ```bash
-sudo virsh net-define <COURSE_MEDIA>/kvm/default-network.xml
+source ~/vc-course/course-env.sh
+sudo virsh net-define "$COURSE_MEDIA/kvm/default-network.xml"
 sudo virsh net-start default
 sudo virsh net-autostart default
 ```
@@ -245,12 +246,14 @@ sudo virsh pool-refresh default
 
 #### 步骤7：检查教师镜像而不直接启动
 
-将`<COURSE_MEDIA>`替换为教师发布的实际挂载目录：
+从实验1的统一参数文件读取教师发布的实际挂载目录：
 
 ```bash
-ls -lh <COURSE_MEDIA>/kvm/course-base.qcow2
-sha256sum <COURSE_MEDIA>/kvm/course-base.qcow2
-qemu-img info <COURSE_MEDIA>/kvm/course-base.qcow2
+source ~/vc-course/course-env.sh
+[[ "$COURSE_MEDIA" != 'CHANGE_ME' && -d "$COURSE_MEDIA" ]]
+ls -lh "$COURSE_MEDIA/kvm/course-base.qcow2"
+sha256sum "$COURSE_MEDIA/kvm/course-base.qcow2"
+qemu-img info "$COURSE_MEDIA/kvm/course-base.qcow2"
 ```
 
 把校验值与教师清单比较。格式应为`qcow2`，校验不一致时重新复制。
@@ -266,8 +269,9 @@ sudo test ! -e /var/lib/libvirt/images/course-vm01.qcow2
 如果命令没有输出且退出状态为0，执行：
 
 ```bash
+source ~/vc-course/course-env.sh
 sudo cp --reflink=auto --sparse=always \
-  <COURSE_MEDIA>/kvm/course-base.qcow2 \
+  "$COURSE_MEDIA/kvm/course-base.qcow2" \
   /var/lib/libvirt/images/course-vm01.qcow2
 sudo chown qemu:qemu /var/lib/libvirt/images/course-vm01.qcow2
 sudo restorecon -v /var/lib/libvirt/images/course-vm01.qcow2
@@ -335,6 +339,20 @@ sudo virsh domifaddr course-vm01 --source lease
 
 启动后的前几十秒可能尚未获得地址，可以稍后重试。记录MAC地址与IPv4地址的对应关系。
 
+租约出现后自动提取IPv4地址，并写回后续实验共用的参数文件：
+
+```bash
+KVM_GUEST_IP=$(sudo virsh domifaddr course-vm01 --source lease | \
+  awk '/ipv4/ {split($4,a,"/"); print a[1]; exit}')
+if [[ -z "$KVM_GUEST_IP" ]]; then
+  echo '尚未取得客户机IPv4地址，请等待启动完成后重试'
+else
+  sed -i '/^export KVM_GUEST_IP=/d' ~/vc-course/course-env.sh
+  printf 'export KVM_GUEST_IP=%q\n' "$KVM_GUEST_IP" >> ~/vc-course/course-env.sh
+  printf 'kvm_guest_ip=%s\n' "$KVM_GUEST_IP"
+fi
+```
+
 #### 步骤12：使用控制台连接
 
 ```bash
@@ -352,7 +370,8 @@ Ctrl + ]
 如果教师镜像只提供SSH，执行：
 
 ```bash
-ssh student@<KVM_GUEST_IP>
+source ~/vc-course/course-env.sh
+ssh student@"$KVM_GUEST_IP"
 ```
 
 登录客户机后检查：

@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>systemd服务状态、依赖与journal排障</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg:#071019; --panel:rgba(14,27,43,.94); --panel2:#142a40;
+      --text:#eff7ff; --muted:#9fb1c5; --line:#486078;
+      --blue:#61a5ff; --cyan:#65dcf6; --green:#62e6a5;
+      --yellow:#ffd166; --purple:#bd95ff; --red:#ff7180;
+      --shadow:0 22px 58px rgba(0,0,0,.35);
+    }
+    * { box-sizing:border-box; }
+    body {
+      margin:0; min-height:100vh; color:var(--text);
+      font-family:"Microsoft YaHei","PingFang SC",system-ui,sans-serif;
+      background:
+        radial-gradient(circle at 12% 10%,rgba(97,165,255,.19),transparent 30%),
+        radial-gradient(circle at 90% 88%,rgba(189,149,255,.15),transparent 30%),
+        linear-gradient(145deg,#050a11,var(--bg) 56%,#0c1930);
+    }
+    button { font:inherit; }
+    .app { min-height:100vh; display:grid; grid-template-rows:auto auto 1fr auto; gap:14px; padding:22px clamp(18px,3vw,44px) 18px; }
+    header { display:flex; justify-content:space-between; align-items:flex-end; gap:20px; }
+    .eyebrow { margin:0 0 6px; color:var(--blue); font-size:13px; font-weight:900; letter-spacing:.16em; }
+    h1 { margin:0; font-size:clamp(26px,3vw,42px); line-height:1.1; }
+    .tag { padding:9px 13px; border:1px solid rgba(98,230,165,.3); border-radius:999px; color:var(--green); background:rgba(98,230,165,.08); font-size:13px; }
+    .tabs { display:flex; gap:9px; padding:9px; border:1px solid rgba(130,155,185,.22); border-radius:16px; background:rgba(7,15,27,.62); box-shadow:var(--shadow); }
+    .tab { min-width:142px; padding:11px 16px; border:1px solid transparent; border-radius:11px; color:var(--muted); background:transparent; cursor:pointer; transition:.2s; }
+    .tab:hover { color:var(--text); background:rgba(255,255,255,.05); }
+    .tab.active { color:#06151e; background:var(--blue); font-weight:900; box-shadow:0 8px 22px rgba(97,165,255,.22); }
+    main { min-height:0; display:grid; grid-template-columns:minmax(620px,1.65fr) minmax(310px,.72fr); gap:14px; }
+    .visual-card,.lesson-card { border:1px solid rgba(130,155,185,.22); border-radius:20px; background:var(--panel); box-shadow:var(--shadow); overflow:hidden; }
+    .visual-card { min-height:570px; padding:22px; }
+    .visual-top { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:18px; }
+    .visual-top h2 { margin:0; font-size:20px; }
+    .concept { padding:7px 10px; border:1px solid rgba(101,220,246,.28); border-radius:999px; color:var(--cyan); background:rgba(101,220,246,.08); font-size:12px; font-weight:800; }
+    #visual { min-height:475px; display:grid; align-content:center; }
+    .lesson-card { display:grid; grid-template-rows:auto auto 1fr auto; padding:22px; }
+    .counter { color:var(--blue); font-size:13px; font-weight:900; letter-spacing:.08em; }
+    .lesson-card h2 { margin:8px 0 10px; font-size:clamp(22px,2.2vw,30px); line-height:1.22; }
+    .explain { margin:0; color:#ccd9e7; font-size:16px; line-height:1.72; }
+    .question { align-self:end; margin-top:18px; padding:16px; border-left:4px solid var(--yellow); border-radius:0 12px 12px 0; background:rgba(255,209,102,.08); }
+    .question small { display:block; color:var(--yellow); font-weight:900; margin-bottom:5px; }
+    .question p { margin:0; color:#f7e8bc; line-height:1.55; }
+    .controls { display:grid; grid-template-columns:44px 44px 1fr 44px; gap:9px; margin-top:18px; }
+    .control { height:44px; border:1px solid rgba(134,158,192,.3); border-radius:11px; color:var(--text); background:var(--panel2); cursor:pointer; }
+    .control:hover { border-color:var(--blue); }
+    .control.play { color:#06151e; background:var(--blue); border-color:var(--blue); font-weight:900; }
+    footer { display:flex; justify-content:space-between; gap:18px; color:var(--muted); font-size:12px; }
+
+    .card { padding:15px; border:2px solid var(--line); border-radius:14px; background:#10243a; transition:.25s; text-align:center; }
+    .card strong { display:block; margin-bottom:5px; }
+    .card small { color:var(--muted); }
+    .card.active { border-color:var(--green); background:rgba(98,230,165,.1); box-shadow:0 0 24px rgba(98,230,165,.18); }
+    .card.warn { border-color:var(--yellow); background:rgba(255,209,102,.08); }
+    .card.fail { border-color:var(--red); background:rgba(255,113,128,.09); }
+    .card.dim { opacity:.3; }
+    .arrow { color:var(--green); font-size:26px; text-align:center; font-weight:900; }
+    .arrow.order { color:var(--yellow); }
+    .badge { display:inline-block; margin-top:7px; padding:4px 8px; border-radius:7px; color:#06151e; background:var(--green); font-size:11px; font-weight:900; }
+    .badge.warn { background:var(--yellow); }
+    .badge.fail { color:#fff; background:var(--red); }
+    .terminal { padding:14px 17px; border:1px solid #293d51; border-radius:12px; background:#03090f; color:#dae7f3; font:14px/1.55 Consolas,monospace; }
+    .terminal b { color:var(--green); }
+
+    /* state */
+    .state-scene { display:grid; gap:17px; }
+    .stack-flow { display:grid; grid-template-columns:1fr 65px 1fr 65px 1fr; align-items:center; gap:8px; }
+    .state-pair { display:grid; grid-template-columns:repeat(2,1fr); gap:12px; }
+    .state-box { padding:14px; border:2px solid var(--line); border-radius:13px; text-align:center; background:#10243a; }
+    .state-box strong { display:block; font-size:19px; margin-top:4px; }
+    .state-box.active { border-color:var(--green); color:var(--green); }
+    .state-box.enabled { border-color:var(--blue); color:#bcd7ff; }
+    .state-box.failed { border-color:var(--red); color:#ffb6bd; }
+    .state-box.inactive { opacity:.65; }
+    .timeline { display:flex; align-items:center; justify-content:center; flex-wrap:wrap; gap:8px; }
+    .phase { min-width:110px; padding:12px; border:2px solid var(--line); border-radius:11px; text-align:center; }
+    .phase.current { border-color:var(--green); background:rgba(98,230,165,.09); }
+
+    /* dependencies */
+    .deps { display:grid; gap:16px; }
+    .graph { display:grid; grid-template-columns:1fr 90px 1fr; gap:12px; align-items:center; }
+    .relation { padding:10px; border-radius:10px; text-align:center; font-weight:900; }
+    .relation.need { color:var(--green); border:1px solid var(--green); }
+    .relation.order { color:var(--yellow); border:1px dashed var(--yellow); }
+    .compare { display:grid; grid-template-columns:repeat(2,1fr); gap:12px; }
+    .unit-file { padding:16px; border-radius:13px; background:#03090f; font:14px/1.6 Consolas,monospace; color:#d7e4f2; }
+    .unit-file .section { color:var(--purple); }
+    .unit-file .key { color:var(--cyan); }
+
+    /* signals */
+    .process-tree { display:grid; gap:16px; }
+    .process-row { display:flex; justify-content:center; align-items:center; flex-wrap:wrap; gap:10px; }
+    .process { min-width:170px; padding:14px; border:2px solid var(--line); border-radius:13px; text-align:center; background:#10243a; }
+    .process.pid1 { border-color:var(--blue); }
+    .process.main { border-color:var(--green); }
+    .process.child { border-color:var(--purple); }
+    .signal { min-width:110px; padding:10px; border-radius:999px; color:#06151e; background:var(--yellow); text-align:center; font-weight:900; }
+    .signal.kill { color:#fff; background:var(--red); }
+    .policy { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
+
+    /* journal */
+    .journal { display:grid; gap:14px; }
+    .logs { display:grid; gap:7px; padding:15px; border:1px solid #293d51; border-radius:13px; background:#03090f; font:13px/1.45 Consolas,monospace; }
+    .log { padding:7px 9px; border-left:3px solid var(--line); color:#b9c9d8; }
+    .log.info { border-color:var(--blue); }
+    .log.error { border-color:var(--red); color:#ffc2c8; background:rgba(255,113,128,.06); }
+    .log.fix { border-color:var(--green); color:#bdf4d7; }
+    .evidence { display:flex; justify-content:center; align-items:center; flex-wrap:wrap; gap:7px; }
+    .evidence-step { padding:11px; border:2px solid var(--line); border-radius:11px; text-align:center; }
+    .evidence-step.current { border-color:var(--green); background:rgba(98,230,165,.09); }
+    .filter-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:10px; }
+
+    @keyframes pulse { 50% { box-shadow:0 0 28px rgba(98,230,165,.45); transform:scale(1.025); } }
+    .pulse { animation:pulse 1.25s ease-in-out infinite; }
+    @media (max-width:980px) {
+      .app { min-height:auto; } header { align-items:flex-start; flex-direction:column; }
+      .tabs { flex-wrap:wrap; } main { grid-template-columns:1fr; } .visual-card { min-height:540px; }
+    }
+    @media (max-width:650px) {
+      .tab { min-width:0; flex:1 1 45%; }
+      .stack-flow,.graph { grid-template-columns:1fr; }
+      .arrow { transform:rotate(90deg); }
+      .state-pair,.compare,.filter-grid,.policy { grid-template-columns:1fr; }
+    }
+    @media (prefers-reduced-motion:reduce) { * { animation:none !important; transition:none !important; } }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div>
+        <p class="eyebrow">模块一 · 第11章 · Linux实验6</p>
+        <h1>systemd服务状态、依赖与journal排障</h1>
+      </div>
+      <div class="tag">状态是现象 · 日志是证据 · 功能验证才是结果</div>
+    </header>
+
+    <nav class="tabs" aria-label="动画主题">
+      <button class="tab active" data-scene="state">1　运行与自启</button>
+      <button class="tab" data-scene="deps">2　依赖与顺序</button>
+      <button class="tab" data-scene="signals">3　进程与信号</button>
+      <button class="tab" data-scene="journal">4　日志证据链</button>
+    </nav>
+
+    <main>
+      <section class="visual-card">
+        <div class="visual-top">
+          <h2 id="visualTitle"></h2>
+          <span class="concept" id="conceptTag"></span>
+        </div>
+        <div id="visual" aria-live="polite"></div>
+      </section>
+      <aside class="lesson-card">
+        <div class="counter" id="counter"></div>
+        <div>
+          <h2 id="stepTitle"></h2>
+          <p class="explain" id="stepText"></p>
+        </div>
+        <div class="question">
+          <small>先判断，再操作</small>
+          <p id="questionText"></p>
+        </div>
+        <div class="controls">
+          <button class="control" id="prev" aria-label="上一步">←</button>
+          <button class="control" id="restart" aria-label="重新开始">↺</button>
+          <button class="control play" id="play">▶ 播放</button>
+          <button class="control" id="next" aria-label="下一步">→</button>
+        </div>
+      </aside>
+    </main>
+    <footer>
+      <span>故障处理：只读取证 → 判断根因 → 最小修复 → 状态、日志和实际功能复测</span>
+      <span>键盘：←/→ · 空格 · 1/2/3/4切换主题</span>
+    </footer>
+  </div>
+
+  <script>
+    const scenes = {
+      state: {
+        title:'active与enabled是两个独立维度',
+        tag:'runtime state ≠ boot policy',
+        steps:[
+          {title:'systemd以PID 1管理Unit和进程',text:'service Unit描述如何启动和监督服务。systemd读取Unit，创建服务进程，记录主PID、退出结果和当前状态；Unit文件本身不是正在运行的进程。',q:'course-demo.service、course-demo.sh和正在运行的PID是同一个对象吗？',active:false,enabled:false,phase:'model',cmd:'ps -p 1 -o pid,comm,args'},
+          {title:'start只改变当前运行状态',text:'systemctl start立即启动服务，使它从inactive进入activating再到active；它不会自动配置下次开机启动。',q:'服务已经active但仍是disabled，重启系统后一定自动运行吗？',active:true,enabled:false,phase:'start',cmd:'sudo systemctl start course-demo'},
+          {title:'enable只配置开机启动关系',text:'systemctl enable通常创建指向Unit的符号链接，把服务挂到某个target的启动关系中；它默认不会立即启动当前服务。',q:'服务显示enabled且inactive是否矛盾？',active:false,enabled:true,phase:'enable',cmd:'sudo systemctl enable course-demo'},
+          {title:'enable --now同时完成两件事',text:'--now让systemd在设置开机启动的同时立即启动服务。验收时仍应分别执行is-active和is-enabled，不把一个结果当成另一个。',q:'若只执行systemctl status，能否完整证明服务已经设置开机自启？',active:true,enabled:true,phase:'both',cmd:'sudo systemctl enable --now course-demo'},
+          {title:'failed会保留失败结果',text:'启动命令或进程异常退出后，Unit可能进入failed并保存Result和ExecMainStatus。reset-failed清除失败标记和部分计数，但不会修复配置，也不会自动让业务可用。',q:'看到failed后不断restart，为什么可能掩盖真正的首个错误？',active:false,enabled:true,failed:true,phase:'failed',cmd:'systemctl show course-demo -p ActiveState -p Result -p ExecMainStatus'}
+        ]
+      },
+      deps: {
+        title:'“需要谁”和“谁先启动”是两类关系',
+        tag:'Wants/Requires · After/Before',
+        steps:[
+          {title:'Wants是较弱的拉入关系',text:'A Wants B时，启动A会尝试把B一起加入事务；B失败通常不必然阻止A继续。Wants本身不保证A和B的先后顺序。',q:'只写Wants=network-online.target，是否已经保证A一定在它之后启动？',kind:'wants'},
+          {title:'Requires是更强的必要关系',text:'A Requires B会把B作为必要Unit拉入，B被停止时A也会随之停止。若还要保证B成功启动后才启动A，应组合After=B；Requires本身仍不规定先后顺序。',q:'Requires描述的是启动顺序，还是必要性？',kind:'requires'},
+          {title:'After/Before只描述排序',text:'A After B表示当两者都在同一启动事务中时，A排在B之后。它不会单独把B拉进事务，所以通常要与Wants或Requires组合。',q:'Unit只写After=network.target，手动启动它时network.target必然被拉入吗？',kind:'after'},
+          {title:'target把多个Unit组织成启动目标',text:'multi-user.target代表常见多用户系统状态。[Install]中的WantedBy=multi-user.target供enable建立关联；它不是一条每次启动都直接执行的命令。',q:'WantedBy只有在运行时[Unit]段生效，还是主要供enable安装关系使用？',kind:'target'},
+          {title:'修改Unit后需要daemon-reload',text:'systemd管理器会缓存已经加载的Unit定义。修改Unit文件后执行daemon-reload使其重新读取；这一步不等于重启服务。修改脚本内容通常无需daemon-reload，但旧进程仍需restart才会重新执行脚本。',q:'修改ExecStart后只执行restart、不执行daemon-reload，systemd可能使用新值还是缓存值？',kind:'reload'}
+        ]
+      },
+      signals: {
+        title:'systemctl管理整个服务生命周期',
+        tag:'MainPID · cgroup · SIGTERM',
+        steps:[
+          {title:'systemd按Unit监督主进程',text:'对Type=simple服务，ExecStart启动的进程通常成为MainPID。服务还可能在同一cgroup中创建子进程，管理范围不只是一个随手查到的PID。',q:'为什么服务进程应优先用systemctl停止，而不是直接kill某个PID？',kind:'tree'},
+          {title:'stop先请求正常退出',text:'systemctl stop通常先发送SIGTERM，让进程保存状态、关闭连接并释放资源。具体信号和对象范围可以由Unit配置。',q:'SIGTERM和SIGKILL中，哪个给了程序清理机会？',kind:'term'},
+          {title:'超时后才可能强制终止',text:'如果进程在TimeoutStopSec内没有退出，systemd可能再发送SIGKILL。SIGKILL不能被捕获，可能造成未完成写入，因此不是首选操作。',q:'把TimeoutStopSec一律设得极短会有什么风险？',kind:'kill'},
+          {title:'reload与restart影响不同',text:'reload要求服务支持重新加载，通常不替换主进程；restart执行停止再启动，会产生新进程和短暂中断。应先用systemctl show查看CanReload，并按服务文档操作。',q:'chronyd显示CanReload=no时，能否机械执行systemctl reload chronyd？',kind:'reload'},
+          {title:'Restart策略不等于人工stop后立即拉起',text:'Restart=on-failure用于进程异常失败后的自动恢复。systemctl stop属于管理员明确停止，通常不会因on-failure再次启动；频繁失败还可能触发启动速率限制。',q:'服务因ExecStart路径错误反复失败，Restart=always能修复路径吗？',kind:'policy'}
+        ]
+      },
+      journal: {
+        title:'从摘要到原始日志建立证据链',
+        tag:'status → show → journal → verify',
+        steps:[
+          {title:'status先提供当前摘要',text:'status给出Loaded、Active、MainPID和最近日志，适合确定方向，但输出可能被截断，不能把它当成全部历史。',q:'status只显示最后几行时，下一步应继续重启还是扩大日志范围？',kind:'status'},
+          {title:'show提供可脚本读取的属性',text:'systemctl show以键值形式给出ActiveState、SubState、Result和ExecMainStatus。它适合保存证据和编写检查脚本。',q:'命令本身执行成功返回0，是否代表被查询的服务一定active？',kind:'show'},
+          {title:'journal按Unit、启动和时间筛选',text:'journalctl -u限定Unit，-b限定启动，--since限定时间，-p限定优先级。先缩小范围，再关注首次出现且能解释现象的错误。',q:'journalctl -p err不带-u时，得到的是某个服务日志还是全系统错误？',kind:'filter'},
+          {title:'错误路径形成可验证根因',text:'实验把ExecStart改成不存在的course-demo-missing.sh。日志中的No such file or directory与Unit实际路径、test -x检查结果互相印证，才能确认根因。',q:'只看到status显示failed，为什么还不能断定一定是路径错误？',kind:'failure'},
+          {title:'最小修复后进行三层复测',text:'恢复Unit、验证语法、daemon-reload、reset-failed并restart。最后同时检查状态、journal新日志和脚本实际周期输出；网络服务还要从客户端验证业务。',q:'is-active返回active，但客户端仍无法访问，实验是否已经完成？',kind:'fix'}
+        ]
+      }
+    };
+
+    let sceneKey='state',stepIndex=0,timer=null;
+    const byId=id=>document.getElementById(id);
+    const esc=value=>String(value).replace(/[&<>"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]));
+
+    function stateVisual(s) {
+      const runtime=s.failed?'failed':s.active?'active':'inactive';
+      const boot=s.enabled?'enabled':'disabled';
+      let flow='<div class="stack-flow"><div class="card active"><strong>systemd</strong><small>PID 1 · 管理器</small></div><div class="arrow">→</div><div class="card '+(s.failed?'fail':'active')+'"><strong>course-demo.service</strong><small>Unit定义与状态</small></div><div class="arrow">→</div><div class="card '+(s.active?'active':'dim')+'"><strong>course-demo.sh</strong><small>'+(s.active?'MainPID 运行中':'当前无运行进程')+'</small></div></div>';
+      if(s.phase!=='model') flow='<div class="state-scene"><div class="state-pair"><div class="state-box '+runtime+'"><small>当前运行状态</small><strong>'+runtime+'</strong></div><div class="state-box '+(s.enabled?'enabled':'inactive')+'"><small>开机启动策略</small><strong>'+boot+'</strong></div></div><div class="timeline"><span class="phase '+(s.phase==='start'?'current':'')+'">inactive</span><span class="arrow">→</span><span class="phase '+(s.active?'current':'')+'">active</span><span class="arrow">或</span><span class="phase '+(s.failed?'current':'')+'">failed</span></div></div>';
+      return '<div class="state-scene">'+flow+'<div class="terminal"><b>$</b> '+esc(s.cmd)+'</div></div>';
+    }
+
+    function depsVisual(s) {
+      if(s.kind==='reload') return '<div class="deps"><div class="compare"><div class="card warn"><strong>磁盘上的新Unit</strong><small>ExecStart已改变</small></div><div class="card"><strong>systemd缓存定义</strong><small>仍可能是旧内容</small></div></div><div class="timeline"><span class="phase current">编辑Unit</span><span class="arrow">→</span><span class="phase current">daemon-reload</span><span class="arrow">→</span><span class="phase current">restart</span><span class="arrow">→</span><span class="phase current">功能验证</span></div><div class="terminal"><b>$</b> sudo systemd-analyze verify 文件<br><b>$</b> sudo systemctl daemon-reload</div></div>';
+      if(s.kind==='target') return '<div class="deps"><div class="graph"><div class="card active"><strong>multi-user.target</strong><small>多个Unit的同步目标</small></div><div class="relation need">Wants</div><div class="card"><strong>course-demo.service</strong><small>enable建立关联</small></div></div><div class="unit-file"><span class="section">[Install]</span><br><span class="key">WantedBy=</span>multi-user.target</div><div class="terminal"><b>$</b> systemctl is-enabled course-demo</div></div>';
+      const isOrder=s.kind==='after';
+      const relation=s.kind==='wants'?'Wants（较弱需要）':s.kind==='requires'?'Requires（必要关系）':'After（启动排序）';
+      return '<div class="deps"><div class="graph"><div class="card '+(isOrder?'warn':'active')+'"><strong>course-demo.service</strong><small>当前Unit A</small></div><div class="relation '+(isOrder?'order':'need')+'">'+relation+'</div><div class="card '+(isOrder?'warn':'active')+'"><strong>network.target</strong><small>关联Unit B</small></div></div><div class="compare"><div class="card '+(!isOrder?'active':'dim')+'"><strong>是否拉入启动事务？</strong><small>Wants/Requires回答“需要谁”</small></div><div class="card '+(isOrder?'warn':'dim')+'"><strong>两者谁先执行？</strong><small>After/Before回答“先后”</small></div></div><div class="unit-file"><span class="section">[Unit]</span><br><span class="key">'+(isOrder?'After=':s.kind==='requires'?'Requires=':'Wants=')+'</span>network.target</div></div>';
+    }
+
+    function signalsVisual(s) {
+      if(s.kind==='tree') return '<div class="process-tree"><div class="process-row"><div class="process pid1 pulse"><strong>systemd</strong><br><small>PID 1</small></div><span class="arrow">→</span><div class="process main"><strong>MainPID 2480</strong><br><small>course-demo.sh</small></div><span class="arrow">→</span><div class="process child"><strong>子进程</strong><br><small>sleep 10</small></div></div><div class="terminal"><b>$</b> systemctl show course-demo -p MainPID -p ControlGroup<br><b>$</b> systemd-cgls</div></div>';
+      if(s.kind==='reload') return '<div class="process-tree"><div class="compare"><div class="card active"><strong>reload</strong><small>重新读配置；通常保留MainPID<br>必须由Unit/服务支持</small><span class="badge">较小影响</span></div><div class="card warn"><strong>restart</strong><small>stop + start；MainPID改变<br>可能短暂中断</small><span class="badge warn">影响更大</span></div></div><div class="terminal"><b>$</b> systemctl show 服务 -p CanReload</div></div>';
+      if(s.kind==='policy') return '<div class="process-tree"><div class="policy"><div class="card active"><strong>进程返回0</strong><small>正常结束<br>on-failure不重启</small></div><div class="card fail pulse"><strong>进程异常退出</strong><small>on-failure尝试重启</small></div><div class="card warn"><strong>管理员stop</strong><small>明确停止<br>通常不自动拉起</small></div></div><div class="terminal"><b>[Service]</b><br>Restart=on-failure<br>RestartSec=5s</div></div>';
+      const kill=s.kind==='kill';
+      return '<div class="process-tree"><div class="process-row"><div class="process pid1"><strong>systemd</strong><br><small>systemctl stop</small></div><span class="signal '+(kill?'kill':'')+'">'+(kill?'SIGKILL':'SIGTERM')+'</span><div class="process main '+(kill?'fail':'active')+'"><strong>MainPID</strong><br><small>'+(kill?'立即终止，不能清理':'捕获信号并正常退出')+'</small></div></div><div class="timeline"><span class="phase current">发送SIGTERM</span><span class="arrow">→</span><span class="phase '+(kill?'current':'')+'">等待TimeoutStopSec</span><span class="arrow">→</span><span class="phase '+(kill?'current':'dim')+'">必要时SIGKILL</span></div></div>';
+    }
+
+    function journalVisual(s) {
+      if(s.kind==='filter') return '<div class="journal"><div class="filter-grid"><div class="card active"><strong>-u course-demo</strong><small>限定Unit</small></div><div class="card active"><strong>-b</strong><small>本次启动</small></div><div class="card active"><strong>--since</strong><small>限定开始时间</small></div><div class="card active"><strong>-p err</strong><small>限定优先级</small></div></div><div class="terminal"><b>$</b> journalctl -u course-demo -b --since &quot;-10 min&quot; --no-pager</div></div>';
+      const data={
+        status:{current:0,cmd:'systemctl status course-demo --no-pager',logs:[['info','Loaded: loaded'],['error','Active: failed (Result: exit-code)'],['error','Process: ExecStart=... (code=exited)']]},
+        show:{current:1,cmd:'systemctl show course-demo -p ActiveState -p SubState -p Result -p ExecMainStatus',logs:[['info','ActiveState=failed'],['error','Result=exit-code'],['error','ExecMainStatus=203']]},
+        failure:{current:2,cmd:'journalctl -u course-demo -n 30 --no-pager',logs:[['info','Starting Linux course demonstration service...'],['error','Failed at step EXEC spawning course-demo-missing.sh'],['error','No such file or directory']]},
+        fix:{current:4,cmd:'systemctl is-active course-demo && journalctl -u course-demo -n 5',logs:[['fix','ActiveState=active'],['fix','Started Linux course demonstration service'],['fix','course-demo time=... host=rocky-server']]}
+      }[s.kind] || {current:0,cmd:'systemctl status course-demo',logs:[]};
+      const names=['状态摘要','结构化属性','Unit + 日志取证','最小修复','三层复测'];
+      return '<div class="journal"><div class="evidence">'+names.map((n,i)=>'<span class="evidence-step '+(i===data.current?'current pulse':'')+'">'+n+'</span>'+(i<names.length-1?'<span class="arrow">→</span>':'')).join('')+'</div><div class="logs">'+data.logs.map(l=>'<div class="log '+l[0]+'">'+esc(l[1])+'</div>').join('')+'</div><div class="terminal"><b>$</b> '+esc(data.cmd)+'</div></div>';
+    }
+
+    function stop(){if(timer)clearInterval(timer);timer=null;byId('play').textContent='▶ 播放';}
+    function render(){
+      const scene=scenes[sceneKey],s=scene.steps[stepIndex];
+      document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.scene===sceneKey));
+      byId('visualTitle').textContent=scene.title;byId('conceptTag').textContent=scene.tag;
+      byId('counter').textContent='第 '+(stepIndex+1)+' / '+scene.steps.length+' 步';
+      byId('stepTitle').textContent=s.title;byId('stepText').textContent=s.text;byId('questionText').textContent=s.q;
+      byId('visual').innerHTML=sceneKey==='state'?stateVisual(s):sceneKey==='deps'?depsVisual(s):sceneKey==='signals'?signalsVisual(s):journalVisual(s);
+    }
+    function next(){stepIndex=(stepIndex+1)%scenes[sceneKey].steps.length;render();}
+    function prev(){stepIndex=(stepIndex-1+scenes[sceneKey].steps.length)%scenes[sceneKey].steps.length;render();}
+    function togglePlay(){if(timer)return stop();byId('play').textContent='❚❚ 暂停';next();timer=setInterval(next,5800);}
+    document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{stop();sceneKey=t.dataset.scene;stepIndex=0;render();}));
+    byId('prev').addEventListener('click',()=>{stop();prev();});byId('next').addEventListener('click',()=>{stop();next();});
+    byId('restart').addEventListener('click',()=>{stop();stepIndex=0;render();});byId('play').addEventListener('click',togglePlay);
+    document.addEventListener('keydown',e=>{
+      if(e.key==='ArrowRight'){stop();next();}if(e.key==='ArrowLeft'){stop();prev();}
+      if(e.key===' '){e.preventDefault();togglePlay();}
+      if(['1','2','3','4'].includes(e.key)){stop();sceneKey=['state','deps','signals','journal'][Number(e.key)-1];stepIndex=0;render();}
+    });
+    render();
+  </script>
+</body>
+</html>

@@ -55,6 +55,12 @@
 现象 → 影响范围 → 证据 → 判断 → 根因 → 修复 → 验证 → 预防
 ```
 
+开始故障卡前打开[Linux网络配置、路由与DNS动画](../../animations/05-linux-network-routing-dns/index.html)的“分层排障”。根据现象选择第一条只读检查命令；动画中一次只推进一层的规则同样适用于本实验。
+
+排查主机防护层时，复用[firewalld区域、规则与安全变更动画](../../animations/09-firewalld-zones-rules/index.html)和[SELinux双重判定、上下文与AVC排障动画](../../animations/10-selinux-dac-context-avc/index.html)。先区分网络包是否被阻止，还是进程访问文件、端口或上游时被策略拒绝，再决定收集哪一类证据。
+
+开始每张故障卡前打开[Linux网络与访问分层故障推理动画](../../animations/11-layered-troubleshooting/index.html)。使用“受理与基线”补全故障信息，在“分层证据”和“故障模式”中选择下一条最小只读检查，最后按“修复闭环”完成原客户端复测与报告。
+
 ## 四、实验环境
 
 - 默认故障目标为`rocky-server`，`ubuntu-client`为正式客户端；教师可把一项Web类故障安排到`rocky-web`，但必须在故障单中明确目标主机。
@@ -78,12 +84,25 @@
 启动受控HTTP服务：
 
 ```bash
-mkdir -p ~/m1-project/module2-check
+mkdir -p ~/m1-project/{module2-check,logs,evidence}
+sudo ss -lntp | grep ':8080' || true
+```
+
+若有输出，说明8080已被占用。先确认进程属于哪个实验或服务并按其手册清理，不要继续执行下面的启动命令，也不要直接杀死未知进程。确认无输出后执行：
+
+```bash
 printf '<h1>MODULE2_OK</h1>\n' > ~/m1-project/module2-check/index.html
 cd ~/m1-project/module2-check
 python3 -m http.server 8080 --bind 0.0.0.0 > ~/m1-project/logs/module2-http.log 2>&1 &
 MODULE2_HTTP_PID=$!
-sudo firewall-cmd --add-port=8080/tcp
+printf '%s\n' "$MODULE2_HTTP_PID" > ~/m1-project/module2-check/http.pid
+IFACE=$(ip route show default | awk 'NR==1 {print $5}')
+ZONE=$(firewall-cmd --get-zone-of-interface="$IFACE")
+if [[ -z "$ZONE" || "$ZONE" == 'no zone' ]]; then
+  ZONE=$(firewall-cmd --get-default-zone)
+fi
+printf '%s\n' "$ZONE" > ~/m1-project/module2-check/zone.txt
+sudo firewall-cmd --zone="$ZONE" --add-port=8080/tcp
 ```
 
 服务器基线：
@@ -105,11 +124,13 @@ sudo firewall-cmd --add-port=8080/tcp
 Ubuntu客户端基线：
 
 ```bash
-ip route get <ROCKY_IP>
-nc -vz -w 3 <ROCKY_IP> 22
-nc -vz -w 3 <ROCKY_IP> 8080
-curl --fail http://<ROCKY_IP>:8080/
-ssh rocky-course "hostname; uptime"
+source ~/m1-project/course-env.sh
+ROCKY_IP="$ROCKY_SERVER_IP"
+ip route get "$ROCKY_IP"
+nc -vz -w 3 "$ROCKY_IP" 22
+nc -vz -w 3 "$ROCKY_IP" 8080
+curl --fail "http://$ROCKY_IP:8080/"
+ssh rocky-server "hostname; uptime"
 ```
 
 > **验收点**：故障注入前SSH和HTTP从客户端均可用，基线已保存。
@@ -141,28 +162,34 @@ ssh rocky-course "hostname; uptime"
 Ubuntu客户端：
 
 ```bash
+source ~/m1-project/course-env.sh
+ROCKY_IP="$ROCKY_SERVER_IP"
 ip -brief address
 ip route
-getent hosts <目标名称>
-nc -vz -w 3 <目标IP> <端口>
-curl -v http://<目标IP>:<端口>/
-ssh -vv rocky-course
+TARGET_NAME='rocky-server'
+TARGET_IP="$ROCKY_IP"
+TARGET_PORT='8080'
+getent hosts "$TARGET_NAME"
+nc -vz -w 3 "$TARGET_IP" "$TARGET_PORT"
+curl -v "http://$TARGET_IP:$TARGET_PORT/"
+ssh -vv rocky-server
 ```
 
 服务器：
 
 ```bash
-getent hosts <目标名称>
+getent hosts rocky-server
 cat /etc/hosts
 ```
 
 #### 服务器网络
 
 ```bash
+source ~/m1-project/course-env.sh
 ip -br link
 ip -br address
 ip route
-ip route get <客户端或网关IP>
+ip route get "$UBUNTU_CLIENT_IP"
 nmcli device status
 nmcli connection show --active
 ```
@@ -238,10 +265,12 @@ tail -n 50 ~/m1-project/logs/module2-http.log
 每修复一个故障后，必须返回Ubuntu按原始路径复测：
 
 ```bash
-nc -vz -w 3 <ROCKY_IP> 22
-nc -vz -w 3 <ROCKY_IP> 8080
-curl --fail http://<ROCKY_IP>:8080/
-ssh rocky-course "hostname; uptime"
+source ~/m1-project/course-env.sh
+ROCKY_IP="$ROCKY_SERVER_IP"
+nc -vz -w 3 "$ROCKY_IP" 22
+nc -vz -w 3 "$ROCKY_IP" 8080
+curl --fail "http://$ROCKY_IP:8080/"
+ssh rocky-server "hostname; uptime"
 ```
 
 服务器再次检查：
@@ -331,8 +360,12 @@ getenforce
 ## 十二、环境清理与保留
 
 ```bash
-test -n "${MODULE2_HTTP_PID:-}" && kill "$MODULE2_HTTP_PID" 2>/dev/null || true
-sudo firewall-cmd --remove-port=8080/tcp 2>/dev/null || true
+if test -f ~/m1-project/module2-check/http.pid; then
+  MODULE2_HTTP_PID=$(cat ~/m1-project/module2-check/http.pid)
+  ps -p "$MODULE2_HTTP_PID" -o args= 2>/dev/null | grep -Fq 'http.server 8080' && kill "$MODULE2_HTTP_PID" || true
+fi
+ZONE=$(cat ~/m1-project/module2-check/zone.txt 2>/dev/null || firewall-cmd --get-default-zone)
+sudo firewall-cmd --zone="$ZONE" --remove-port=8080/tcp 2>/dev/null || true
 ```
 
 保留SSH、静态网络、正确的firewalld和SELinux配置，供模块三服务部署使用。建议创建快照：

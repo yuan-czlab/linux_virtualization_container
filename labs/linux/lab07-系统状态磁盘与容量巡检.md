@@ -127,14 +127,16 @@ du -h --max-depth=1 ~/m1-project | sort -h
 ```bash
 yes > /dev/null &
 LAB07_PID=$!
+printf '%s\n' "$LAB07_PID" > ~/m1-project/evidence/lab07-cpu.pid
 printf 'lab07_pid=%s\n' "$LAB07_PID"
 ```
 
-当前Shell变量`LAB07_PID`保存刚启动进程的PID。不要关闭终端。
+PID同时保存到证据文件，后续步骤即使更换终端也能继续；终止前仍要核对该PID对应的命令。
 
 #### 步骤2：收集证据
 
 ```bash
+LAB07_PID=$(cat ~/m1-project/evidence/lab07-cpu.pid)
 ps -p "$LAB07_PID" -o pid,ppid,user,stat,%cpu,%mem,etime,cmd
 top -b -n 1 -p "$LAB07_PID" | tail -5
 uptime
@@ -145,10 +147,15 @@ uptime
 #### 步骤3：终止并复测
 
 ```bash
-kill "$LAB07_PID"
-sleep 1
-ps -p "$LAB07_PID" -o pid,stat,cmd
-printf 'ps_exit_code=%s\n' "$?"
+LAB07_PID=$(cat ~/m1-project/evidence/lab07-cpu.pid)
+if ps -p "$LAB07_PID" -o comm= | grep -qx 'yes'; then
+  kill "$LAB07_PID"
+  sleep 1
+  ps -p "$LAB07_PID" -o pid,stat,cmd
+  printf 'ps_exit_code=%s\n' "$?"
+else
+  echo "PID $LAB07_PID 已不存在或不是yes进程，拒绝终止"
+fi
 ```
 
 普通`kill`发送TERM信号，让程序有机会正常退出。只有确认程序无法响应时才考虑KILL信号。

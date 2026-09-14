@@ -53,6 +53,10 @@
 | HTTP 404 | Web服务可达，但资源不存在 |
 | HTTP 500/502 | 服务内部或上游应用异常 |
 
+名称解析任务前复用[Linux网络配置、路由与DNS动画](../../animations/05-linux-network-routing-dns/index.html)的“名称解析”。先预测`getent hosts`和`dig`是否会读取`/etc/hosts`，再执行本实验中的实际对照。
+
+随后打开[Socket、TCP、HTTP与TLS端到端访问动画](../../animations/06-socket-tcp-http-tls/index.html)。四个主题分别对应本实验的监听检查、TCP端口测试、HTTP状态验证和自签名TLS验证；动画判断必须再用Rocky服务端和Ubuntu客户端的真实证据确认。
+
 ## 四、实验环境
 
 - `rocky-server`（Rocky Linux 9），静态IP已配置，本实验的临时服务均在此运行。
@@ -97,12 +101,14 @@ printf '<h1>Linux HTTP Test</h1>\n' > ~/m1-project/http-test/index.html
 cd ~/m1-project/http-test
 python3 -m http.server 8080 --bind 0.0.0.0 > ~/m1-project/logs/http-test.log 2>&1 &
 HTTP_PID=$!
+printf '%s\n' "$HTTP_PID" > ~/m1-project/http-test/http.pid
 printf 'http_pid=%s\n' "$HTTP_PID"
 ```
 
 验证进程和监听：
 
 ```bash
+HTTP_PID=$(cat ~/m1-project/http-test/http.pid)
 ps -p "$HTTP_PID" -o pid,user,cmd
 ss -lntp | grep ':8080'
 ```
@@ -127,12 +133,14 @@ tail -n 10 ~/m1-project/logs/http-test.log
 #### 步骤4：保存并修改hosts
 
 ```bash
-sudo cp -p /etc/hosts ~/m1-project/backup/hosts.before-lab09
+test -f ~/m1-project/backup/hosts.before-lab09 || \
+  sudo cp -p /etc/hosts ~/m1-project/backup/hosts.before-lab09
 VM_IP=$(ip -4 route get 1.1.1.1 | awk 'NR==1 {for(i=1;i<=NF;i++) if($i=="src") print $(i+1)}')
 printf 'vm_ip=%s\n' "$VM_IP"
-printf '%s training-web.local\n' "$VM_IP" | sudo tee -a /etc/hosts
-getent hosts training-web.local
-curl -I http://training-web.local:8080/
+sudo sed -i '/[[:space:]]training-web\.test\([[:space:]]\|$\)/d' /etc/hosts
+printf '%s training-web.test\n' "$VM_IP" | sudo tee -a /etc/hosts
+getent hosts training-web.test
+curl -I http://training-web.test:8080/
 ```
 
 `getent`按系统实际名称解析顺序查询，通常比只使用`nslookup`更适合验证应用会得到什么结果。
@@ -160,11 +168,14 @@ sudo firewall-cmd --query-port=8080/tcp
 先在Ubuntu客户端备份hosts并加入实验名称，替换Rocky实际IP：
 
 ```bash
-sudo cp -p /etc/hosts ~/lab09-ubuntu-hosts.before
-echo '<ROCKY_IP> training-web.local' | sudo tee -a /etc/hosts
-getent hosts training-web.local
-nc -vz -w 3 <ROCKY_IP> 8080
-curl -I http://training-web.local:8080/
+source ~/m1-project/course-env.sh
+ROCKY_IP="$ROCKY_SERVER_IP"
+test -f ~/lab09-ubuntu-hosts.before || sudo cp -p /etc/hosts ~/lab09-ubuntu-hosts.before
+sudo sed -i '/[[:space:]]training-web\.test\([[:space:]]\|$\)/d' /etc/hosts
+printf '%s %s\n' "$ROCKY_IP" 'training-web.test' | sudo tee -a /etc/hosts
+getent hosts training-web.test
+nc -vz -w 3 "$ROCKY_IP" 8080
+curl -I http://training-web.test:8080/
 ```
 
 > **验收点**：Ubuntu能够把实验名称解析到Rocky，建立TCP连接并获得HTTP响应。
@@ -178,8 +189,10 @@ mkdir -p ~/m1-project/tls
 openssl req -x509 -newkey rsa:2048 -nodes -days 7 \
   -keyout ~/m1-project/tls/training.key \
   -out ~/m1-project/tls/training.crt \
-  -subj '/CN=training-web.local'
-openssl x509 -in ~/m1-project/tls/training.crt -noout -subject -issuer -dates
+  -subj '/CN=training-web.test' \
+  -addext 'subjectAltName=DNS:training-web.test'
+openssl x509 -in ~/m1-project/tls/training.crt -noout \
+  -subject -issuer -dates -ext subjectAltName
 ```
 
 自签名证书可用于实验加密，但客户端默认不信任，不能冒充公共CA签发的生产证书。
@@ -192,6 +205,7 @@ openssl s_server -quiet -www -accept 8443 \
   -key ~/m1-project/tls/training.key \
   > ~/m1-project/logs/https-test.log 2>&1 &
 HTTPS_PID=$!
+printf '%s\n' "$HTTPS_PID" > ~/m1-project/tls/https.pid
 ss -lntp | grep ':8443'
 sudo firewall-cmd --add-port=8443/tcp
 ```
@@ -199,22 +213,24 @@ sudo firewall-cmd --add-port=8443/tcp
 先按默认信任测试：
 
 ```bash
-curl -I https://training-web.local:8443/
+curl -I https://training-web.test:8443/
 ```
 
 预期可能因证书不受信任而失败。仅在本实验中使用`-k`跳过信任校验，观察加密连接和响应：
 
 ```bash
-curl -kI https://training-web.local:8443/
-curl -kv https://training-web.local:8443/ -o /dev/null
+curl -kI https://training-web.test:8443/
+curl -kv https://training-web.test:8443/ -o /dev/null
 ```
 
 在Ubuntu客户端重复验证：
 
 ```bash
-nc -vz -w 3 <ROCKY_IP> 8443
-curl -I https://training-web.local:8443/
-curl -kI https://training-web.local:8443/
+source ~/m1-project/course-env.sh
+ROCKY_IP="$ROCKY_SERVER_IP"
+nc -vz -w 3 "$ROCKY_IP" 8443
+curl -I https://training-web.test:8443/
+curl -kI https://training-web.test:8443/
 ```
 
 第一条`curl`预期因自签名证书不受信任而失败，第二条仅用于确认实验TLS服务能够响应。不要把`-k`作为生产环境证书错误的长期处理办法。
@@ -226,7 +242,8 @@ curl -kI https://training-web.local:8443/
 停止HTTP服务：
 
 ```bash
-kill "$HTTP_PID"
+HTTP_PID=$(cat ~/m1-project/http-test/http.pid)
+ps -p "$HTTP_PID" -o args= | grep -Fq 'http.server 8080' && kill "$HTTP_PID"
 sleep 1
 ss -lntp | grep ':8080' || true
 curl --connect-timeout 3 http://127.0.0.1:8080/
@@ -296,8 +313,14 @@ sudo ss -lntp | grep ':8080'
 ## 十二、环境清理
 
 ```bash
-test -n "${HTTP_PID:-}" && kill "$HTTP_PID" 2>/dev/null || true
-test -n "${HTTPS_PID:-}" && kill "$HTTPS_PID" 2>/dev/null || true
+if test -f ~/m1-project/http-test/http.pid; then
+  HTTP_PID=$(cat ~/m1-project/http-test/http.pid)
+  ps -p "$HTTP_PID" -o args= 2>/dev/null | grep -Fq 'http.server 8080' && kill "$HTTP_PID" || true
+fi
+if test -f ~/m1-project/tls/https.pid; then
+  HTTPS_PID=$(cat ~/m1-project/tls/https.pid)
+  ps -p "$HTTPS_PID" -o args= 2>/dev/null | grep -Fq 's_server' && kill "$HTTPS_PID" || true
+fi
 sudo cp -p ~/m1-project/backup/hosts.before-lab09 /etc/hosts
 sudo firewall-cmd --remove-port=8080/tcp 2>/dev/null || true
 sudo firewall-cmd --remove-port=8443/tcp 2>/dev/null || true
@@ -309,7 +332,7 @@ ss -lntp | grep -E ':(8080|8443)' || true
 ```bash
 test -f ~/lab09-ubuntu-hosts.before && \
   sudo cp -p ~/lab09-ubuntu-hosts.before /etc/hosts
-getent hosts training-web.local || true
+getent hosts training-web.test || true
 ```
 
 保留站点文件、证书和实验记录，确保临时进程和运行时端口规则已清除。
