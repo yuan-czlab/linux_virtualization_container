@@ -6,9 +6,9 @@
 >
 > 实验方式：个人
 >
-> 对应教材：《模块二 Docker容器化应用构建与交付》第9章
+> 对应学习通章节：[2.4 Dockerfile与应用镜像构建](../../textbooks/virtualization-container/模块二/2.4-Dockerfile与应用镜像构建.md)
 >
-> 知识前置：实验7—8中的镜像层、容器运行、网络和挂载；教材第9章
+> 知识前置：实验7—8中的镜像层、容器运行、网络和挂载；学习通章节2.4
 >
 > 状态依赖：可用Docker环境和课程固定Python基础镜像；不依赖实验8的网络和数据卷继续存在
 >
@@ -103,7 +103,13 @@ BuildKit逐条执行指令并复用缓存
 
 ```bash
 mkdir -p ~/vc-course/lab09/course-api ~/vc-course/evidence ~/vc-course/offline
+```
+
+```bash
 cd ~/vc-course/lab09/course-api
+```
+
+```bash
 pwd
 ```
 
@@ -113,9 +119,9 @@ pwd
 
 创建`app.py`：
 
-```bash
-cd ~/vc-course/lab09/course-api
-cat > app.py <<'PY'
+执行`vim ~/vc-course/lab09/course-api/app.py`并输入：
+
+```python
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
@@ -156,29 +162,38 @@ if __name__ == "__main__":
     server = ThreadingHTTPServer(("0.0.0.0", 8080), Handler)
     print("course-api listening on 0.0.0.0:8080", flush=True)
     server.serve_forever()
-PY
 ```
 
 先在宿主机做语法检查：
 
 ```bash
 cd ~/vc-course/lab09/course-api
-python3 -m py_compile app.py
+```
+
+```bash
+cd ~/vc-course/lab09/course-api
+python3 -m py_compile ~/vc-course/lab09/course-api/app.py
 ```
 
 #### 步骤3：创建项目说明和敏感文件样例
 
-```bash
-cd ~/vc-course/lab09/course-api
-cat > README.md <<'EOF'
+执行`vim ~/vc-course/lab09/course-api/README.md`并输入：
+
+```markdown
 # Course API
 
 Endpoints:
 - /health
 - /info
-EOF
+```
 
+创建一个必须被排除的本地测试文件和两个测试目录：
+
+```bash
 printf 'DO_NOT_COPY_THIS_TOKEN\n' > local-secret.txt
+```
+
+```bash
 mkdir -p __pycache__ evidence
 ```
 
@@ -188,9 +203,9 @@ mkdir -p __pycache__ evidence
 
 #### 步骤4：创建.dockerignore
 
-```bash
-cd ~/vc-course/lab09/course-api
-cat > .dockerignore <<'EOF'
+执行`vim ~/vc-course/lab09/course-api/.dockerignore`并输入：
+
+```gitignore
 .git
 .gitignore
 __pycache__/
@@ -198,23 +213,26 @@ __pycache__/
 local-secret.txt
 evidence/
 *.log
-EOF
 ```
 
 验证文件：
 
 ```bash
 cd ~/vc-course/lab09/course-api
-sed -n '1,120p' .dockerignore
+```
+
+```bash
+cd ~/vc-course/lab09/course-api
+sed -n '1,120p' ~/vc-course/lab09/course-api/.dockerignore
 ```
 
 ### 任务三：编写第一版Dockerfile
 
 #### 步骤5：创建Dockerfile
 
-```bash
-cd ~/vc-course/lab09/course-api
-cat > Dockerfile <<'DOCKERFILE'
+执行`vim ~/vc-course/lab09/course-api/Dockerfile`并输入：
+
+```dockerfile
 # syntax=docker/dockerfile:1
 ARG BASE_IMAGE
 FROM ${BASE_IMAGE}
@@ -234,7 +252,6 @@ HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3 \
   CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=2).read()"]
 
 CMD ["python", "-u", "/app/app.py"]
-DOCKERFILE
 ```
 
 `BASE_IMAGE`由构建命令明确传入，避免Dockerfile偷偷回退到公网镜像。
@@ -243,12 +260,21 @@ DOCKERFILE
 
 ```bash
 cd ~/vc-course/lab09/course-api
+```
+
+```bash
+cd ~/vc-course/lab09/course-api
+sed -n '1,200p' ~/vc-course/lab09/course-api/Dockerfile
+```
+
+```bash
+find ~/vc-course/lab09/course-api -maxdepth 2 -type f -printf '%P\n' | sort
+```
+
+```bash
 source ~/vc-course/course-env.sh
-BASE_IMAGE="$COURSE_REGISTRY/vc/python-base:$COURSE_TAG"
-sed -n '1,200p' Dockerfile
-find . -maxdepth 2 -type f -printf '%P\n' | sort
 sudo docker image inspect \
-  "$BASE_IMAGE" \
+  "$COURSE_REGISTRY/vc/python-base:$COURSE_TAG" \
   --format 'id={{.Id}} arch={{.Architecture}}'
 ```
 
@@ -258,13 +284,16 @@ sudo docker image inspect \
 
 ```bash
 cd ~/vc-course/lab09/course-api
+```
+
+```bash
+cd ~/vc-course/lab09/course-api
 source ~/vc-course/course-env.sh
-BASE_IMAGE="$COURSE_REGISTRY/vc/python-base:$COURSE_TAG"
 sudo docker build \
-  --build-arg "BASE_IMAGE=$BASE_IMAGE" \
+  --build-arg "BASE_IMAGE=$COURSE_REGISTRY/vc/python-base:$COURSE_TAG" \
   --tag vc-course-api:v1 \
   --progress=plain \
-  . | tee ~/vc-course/evidence/lab09-build-v1.log
+  ~/vc-course/lab09/course-api | tee ~/vc-course/evidence/lab09-build-v1.log
 ```
 
 如果使用`sudo`导致`tee`生成的日志所有者异常，构建后检查并调整个人文件所有者。构建成功应出现镜像标签`vc-course-api:v1`。
@@ -273,8 +302,14 @@ sudo docker build \
 
 ```bash
 sudo docker image ls vc-course-api
+```
+
+```bash
 sudo docker image inspect vc-course-api:v1 \
   --format 'id={{.Id}} user={{.Config.User}} workdir={{.Config.WorkingDir}} ports={{json .Config.ExposedPorts}} health={{json .Config.Healthcheck}}'
+```
+
+```bash
 sudo docker history vc-course-api:v1
 ```
 
@@ -298,8 +333,19 @@ sudo docker run -d \
   -p "$UBUNTU_CLIENT_IP:8083:8080" \
   -e APP_ENV=lab09 \
   vc-course-api:v1
+```
+
+```bash
 sudo docker container ls --filter name=vc-api-built
+```
+
+```bash
+source ~/vc-course/course-env.sh
 curl --fail "http://$UBUNTU_CLIENT_IP:8083/health"
+```
+
+```bash
+source ~/vc-course/course-env.sh
 curl --fail "http://$UBUNTU_CLIENT_IP:8083/info"
 ```
 
@@ -308,8 +354,17 @@ curl --fail "http://$UBUNTU_CLIENT_IP:8083/info"
 ```bash
 sudo docker inspect vc-api-built \
   --format 'status={{.State.Status}} health={{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}'
+```
+
+```bash
 sudo docker exec vc-api-built id
+```
+
+```bash
 sudo docker exec vc-api-built ps
+```
+
+```bash
 sudo docker logs --tail 30 vc-api-built
 ```
 
@@ -330,13 +385,16 @@ curl --fail "http://$UBUNTU_CLIENT_IP:8083/health"
 
 ```bash
 cd ~/vc-course/lab09/course-api
+```
+
+```bash
+cd ~/vc-course/lab09/course-api
 source ~/vc-course/course-env.sh
-BASE_IMAGE="$COURSE_REGISTRY/vc/python-base:$COURSE_TAG"
 sudo docker build \
-  --build-arg "BASE_IMAGE=$BASE_IMAGE" \
+  --build-arg "BASE_IMAGE=$COURSE_REGISTRY/vc/python-base:$COURSE_TAG" \
   --tag vc-course-api:v1-cache \
   --progress=plain \
-  . | tee ~/vc-course/evidence/lab09-build-cache.log
+  ~/vc-course/lab09/course-api | tee ~/vc-course/evidence/lab09-build-cache.log
 ```
 
 观察哪些步骤显示缓存命中。
@@ -345,14 +403,21 @@ sudo docker build \
 
 ```bash
 cd ~/vc-course/lab09/course-api
+```
+
+```bash
+cd ~/vc-course/lab09/course-api
+printf '\nBuild time: %s\n' "$(date -Is)" >> ~/vc-course/lab09/course-api/README.md
+```
+
+```bash
+cd ~/vc-course/lab09/course-api
 source ~/vc-course/course-env.sh
-BASE_IMAGE="$COURSE_REGISTRY/vc/python-base:$COURSE_TAG"
-printf '\nBuild time: %s\n' "$(date -Is)" >> README.md
 sudo docker build \
-  --build-arg "BASE_IMAGE=$BASE_IMAGE" \
+  --build-arg "BASE_IMAGE=$COURSE_REGISTRY/vc/python-base:$COURSE_TAG" \
   --tag vc-course-api:v2 \
   --progress=plain \
-  . | tee ~/vc-course/evidence/lab09-build-v2.log
+  ~/vc-course/lab09/course-api | tee ~/vc-course/evidence/lab09-build-v2.log
 ```
 
 因为`app.py`和`README.md`在同一个`COPY`指令中，修改README会使该层及后续层失去缓存。记录构建日志中的差异。
@@ -370,13 +435,16 @@ COPY --chown=appuser:appuser app.py ./
 
 ```bash
 cd ~/vc-course/lab09/course-api
+```
+
+```bash
+cd ~/vc-course/lab09/course-api
 source ~/vc-course/course-env.sh
-BASE_IMAGE="$COURSE_REGISTRY/vc/python-base:$COURSE_TAG"
 sudo docker build \
-  --build-arg "BASE_IMAGE=$BASE_IMAGE" \
+  --build-arg "BASE_IMAGE=$COURSE_REGISTRY/vc/python-base:$COURSE_TAG" \
   --tag vc-course-api:v2-optimized \
   --progress=plain \
-  . | tee ~/vc-course/evidence/lab09-build-optimized.log
+  ~/vc-course/lab09/course-api | tee ~/vc-course/evidence/lab09-build-optimized.log
 ```
 
 ### 任务六：增加运行时限制验证
@@ -387,6 +455,9 @@ sudo docker build \
 
 ```bash
 sudo docker stop vc-api-built
+```
+
+```bash
 sudo docker rm vc-api-built
 ```
 
@@ -410,8 +481,14 @@ sudo docker run -d \
 ```bash
 source ~/vc-course/course-env.sh
 curl --fail "http://$UBUNTU_CLIENT_IP:8083/health"
+```
+
+```bash
 sudo docker inspect vc-api-built \
   --format 'readonly={{.HostConfig.ReadonlyRootfs}} memory={{.HostConfig.Memory}} nano_cpus={{.HostConfig.NanoCpus}}'
+```
+
+```bash
 sudo docker stats --no-stream vc-api-built
 ```
 
@@ -427,8 +504,14 @@ sudo docker stats --no-stream vc-api-built
 sudo docker save \
   -o ~/vc-course/offline/vc-course-api-v2-optimized.tar \
   vc-course-api:v2-optimized
+```
+
+```bash
 sudo chown "$(id -u):$(id -g)" \
   ~/vc-course/offline/vc-course-api-v2-optimized.tar
+```
+
+```bash
 sha256sum ~/vc-course/offline/vc-course-api-v2-optimized.tar \
   | tee ~/vc-course/offline/vc-course-api-SHA256SUMS
 ```
@@ -436,15 +519,28 @@ sha256sum ~/vc-course/offline/vc-course-api-v2-optimized.tar \
 复制到Rocky并校验后：
 
 ```bash
-source ~/vc-course/course-env.sh
 sudo docker load -i ~/vc-course/offline/vc-course-api-v2-optimized.tar
+```
+
+```bash
+source ~/vc-course/course-env.sh
 sudo docker run -d \
   --name vc-api-rocky \
   -p "$ROCKY_SERVER_IP:8083:8080" \
   -e APP_ENV=rocky-verify \
   vc-course-api:v2-optimized
+```
+
+```bash
+source ~/vc-course/course-env.sh
 curl --fail "http://$ROCKY_SERVER_IP:8083/health"
+```
+
+```bash
 sudo docker exec vc-api-rocky id
+```
+
+```bash
 sudo docker inspect vc-api-rocky \
   --format 'image={{.Image}} status={{.State.Status}}'
 ```
@@ -459,13 +555,31 @@ sudo docker inspect vc-api-rocky \
 
 ```bash
 cd ~/vc-course/lab09/course-api
-{
-  date -Is
-  sha256sum Dockerfile .dockerignore app.py README.md
-  sudo docker image ls vc-course-api
-  sudo docker image inspect vc-course-api:v2-optimized \
-    --format 'id={{.Id}} user={{.Config.User}} health={{json .Config.Healthcheck}}'
-} > ~/vc-course/evidence/lab09-result.txt
+```
+
+```bash
+script -q ~/vc-course/evidence/lab09-result.txt
+```
+
+```bash
+date -Is
+```
+
+```bash
+cd ~/vc-course/lab09/course-api
+sha256sum ~/vc-course/lab09/course-api/Dockerfile ~/vc-course/lab09/course-api/.dockerignore ~/vc-course/lab09/course-api/app.py ~/vc-course/lab09/course-api/README.md
+```
+
+```bash
+sudo docker image ls vc-course-api
+```
+
+```bash
+sudo docker image inspect vc-course-api:v2-optimized --format 'id={{.Id}} user={{.Config.User}} health={{json .Config.Healthcheck}}'
+```
+
+```bash
+exit
 ```
 
 ## 七、独立实践
@@ -523,8 +637,19 @@ lab09-学号-姓名/
 
 ```bash
 cd ~/vc-course/lab09/course-api
-sed -n '1,200p' Dockerfile
-sudo docker build --progress=plain .
+```
+
+```bash
+cd ~/vc-course/lab09/course-api
+sed -n '1,200p' ~/vc-course/lab09/course-api/Dockerfile
+```
+
+重新构建时必须传入课程基础镜像。以下是命令格式，先载入课程变量再构建：
+
+```bash
+cd ~/vc-course/lab09/course-api
+source ~/vc-course/course-env.sh
+sudo docker build --build-arg "BASE_IMAGE=$COURSE_REGISTRY/vc/python-base:$COURSE_TAG" --progress=plain ~/vc-course/lab09/course-api
 ```
 
 错误通常会指出Dockerfile行号。
@@ -533,7 +658,13 @@ sudo docker build --progress=plain .
 
 ```bash
 sudo docker container ls -a --filter name=vc-api-built
+```
+
+```bash
 sudo docker logs vc-api-built
+```
+
+```bash
 sudo docker inspect vc-api-built --format '{{json .State}}'
 ```
 
@@ -546,6 +677,9 @@ sudo docker inspect vc-api-built --format '{{json .State}}'
 ```bash
 source ~/vc-course/course-env.sh
 curl -v "http://$UBUNTU_CLIENT_IP:8083/health"
+```
+
+```bash
 sudo docker inspect vc-api-built \
   --format '{{json .State.Health}}'
 ```
@@ -571,6 +705,9 @@ sudo docker inspect vc-api-built \
 
 ```bash
 sudo docker stop vc-api-built vc-api-rocky 2>/dev/null || true
+```
+
+```bash
 sudo docker rm vc-api-built vc-api-rocky 2>/dev/null || true
 ```
 

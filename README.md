@@ -31,7 +31,7 @@
 | 企业服务部署与综合运维 | 24 | 实验14—20 | `rocky-web`部署Nginx，`rocky-server`部署数据库并完成三机交付 |
 | **合计** | **64** | **20个实验** |  |
 
-资料使用顺序：`course-design/04`实验项目索引 → `05`课程进度表 → `labs/linux/`实验手册 → `textbooks/01—03`模块教材 → `06`知识图谱。
+资料使用顺序：`course-design/04`实验项目索引 → `05`课程进度表 → `textbooks/linux/`学习通分章教材 → `labs/linux/`实验手册 → `textbooks/01—03`整册教材 → `06`知识图谱。
 
 ## 《虚拟化容器技术》
 
@@ -41,7 +41,7 @@
 | Docker容器化应用构建与交付 | 40 | 实验6—11 | Rocky/Ubuntu Docker、离线镜像、网络与卷、Dockerfile、Compose与Kubernetes体验 |
 | **合计** | **64** | **11个实验** |  |
 
-资料使用顺序：`course-design/07`实验项目索引 → `08`课程进度表 → `labs/virtualization-container/`实验手册 → `textbooks/04—05`模块教材 → `09`知识图谱。
+资料使用顺序：`course-design/07`实验项目索引 → `08`课程进度表 → `textbooks/virtualization-container/`学习通分章教材 → `labs/virtualization-container/`对应实验 → `09`知识图谱。`textbooks/04—05`保留为整册查阅版，不代替“先学一章、再做一个实验”的课堂顺序。
 
 KVM由学生在`rocky-server`内真实操作。Docker同时安装在`rocky-server`和`ubuntu-client`中，后续通过同一镜像和项目验证跨发行版迁移。OpenStack和Kubernetes使用教师预建平台完成必做基础操作，不在本课程部署集群。
 
@@ -71,7 +71,9 @@ linux_virtualization_container/
 │   └── 10      两门课程动画规划与素材选型
 ├── textbooks/
 │   ├── 01—03  Linux三个模块教材
-│   └── 04—05  虚拟化容器两个模块教材
+│   ├── linux/ 学习通使用的Linux 32个独立章节
+│   ├── 04—05  虚拟化容器两个模块整册教材
+│   └── virtualization-container/ 学习通使用的虚拟化容器11个独立章节
 ├── labs/
 │   ├── linux/                       # 正式实验1—20
 │   └── virtualization-container/    # 正式实验1—11，实验11为期末大项目

@@ -6,7 +6,7 @@
 >
 > 实验方式：个人
 >
-> 对应教材：《模块二 Docker容器化应用构建与交付》第8章
+> 对应学习通章节：[2.3 Docker网络、存储与有状态数据](../../textbooks/virtualization-container/模块二/2.3-Docker网络、存储与有状态数据.md)
 >
 > 知识前置：实验7中的镜像、容器生命周期与离线交付
 >
@@ -116,17 +116,31 @@ vc-db（back-net）
 
 ```bash
 mkdir -p ~/vc-course/evidence ~/vc-course/lab08/site ~/vc-course/lab08/backup
-source ~/vc-course/course-env.sh
-cat > ~/vc-course/lab08/images.sh <<EOF
-export VC_WEB_IMAGE='$COURSE_REGISTRY/vc/web:$COURSE_TAG'
-export VC_API_IMAGE='$COURSE_REGISTRY/vc/api:$COURSE_TAG'
-export VC_MYSQL_IMAGE='$COURSE_REGISTRY/vc/mysql:$COURSE_TAG'
-export VC_TOOLBOX_IMAGE='$COURSE_REGISTRY/vc/toolbox:$COURSE_TAG'
-EOF
+```
+
+执行`vim ~/vc-course/lab08/images.sh`并输入：
+
+```text
+source "$HOME/vc-course/course-env.sh"
+export VC_WEB_IMAGE="$COURSE_REGISTRY/vc/web:$COURSE_TAG"
+export VC_API_IMAGE="$COURSE_REGISTRY/vc/api:$COURSE_TAG"
+export VC_MYSQL_IMAGE="$COURSE_REGISTRY/vc/mysql:$COURSE_TAG"
+export VC_TOOLBOX_IMAGE="$COURSE_REGISTRY/vc/toolbox:$COURSE_TAG"
+```
+
+设置权限并检查：
+
+```bash
 chmod 600 ~/vc-course/lab08/images.sh
+```
+
+```bash
 source ~/vc-course/lab08/images.sh
 sudo docker image inspect "$VC_WEB_IMAGE" "$VC_API_IMAGE" \
   "$VC_MYSQL_IMAGE" "$VC_TOOLBOX_IMAGE" >/dev/null
+```
+
+```bash
 sudo docker image ls --digests
 ```
 
@@ -139,8 +153,17 @@ sudo docker container ls -a \
   --filter name=vc-web \
   --filter name=vc-api \
   --filter name=vc-db
+```
+
+```bash
 sudo docker network ls
+```
+
+```bash
 sudo docker volume ls
+```
+
+```bash
 sudo ss -lntp | grep ':8082' || true
 ```
 
@@ -152,9 +175,21 @@ sudo ss -lntp | grep ':8082' || true
 
 ```bash
 sudo docker network create --driver bridge vc-front-net
+```
+
+```bash
 sudo docker network create --driver bridge vc-back-net
+```
+
+```bash
 sudo docker network ls --filter name=vc-
+```
+
+```bash
 sudo docker network inspect vc-front-net
+```
+
+```bash
 sudo docker network inspect vc-back-net
 ```
 
@@ -176,6 +211,9 @@ sudo docker run -d \
 
 ```bash
 sudo docker network connect vc-back-net vc-api
+```
+
+```bash
 sudo docker inspect vc-api \
   --format '{{json .NetworkSettings.Networks}}'
 ```
@@ -222,14 +260,17 @@ sudo docker run --rm \
 
 #### 步骤7：创建主机静态文件
 
-```bash
-cat > ~/vc-course/lab08/site/index.html <<'HTML'
+执行`vim ~/vc-course/lab08/site/index.html`并输入：
+
+```html
 <!doctype html>
 <meta charset="utf-8">
 <title>VC Storage Lab</title>
 <h1>VC_BIND_MOUNT_OK</h1>
 <p>course=virtualization-container</p>
-HTML
+```
+
+```bash
 chmod 644 ~/vc-course/lab08/site/index.html
 ```
 
@@ -240,20 +281,21 @@ Rocky启用SELinux时使用`:Z`为此容器私有重标记：
 ```bash
 source ~/vc-course/course-env.sh
 source ~/vc-course/lab08/images.sh
-VC_SITE_DIR="$(readlink -f ~/vc-course/lab08/site)"
 sudo docker run -d \
   --name vc-web \
   --network vc-front-net \
   -p "$ROCKY_SERVER_IP:8082:80" \
-  -v "$VC_SITE_DIR:/usr/share/nginx/html:ro,Z" \
+  -v "$(readlink -f ~/vc-course/lab08/site):/usr/share/nginx/html:ro,Z" \
   "$VC_WEB_IMAGE"
-unset VC_SITE_DIR
 ```
 
 使用`readlink -f`得到明确的绝对路径，可以避免因当前工作目录不同而挂载错误。检查挂载源：
 
 ```bash
 readlink -f ~/vc-course/lab08/site
+```
+
+```bash
 sudo docker inspect vc-web --format '{{json .Mounts}}'
 ```
 
@@ -264,7 +306,13 @@ sudo docker inspect vc-web --format '{{json .Mounts}}'
 ```bash
 source ~/vc-course/course-env.sh
 curl --fail "http://$ROCKY_SERVER_IP:8082/" | grep VC_BIND_MOUNT_OK
+```
+
+```bash
 sudo docker logs --tail 20 vc-web
+```
+
+```bash
 ls -lZ ~/vc-course/lab08/site
 ```
 
@@ -272,7 +320,13 @@ ls -lZ ~/vc-course/lab08/site
 
 ```bash
 sudo docker port vc-web
+```
+
+```bash
 sudo iptables -S DOCKER-USER 2>/dev/null || true
+```
+
+```bash
 sudo firewall-cmd --state
 ```
 
@@ -292,6 +346,9 @@ curl --fail "http://$ROCKY_SERVER_IP:8082/" | grep VC_BIND_MOUNT_OK
 ```bash
 sed -i 's/VC_BIND_MOUNT_OK/VC_BIND_MOUNT_UPDATED/' \
   ~/vc-course/lab08/site/index.html
+```
+
+```bash
 source ~/vc-course/course-env.sh
 curl --fail "http://$ROCKY_SERVER_IP:8082/" | grep VC_BIND_MOUNT_UPDATED
 ```
@@ -304,6 +361,9 @@ curl --fail "http://$ROCKY_SERVER_IP:8082/" | grep VC_BIND_MOUNT_UPDATED
 
 ```bash
 sudo docker volume create vc-mysql-data
+```
+
+```bash
 sudo docker volume inspect vc-mysql-data
 ```
 
@@ -387,7 +447,13 @@ sudo docker exec vc-db mysql \
 
 ```bash
 sudo docker stop vc-db
+```
+
+```bash
 sudo docker rm vc-db
+```
+
+```bash
 sudo docker volume ls --filter name=vc-mysql-data
 ```
 
@@ -430,16 +496,31 @@ sudo docker stop vc-db
 
 ```bash
 cd ~/vc-course/lab08
+```
+
+```bash
 source ~/vc-course/lab08/images.sh
 sudo docker run --rm \
   -v vc-mysql-data:/source:ro \
   -v "$PWD/backup:/backup:Z" \
   "$VC_TOOLBOX_IMAGE" \
   sh -c 'cd /source && tar -cpf /backup/vc-mysql-data.tar .'
+```
+
+```bash
 sudo chown "$(id -u):$(id -g)" backup/vc-mysql-data.tar
+```
+
+```bash
 ls -lh backup/vc-mysql-data.tar
+```
+
+```bash
 sha256sum backup/vc-mysql-data.tar \
   | tee backup/SHA256SUMS
+```
+
+```bash
 tar -tf backup/vc-mysql-data.tar | sed -n '1,20p'
 ```
 
@@ -451,13 +532,22 @@ tar -tf backup/vc-mysql-data.tar | sed -n '1,20p'
 
 ```bash
 cd ~/vc-course/lab08
-source ~/vc-course/lab08/images.sh
+```
+
+```bash
 sudo docker volume create vc-mysql-restored
+```
+
+```bash
+source ~/vc-course/lab08/images.sh
 sudo docker run --rm \
   -v vc-mysql-restored:/target \
   -v "$PWD/backup:/backup:ro,Z" \
   "$VC_TOOLBOX_IMAGE" \
   sh -c 'cd /target && tar -xpf /backup/vc-mysql-data.tar'
+```
+
+```bash
 sudo docker volume inspect vc-mysql-restored
 ```
 
@@ -514,7 +604,13 @@ sudo docker network ls
 
 ```bash
 sudo docker inspect vc-web --format '{{json .Mounts}}'
+```
+
+```bash
 ls -ldZ ~/vc-course/lab08/site
+```
+
+```bash
 sudo docker logs --tail 30 vc-web
 ```
 
@@ -525,20 +621,43 @@ sudo docker logs --tail 30 vc-web
 #### 步骤23：输出网络、端口和存储清单
 
 ```bash
-{
-  date -Is
-  hostname
-  echo '=== containers ==='
-  sudo docker container ls -a
-  echo '=== networks ==='
-  sudo docker network ls
-  sudo docker network inspect vc-front-net vc-back-net
-  echo '=== volumes ==='
-  sudo docker volume ls
-  sudo docker volume inspect vc-mysql-data vc-mysql-restored
-  echo '=== ports ==='
-  sudo docker port vc-web
-} > ~/vc-course/evidence/lab08-result.txt
+script -q ~/vc-course/evidence/lab08-result.txt
+```
+
+```bash
+date -Is
+```
+
+```bash
+hostname
+```
+
+```bash
+sudo docker container ls -a
+```
+
+```bash
+sudo docker network ls
+```
+
+```bash
+sudo docker network inspect vc-front-net vc-back-net
+```
+
+```bash
+sudo docker volume ls
+```
+
+```bash
+sudo docker volume inspect vc-mysql-data vc-mysql-restored
+```
+
+```bash
+sudo docker port vc-web
+```
+
+```bash
+exit
 ```
 
 ## 七、独立实践
@@ -599,10 +718,22 @@ sudo docker inspect vc-api --format '{{json .NetworkSettings.Networks}}'
 
 ```bash
 sudo docker container ls --filter name=vc-web
+```
+
+```bash
 sudo docker port vc-web
+```
+
+```bash
 sudo ss -lntp | grep ':8082'
+```
+
+```bash
 source ~/vc-course/course-env.sh
 curl -v "http://$ROCKY_SERVER_IP:8082/"
+```
+
+```bash
 sudo docker logs --tail 50 vc-web
 ```
 
@@ -612,8 +743,17 @@ sudo docker logs --tail 50 vc-web
 
 ```bash
 sudo docker container ls -a --filter name=vc-db
+```
+
+```bash
 sudo docker logs --tail 100 vc-db
+```
+
+```bash
 sudo docker inspect vc-db --format '{{json .State}}'
+```
+
+```bash
 sudo docker inspect vc-db --format '{{json .Mounts}}'
 ```
 
@@ -640,6 +780,9 @@ sudo docker inspect vc-db --format '{{json .Mounts}}'
 
 ```bash
 sudo docker stop vc-web vc-api vc-db-restored 2>/dev/null || true
+```
+
+```bash
 sudo docker container ls -a --filter name=vc-
 ```
 

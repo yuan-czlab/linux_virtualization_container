@@ -6,7 +6,7 @@
 >
 > 实验方式：个人
 >
-> 对应教材：《模块一 服务器虚拟化与云资源基础》第3章
+> 对应学习通章节：[1.3 qcow2镜像、快照、克隆与恢复](../../textbooks/virtualization-container/模块一/1.3-qcow2镜像、快照、克隆与恢复.md)
 >
 > 知识前置：实验2中的KVM平台和虚拟机生命周期
 >
@@ -93,8 +93,17 @@
 
 ```bash
 mkdir -p ~/vc-course/evidence ~/vc-course/backup/lab03 ~/vc-course/manifests
+```
+
+```bash
 sudo virsh list --all
+```
+
+```bash
 sudo virsh domblklist course-vm01 --details
+```
+
+```bash
 sudo virsh dumpxml course-vm01 > ~/vc-course/manifests/course-vm01-before.xml
 ```
 
@@ -110,9 +119,21 @@ sudo virsh dumpxml course-vm01 > ~/vc-course/manifests/course-vm01-before.xml
 
 ```bash
 sudo qemu-img info --backing-chain /var/lib/libvirt/images/course-vm01.qcow2
+```
+
+```bash
 sudo qemu-img check /var/lib/libvirt/images/course-vm01.qcow2
+```
+
+```bash
 sudo du -h /var/lib/libvirt/images/course-vm01.qcow2
+```
+
+```bash
 sudo du -h --apparent-size /var/lib/libvirt/images/course-vm01.qcow2
+```
+
+```bash
 df -h /var/lib/libvirt/images
 ```
 
@@ -124,26 +145,34 @@ df -h /var/lib/libvirt/images
 
 ```bash
 sudo virsh shutdown course-vm01
-for i in {1..30}; do
-  STATE=$(sudo virsh domstate course-vm01 | tr -d '\r')
-  printf 'state=%s\n' "$STATE"
-  [[ "$STATE" == 'shut off' ]] && break
-  sleep 2
-done
-test "$STATE" = 'shut off'
 ```
 
-只有最后一条`test`返回0才继续复制。若60秒后仍未关机，先进入客户机检查，不直接强制断电。
+等待几秒后查看状态：
+
+```bash
+sudo virsh domstate course-vm01
+```
+
+若仍为`running`，继续等待并再次执行同一查看命令；只有看到`shut off`才能进入备份步骤。若60秒后仍未关机，先进入客户机检查，不直接强制断电。
 
 #### 步骤4：备份配置和磁盘
 
 ```bash
 sudo virsh dumpxml course-vm01 > ~/vc-course/backup/lab03/course-vm01-baseline.xml
+```
+
+```bash
 sudo cp --sparse=always \
   /var/lib/libvirt/images/course-vm01.qcow2 \
   ~/vc-course/backup/lab03/course-vm01-baseline.qcow2
+```
+
+```bash
 sudo chown "$(id -u):$(id -g)" \
   ~/vc-course/backup/lab03/course-vm01-baseline.qcow2
+```
+
+```bash
 sha256sum \
   ~/vc-course/backup/lab03/course-vm01-baseline.qcow2 \
   > ~/vc-course/backup/lab03/SHA256SUMS
@@ -153,6 +182,9 @@ sha256sum \
 
 ```bash
 sha256sum -c ~/vc-course/backup/lab03/SHA256SUMS
+```
+
+```bash
 qemu-img info ~/vc-course/backup/lab03/course-vm01-baseline.qcow2
 ```
 
@@ -164,6 +196,9 @@ qemu-img info ~/vc-course/backup/lab03/course-vm01-baseline.qcow2
 
 ```bash
 sudo virsh dominfo course-vm02 2>/dev/null || true
+```
+
+```bash
 sudo test ! -e /var/lib/libvirt/images/course-vm02.qcow2
 ```
 
@@ -182,9 +217,21 @@ sudo virt-clone \
 
 ```bash
 sudo virsh list --all
+```
+
+```bash
 sudo virsh domuuid course-vm01
+```
+
+```bash
 sudo virsh domuuid course-vm02
+```
+
+```bash
 sudo virsh domblklist course-vm02
+```
+
+```bash
 sudo qemu-img info /var/lib/libvirt/images/course-vm02.qcow2
 ```
 
@@ -194,6 +241,9 @@ sudo qemu-img info /var/lib/libvirt/images/course-vm02.qcow2
 
 ```bash
 sudo virsh start course-vm02
+```
+
+```bash
 sudo virsh net-dhcp-leases default
 ```
 
@@ -201,8 +251,23 @@ sudo virsh net-dhcp-leases default
 
 ```bash
 sudo hostnamectl set-hostname kvm-node02
+```
+
+删除旧SSH主机密钥前先列出将受影响的文件，确认当前登录的是`course-vm02`：
+
+```bash
+sudo find /etc/ssh -maxdepth 1 -type f -name 'ssh_host_*' -print
+```
+
+```bash
 sudo rm -f /etc/ssh/ssh_host_*
+```
+
+```bash
 sudo ssh-keygen -A
+```
+
+```bash
 sudo systemctl restart sshd
 ```
 
@@ -210,8 +275,17 @@ sudo systemctl restart sshd
 
 ```bash
 sudo truncate -s 0 /etc/machine-id
+```
+
+```bash
 sudo rm -f /var/lib/dbus/machine-id
+```
+
+```bash
 sudo systemd-machine-id-setup
+```
+
+```bash
 sudo reboot
 ```
 
@@ -219,7 +293,13 @@ sudo reboot
 
 ```bash
 hostnamectl --static
+```
+
+```bash
 cat /etc/machine-id
+```
+
+```bash
 ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
 ```
 
@@ -237,13 +317,25 @@ ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
 
 ```bash
 source ~/vc-course/course-env.sh
+```
+
+```bash
 sudo qemu-img create \
   -f qcow2 \
   -F qcow2 \
   -b "$COURSE_MEDIA/kvm/course-base.qcow2" \
   /var/lib/libvirt/images/course-overlay-demo.qcow2
+```
+
+```bash
 sudo chown qemu:qemu /var/lib/libvirt/images/course-overlay-demo.qcow2
+```
+
+```bash
 sudo restorecon -v /var/lib/libvirt/images/course-overlay-demo.qcow2
+```
+
+```bash
 sudo qemu-img info --backing-chain \
   /var/lib/libvirt/images/course-overlay-demo.qcow2
 ```
@@ -266,6 +358,9 @@ sudo du -h /var/lib/libvirt/images/course-overlay-demo.qcow2
 
 ```bash
 sudo virsh shutdown course-vm01
+```
+
+```bash
 sudo virsh domstate course-vm01
 ```
 
@@ -276,7 +371,13 @@ sudo virsh snapshot-create-as \
   course-vm01 \
   lab03-clean \
   --description '实验3故障注入前恢复点'
+```
+
+```bash
 sudo virsh snapshot-list course-vm01
+```
+
+```bash
 sudo virsh snapshot-info course-vm01 lab03-clean
 ```
 
@@ -294,8 +395,17 @@ sudo virsh start course-vm01
 
 ```bash
 echo 'LAB03_BASELINE_OK' | sudo tee /etc/course-lab03-marker
+```
+
+```bash
 sudo cp /etc/hosts /etc/hosts.lab03.bak
+```
+
+```bash
 hostname
+```
+
+```bash
 cat /etc/course-lab03-marker
 ```
 
@@ -307,7 +417,13 @@ cat /etc/course-lab03-marker
 
 ```bash
 sudo hostnamectl set-hostname broken-node
+```
+
+```bash
 echo '192.0.2.99 wrong.course.test' | sudo tee -a /etc/hosts
+```
+
+```bash
 echo 'BROKEN_STATE' | sudo tee /etc/course-broken-state
 ```
 
@@ -315,7 +431,13 @@ echo 'BROKEN_STATE' | sudo tee /etc/course-broken-state
 
 ```bash
 hostnamectl --static
+```
+
+```bash
 tail -n 3 /etc/hosts
+```
+
+```bash
 cat /etc/course-broken-state
 ```
 
@@ -329,12 +451,12 @@ cat /etc/course-broken-state
 
 ```bash
 sudo virsh shutdown course-vm01
-for i in {1..30}; do
-  STATE=$(sudo virsh domstate course-vm01 | tr -d '\r')
-  [[ "$STATE" == 'shut off' ]] && break
-  sleep 2
-done
-test "$STATE" = 'shut off'
+```
+
+等待后查看状态；仍为`running`时继续等待并重试：
+
+```bash
+sudo virsh domstate course-vm01
 ```
 
 状态为`shut off`后：
@@ -347,9 +469,20 @@ sudo virsh snapshot-revert course-vm01 lab03-clean --running
 
 ```bash
 hostnamectl --static
-test ! -e /etc/course-broken-state && echo 'BROKEN_STATE_REMOVED'
-grep -F 'wrong.course.test' /etc/hosts || echo 'WRONG_HOSTS_REMOVED'
-test ! -e /etc/course-lab03-marker && echo 'POST_SNAPSHOT_MARKER_REMOVED'
+```
+
+```bash
+test ! -e /etc/course-broken-state
+```
+
+```bash
+grep -F 'wrong.course.test' /etc/hosts
+```
+
+第三条命令应无输出且返回1，表示错误记录已经消失。最后确认快照之后创建的标记也不存在：
+
+```bash
+test ! -e /etc/course-lab03-marker
 ```
 
 因为快照创建在标记和故障之前，恢复后这两个后写文件都不应存在。
@@ -360,36 +493,58 @@ test ! -e /etc/course-lab03-marker && echo 'POST_SNAPSHOT_MARKER_REMOVED'
 
 ```bash
 sudo virsh shutdown course-vm01
-for i in {1..30}; do
-  STATE=$(sudo virsh domstate course-vm01 | tr -d '\r')
-  [[ "$STATE" == 'shut off' ]] && break
-  sleep 2
-done
-test "$STATE" = 'shut off'
 ```
 
-确认最后一条`test`返回0后，再执行取消定义和磁盘替换：
+```bash
+sudo virsh domstate course-vm01
+```
+
+必须看到`shut off`。随后逐项确认备份和目标文件，任何一项失败都停止恢复：
 
 ```bash
-STATE=$(sudo virsh domstate course-vm01 | tr -d '\r')
-if [[ "$STATE" != 'shut off' ]]; then
-  echo "course-vm01仍为$STATE，未执行取消定义和磁盘替换"
-elif [[ ! -s ~/vc-course/backup/lab03/course-vm01-baseline.qcow2 || \
-        ! -s ~/vc-course/backup/lab03/course-vm01-baseline.xml ]]; then
-  echo '基线磁盘或XML不存在，未执行恢复'
-else
-  sudo virsh undefine course-vm01
-  sudo mv \
-    /var/lib/libvirt/images/course-vm01.qcow2 \
-    /var/lib/libvirt/images/course-vm01-broken.qcow2
-  sudo cp --sparse=always \
-    ~/vc-course/backup/lab03/course-vm01-baseline.qcow2 \
-    /var/lib/libvirt/images/course-vm01.qcow2
-  sudo chown qemu:qemu /var/lib/libvirt/images/course-vm01.qcow2
-  sudo restorecon -v /var/lib/libvirt/images/course-vm01.qcow2
-  sudo virsh define ~/vc-course/backup/lab03/course-vm01-baseline.xml
-  sudo virsh start course-vm01
-fi
+test -s ~/vc-course/backup/lab03/course-vm01-baseline.qcow2
+```
+
+```bash
+test -s ~/vc-course/backup/lab03/course-vm01-baseline.xml
+```
+
+```bash
+sudo test -s /var/lib/libvirt/images/course-vm01.qcow2
+```
+
+```bash
+sudo test ! -e /var/lib/libvirt/images/course-vm01-broken.qcow2
+```
+
+四项都成功，并经教师确认使用替代路线后，才逐条执行恢复操作：
+
+```bash
+sudo virsh undefine course-vm01
+```
+
+```bash
+sudo mv /var/lib/libvirt/images/course-vm01.qcow2 /var/lib/libvirt/images/course-vm01-broken.qcow2
+```
+
+```bash
+sudo cp --sparse=always ~/vc-course/backup/lab03/course-vm01-baseline.qcow2 /var/lib/libvirt/images/course-vm01.qcow2
+```
+
+```bash
+sudo chown qemu:qemu /var/lib/libvirt/images/course-vm01.qcow2
+```
+
+```bash
+sudo restorecon -v /var/lib/libvirt/images/course-vm01.qcow2
+```
+
+```bash
+sudo virsh define ~/vc-course/backup/lab03/course-vm01-baseline.xml
+```
+
+```bash
+sudo virsh start course-vm01
 ```
 
 只有在教师确认使用替代路线时执行。每一步目标均为明确文件，不能改用宽泛通配符。
@@ -400,6 +555,9 @@ fi
 
 ```bash
 sudo virsh list --all
+```
+
+```bash
 sudo virsh domifaddr course-vm01 --source lease
 ```
 
@@ -407,8 +565,17 @@ sudo virsh domifaddr course-vm01 --source lease
 
 ```bash
 hostnamectl
+```
+
+```bash
 ip -brief address
+```
+
+```bash
 ip route
+```
+
+```bash
 systemctl is-active sshd
 ```
 
@@ -418,21 +585,46 @@ systemctl is-active sshd
 
 #### 步骤15：输出镜像清单
 
+使用终端录制保存最终资产状态：
+
 ```bash
-{
-  date -Is
-  echo '=== domains ==='
-  sudo virsh list --all
-  echo '=== disks ==='
-  sudo virsh domblklist course-vm01
-  sudo virsh domblklist course-vm02
-  echo '=== snapshots ==='
-  sudo virsh snapshot-list course-vm01
-  echo '=== image info ==='
-  sudo qemu-img info /var/lib/libvirt/images/course-vm01.qcow2
-  sudo qemu-img info /var/lib/libvirt/images/course-vm02.qcow2
-  sudo qemu-img info --backing-chain /var/lib/libvirt/images/course-overlay-demo.qcow2
-} > ~/vc-course/evidence/lab03-assets.txt
+script -q ~/vc-course/evidence/lab03-assets.txt
+```
+
+```bash
+date -Is
+```
+
+```bash
+sudo virsh list --all
+```
+
+```bash
+sudo virsh domblklist course-vm01
+```
+
+```bash
+sudo virsh domblklist course-vm02
+```
+
+```bash
+sudo virsh snapshot-list course-vm01
+```
+
+```bash
+sudo qemu-img info /var/lib/libvirt/images/course-vm01.qcow2
+```
+
+```bash
+sudo qemu-img info /var/lib/libvirt/images/course-vm02.qcow2
+```
+
+```bash
+sudo qemu-img info --backing-chain /var/lib/libvirt/images/course-overlay-demo.qcow2
+```
+
+```bash
+exit
 ```
 
 ## 七、独立实践
@@ -480,6 +672,9 @@ lab03-学号-姓名/
 
 ```bash
 df -h /var/lib/libvirt/images
+```
+
+```bash
 sudo du -sh /var/lib/libvirt/images/*
 ```
 
@@ -495,6 +690,9 @@ sudo du -sh /var/lib/libvirt/images/*
 
 ```bash
 source ~/vc-course/course-env.sh
+```
+
+```bash
 ssh-keygen -R "$KVM_GUEST_IP"
 ```
 
@@ -506,8 +704,17 @@ ssh-keygen -R "$KVM_GUEST_IP"
 
 ```bash
 sudo virsh domstate course-vm01
+```
+
+```bash
 sudo virsh snapshot-list course-vm01
+```
+
+```bash
 sudo qemu-img info /var/lib/libvirt/images/course-vm01.qcow2
+```
+
+```bash
 sudo journalctl -u virtqemud -n 80 --no-pager
 ```
 
@@ -535,6 +742,11 @@ sudo qemu-img info --backing-chain /var/lib/libvirt/images/course-overlay-demo.q
 
 ```bash
 sudo test -f /var/lib/libvirt/images/course-overlay-demo.qcow2
+```
+
+只有确认这是本实验创建且不再需要的演示层，才删除：
+
+```bash
 sudo rm /var/lib/libvirt/images/course-overlay-demo.qcow2
 ```
 

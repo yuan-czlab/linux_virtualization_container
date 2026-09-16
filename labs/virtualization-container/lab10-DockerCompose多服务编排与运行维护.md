@@ -6,7 +6,7 @@
 >
 > 实验方式：个人为主，可2人互相验收
 >
-> 对应教材：《模块二 Docker容器化应用构建与交付》第10章
+> 对应学习通章节：[2.5 Docker Compose多服务编排](../../textbooks/virtualization-container/模块二/2.5-Docker-Compose多服务编排.md)
 >
 > 知识前置：实验8—9中的网络、卷、Dockerfile和应用镜像构建
 >
@@ -102,8 +102,14 @@ api（front-net + back-net）
 #### 步骤1：创建目录
 
 ```bash
-mkdir -p ~/vc-course/lab10/techcorp-stack/{evidence,backup}
+mkdir -p ~/vc-course/lab10/techcorp-stack/evidence ~/vc-course/lab10/techcorp-stack/backup
+```
+
+```bash
 cd ~/vc-course/lab10/techcorp-stack
+```
+
+```bash
 pwd
 ```
 
@@ -111,12 +117,10 @@ pwd
 
 ```bash
 source ~/vc-course/course-env.sh
-VC_GATEWAY_IMAGE="$COURSE_REGISTRY/vc/gateway:$COURSE_TAG"
-VC_API_IMAGE="$COURSE_REGISTRY/vc/techcorp-api:$COURSE_TAG"
-VC_MYSQL_IMAGE="$COURSE_REGISTRY/vc/mysql:$COURSE_TAG"
-VC_REDIS_IMAGE="$COURSE_REGISTRY/vc/redis:$COURSE_TAG"
-sudo docker image inspect "$VC_GATEWAY_IMAGE" "$VC_API_IMAGE" \
-  "$VC_MYSQL_IMAGE" "$VC_REDIS_IMAGE" >/dev/null
+sudo docker image inspect "$COURSE_REGISTRY/vc/gateway:$COURSE_TAG" "$COURSE_REGISTRY/vc/techcorp-api:$COURSE_TAG" "$COURSE_REGISTRY/vc/mysql:$COURSE_TAG" "$COURSE_REGISTRY/vc/redis:$COURSE_TAG" >/dev/null
+```
+
+```bash
 sudo docker image ls --digests
 ```
 
@@ -130,46 +134,55 @@ sudo docker image ls --digests
 
 #### 步骤3：创建可提交模板
 
-```bash
-source ~/vc-course/course-env.sh
-cd ~/vc-course/lab10/techcorp-stack
-cat > .env.example <<EOF
-VC_GATEWAY_IMAGE=$COURSE_REGISTRY/vc/gateway:$COURSE_TAG
-VC_API_IMAGE=$COURSE_REGISTRY/vc/techcorp-api:$COURSE_TAG
-VC_MYSQL_IMAGE=$COURSE_REGISTRY/vc/mysql:$COURSE_TAG
-VC_REDIS_IMAGE=$COURSE_REGISTRY/vc/redis:$COURSE_TAG
+执行`vim ~/vc-course/lab10/techcorp-stack/.env.example`并输入以下模板。把四个镜像中的`课程仓库`和`课程标签`替换为教师发布的实际值：
+
+```dotenv
+VC_GATEWAY_IMAGE=课程仓库/vc/gateway:课程标签
+VC_API_IMAGE=课程仓库/vc/techcorp-api:课程标签
+VC_MYSQL_IMAGE=课程仓库/vc/mysql:课程标签
+VC_REDIS_IMAGE=课程仓库/vc/redis:课程标签
 VC_BIND_IP=CHANGE_ME
 VC_DB_NAME=vcdb
 VC_DB_USER=vcuser
 VC_DB_PASSWORD=replace_me
 VC_DB_ROOT_PASSWORD=replace_me
 VC_REDIS_PASSWORD=replace_me
-EOF
 ```
 
 复制为本地实验文件并填写教师规定的实验密码：
 
 ```bash
-source ~/vc-course/course-env.sh
+cd ~/vc-course/lab10/techcorp-stack
+```
+
+```bash
 cd ~/vc-course/lab10/techcorp-stack
 cp .env.example .env
-sed -i "s/^VC_BIND_IP=.*/VC_BIND_IP=$UBUNTU_CLIENT_IP/" .env
+```
+
+```bash
+cd ~/vc-course/lab10/techcorp-stack
 chmod 600 .env
-vim .env
+```
+
+执行`vim .env`，把`VC_BIND_IP`改为`ubuntu-client`实际地址，并为三个密码项设置仅用于课堂的不同密码；不得保留`CHANGE_ME`或`replace_me`。保存后检查文件权限：
+
+```bash
+cd ~/vc-course/lab10/techcorp-stack
+ls -l .env .env.example
 ```
 
 除三个实验密码外，还要确认`VC_BIND_IP`等于当前Ubuntu固定地址；任何`CHANGE_ME`或`replace_me`未处理时都不能启动项目。
 
 创建忽略规则：
 
-```bash
-cd ~/vc-course/lab10/techcorp-stack
-cat > .gitignore <<'EOF'
+执行`vim ~/vc-course/lab10/techcorp-stack/.gitignore`并输入：
+
+```gitignore
 .env
 backup/*.tar
 backup/*.sql
 evidence/
-EOF
 ```
 
 `.env`只是防止把密码直接写进Compose和误提交的基础方式，不等于生产级Secret管理。
@@ -178,9 +191,9 @@ EOF
 
 #### 步骤4：创建compose.yaml
 
-```bash
-cd ~/vc-course/lab10/techcorp-stack
-cat > compose.yaml <<'YAML'
+执行`vim ~/vc-course/lab10/techcorp-stack/compose.yaml`并输入：
+
+```yaml
 name: vcstack
 
 services:
@@ -215,6 +228,12 @@ services:
     networks:
       - front-net
       - back-net
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
     restart: unless-stopped
 
   db:
@@ -262,7 +281,6 @@ networks:
 volumes:
   mysql-data:
   redis-data:
-YAML
 ```
 
 `back-net`设为内部网络，数据库和缓存不需要直接访问外部。是否适合实际API初始化取决于镜像设计，课程镜像已提前验证。
@@ -271,13 +289,24 @@ YAML
 
 ```bash
 cd ~/vc-course/lab10/techcorp-stack
-if grep -Eq '=(CHANGE_ME|replace_me)$' .env; then
-  echo '.env仍有未填写项，停止解析和启动'
-else
-  sudo docker compose --env-file .env config --quiet
-  sudo docker compose --env-file .env config --services
-  sudo docker compose --env-file .env config --images
-fi
+grep -En '=(CHANGE_ME|replace_me)$|课程仓库|课程标签' .env
+```
+
+该命令应无输出并返回1；只要显示一行占位内容，就回到`.env`修正。确认无占位符后逐项检查：
+
+```bash
+cd ~/vc-course/lab10/techcorp-stack
+sudo docker compose --env-file .env config --quiet
+```
+
+```bash
+cd ~/vc-course/lab10/techcorp-stack
+sudo docker compose --env-file .env config --services
+```
+
+```bash
+cd ~/vc-course/lab10/techcorp-stack
+sudo docker compose --env-file .env config --images
 ```
 
 不要把完整`docker compose config`输出提交，因为解析后的环境变量可能包含实验密码。
@@ -300,6 +329,10 @@ sudo docker compose --env-file .env pull --policy missing
 ```bash
 cd ~/vc-course/lab10/techcorp-stack
 sudo ss -lntp | grep ':8088' || true
+```
+
+```bash
+cd ~/vc-course/lab10/techcorp-stack
 sudo docker compose --env-file .env ps -a
 ```
 
@@ -310,6 +343,10 @@ sudo docker compose --env-file .env ps -a
 ```bash
 cd ~/vc-course/lab10/techcorp-stack
 sudo docker compose --env-file .env up -d
+```
+
+```bash
+cd ~/vc-course/lab10/techcorp-stack
 sudo docker compose --env-file .env ps -a
 ```
 
@@ -326,7 +363,13 @@ sudo docker compose --env-file .env ps
 
 ```bash
 sudo docker container ls --filter label=com.docker.compose.project=vcstack
+```
+
+```bash
 sudo docker network ls --filter name=vcstack
+```
+
+```bash
 sudo docker volume ls --filter name=vcstack
 ```
 
@@ -337,13 +380,28 @@ Compose自动为资源添加项目名前缀和标签。实际名称通常类似`
 ```bash
 sudo docker inspect vcstack-gateway-1 \
   --format '{{json .NetworkSettings.Networks}}'
+```
+
+```bash
 sudo docker inspect vcstack-api-1 \
   --format '{{json .NetworkSettings.Networks}}'
+```
+
+```bash
 sudo docker inspect vcstack-db-1 \
   --format '{{json .NetworkSettings.Networks}}'
+```
+
+```bash
 sudo docker inspect vcstack-cache-1 \
   --format '{{json .NetworkSettings.Networks}}'
+```
+
+```bash
 sudo docker port vcstack-gateway-1
+```
+
+```bash
 sudo docker port vcstack-db-1
 ```
 
@@ -356,8 +414,20 @@ sudo docker port vcstack-db-1
 ```bash
 source ~/vc-course/course-env.sh
 curl --fail "http://$UBUNTU_CLIENT_IP:8088/health"
+```
+
+```bash
+source ~/vc-course/course-env.sh
 curl --fail "http://$UBUNTU_CLIENT_IP:8088/api/info"
+```
+
+```bash
+source ~/vc-course/course-env.sh
 curl --fail "http://$UBUNTU_CLIENT_IP:8088/api/visits"
+```
+
+```bash
+source ~/vc-course/course-env.sh
 curl --fail "http://$UBUNTU_CLIENT_IP:8088/api/visits"
 ```
 
@@ -372,7 +442,15 @@ Compose把8088绑定到Ubuntu指定IPv4地址。Docker发布端口可能绕过UF
 ```bash
 source ~/vc-course/course-env.sh
 curl --fail "http://$UBUNTU_CLIENT_IP:8088/health"
+```
+
+```bash
+source ~/vc-course/course-env.sh
 curl --fail "http://$UBUNTU_CLIENT_IP:8088/api/info"
+```
+
+```bash
+source ~/vc-course/course-env.sh
 curl --fail "http://$UBUNTU_CLIENT_IP:8088/api/visits"
 ```
 
@@ -382,25 +460,18 @@ curl --fail "http://$UBUNTU_CLIENT_IP:8088/api/visits"
 
 ```bash
 cd ~/vc-course/lab10/techcorp-stack
-set -a
-. ./.env
-set +a
 sudo docker compose --env-file .env exec -T db \
-  mysql -u"$VC_DB_USER" -p"$VC_DB_PASSWORD" "$VC_DB_NAME" \
-  -e 'SHOW TABLES;'
-unset VC_DB_PASSWORD VC_DB_ROOT_PASSWORD VC_REDIS_PASSWORD
+  sh -c 'mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE" -e "SHOW TABLES;"'
 ```
 
-只在当前终端临时读取实验变量，执行后清除敏感变量。具体业务表由教师API镜像初始化。
+这条命令在数据库容器内读取已注入的实验变量，宿主机终端不需要再导出密码。具体业务表由课程API镜像初始化。
 
 #### 步骤13：验证Redis
 
 ```bash
 cd ~/vc-course/lab10/techcorp-stack
-VC_REDIS_PASSWORD_VALUE=$(awk -F= '$1=="VC_REDIS_PASSWORD" {print substr($0,index($0,"=")+1)}' .env)
 sudo docker compose --env-file .env exec -T cache \
-  redis-cli -a "$VC_REDIS_PASSWORD_VALUE" PING
-unset VC_REDIS_PASSWORD_VALUE
+  sh -c 'redis-cli -a "$VC_REDIS_PASSWORD" PING'
 ```
 
 预期返回`PONG`。命令可能产生“命令行密码不安全”的提示，生产环境应采用更安全的凭据传递方案。
@@ -414,6 +485,10 @@ unset VC_REDIS_PASSWORD_VALUE
 ```bash
 cd ~/vc-course/lab10/techcorp-stack
 sudo docker compose --env-file .env logs --tail 50 gateway api
+```
+
+```bash
+cd ~/vc-course/lab10/techcorp-stack
 sudo docker compose --env-file .env logs --tail 30 db cache
 ```
 
@@ -431,7 +506,14 @@ sudo docker compose --env-file .env logs -f api
 ```bash
 cd ~/vc-course/lab10/techcorp-stack
 sudo docker compose --env-file .env up -d --no-deps --force-recreate api
+```
+
+```bash
+cd ~/vc-course/lab10/techcorp-stack
 sudo docker compose --env-file .env ps api
+```
+
+```bash
 source ~/vc-course/course-env.sh
 curl --fail "http://$UBUNTU_CLIENT_IP:8088/api/info"
 ```
@@ -443,9 +525,24 @@ curl --fail "http://$UBUNTU_CLIENT_IP:8088/api/info"
 ```bash
 cd ~/vc-course/lab10/techcorp-stack
 sudo docker compose --env-file .env stop
+```
+
+```bash
+cd ~/vc-course/lab10/techcorp-stack
 sudo docker compose --env-file .env ps -a
+```
+
+```bash
+cd ~/vc-course/lab10/techcorp-stack
 sudo docker compose --env-file .env start
+```
+
+```bash
+cd ~/vc-course/lab10/techcorp-stack
 sudo docker compose --env-file .env ps
+```
+
+```bash
 source ~/vc-course/course-env.sh
 curl --fail "http://$UBUNTU_CLIENT_IP:8088/api/visits"
 ```
@@ -473,6 +570,10 @@ sudo docker compose --env-file .env pull gateway
 ```bash
 cd ~/vc-course/lab10/techcorp-stack
 sudo docker compose --env-file .env config --images
+```
+
+```bash
+cd ~/vc-course/lab10/techcorp-stack
 sudo docker compose --env-file .env up -d
 ```
 
@@ -483,8 +584,19 @@ sudo docker compose --env-file .env up -d
 ```bash
 cd ~/vc-course/lab10/techcorp-stack
 sudo docker compose --env-file .env up -d --no-deps --force-recreate api
+```
+
+```bash
+cd ~/vc-course/lab10/techcorp-stack
 sudo docker compose --env-file .env ps api
+```
+
+```bash
+cd ~/vc-course/lab10/techcorp-stack
 sudo docker compose --env-file .env logs --tail 80 api
+```
+
+```bash
 source ~/vc-course/course-env.sh
 curl -i "http://$UBUNTU_CLIENT_IP:8088/api/info"
 ```
@@ -504,23 +616,45 @@ sudo docker compose --env-file .env stop
 
 ```bash
 cd ~/vc-course/lab10/techcorp-stack
+```
+
+```bash
 source ~/vc-course/course-env.sh
 sudo docker run -d \
   --name vc-port-blocker \
   -p "$UBUNTU_CLIENT_IP:8088:80" \
   "$COURSE_REGISTRY/vc/web:$COURSE_TAG"
+```
+
+```bash
+cd ~/vc-course/lab10/techcorp-stack
 sudo docker compose --env-file .env start gateway || true
+```
+
+```bash
 sudo ss -lntp | grep ':8088'
+```
+
+```bash
 sudo docker container ls --format '{{.Names}} {{.Ports}}'
 ```
 
 确认冲突后清理明确对象：
 
 ```bash
-cd ~/vc-course/lab10/techcorp-stack
 sudo docker stop vc-port-blocker
+```
+
+```bash
 sudo docker rm vc-port-blocker
+```
+
+```bash
+cd ~/vc-course/lab10/techcorp-stack
 sudo docker compose --env-file .env start
+```
+
+```bash
 source ~/vc-course/course-env.sh
 curl --fail "http://$UBUNTU_CLIENT_IP:8088/health"
 ```
@@ -531,12 +665,18 @@ curl --fail "http://$UBUNTU_CLIENT_IP:8088/health"
 
 ```bash
 cd ~/vc-course/lab10/techcorp-stack
-VC_DB_ROOT_PASSWORD_VALUE=$(awk -F= '$1=="VC_DB_ROOT_PASSWORD" {print substr($0,index($0,"=")+1)}' .env)
 sudo docker compose --env-file .env exec -T db \
-  mysqldump -uroot -p"$VC_DB_ROOT_PASSWORD_VALUE" --databases vcdb \
+  sh -c 'mysqldump -uroot -p"$MYSQL_ROOT_PASSWORD" --databases "$MYSQL_DATABASE"' \
   > backup/vcdb.sql
-unset VC_DB_ROOT_PASSWORD_VALUE
+```
+
+```bash
+cd ~/vc-course/lab10/techcorp-stack
 test -s backup/vcdb.sql
+```
+
+```bash
+cd ~/vc-course/lab10/techcorp-stack
 sha256sum backup/vcdb.sql > backup/SHA256SUMS
 ```
 
@@ -545,7 +685,14 @@ sha256sum backup/vcdb.sql > backup/SHA256SUMS
 ```bash
 cd ~/vc-course/lab10/techcorp-stack
 sudo docker compose --env-file .env down
+```
+
+```bash
+cd ~/vc-course/lab10/techcorp-stack
 sudo docker compose --env-file .env ps -a
+```
+
+```bash
 sudo docker volume ls --filter name=vcstack
 ```
 
@@ -554,7 +701,14 @@ sudo docker volume ls --filter name=vcstack
 ```bash
 cd ~/vc-course/lab10/techcorp-stack
 sudo docker compose --env-file .env up -d
+```
+
+```bash
+cd ~/vc-course/lab10/techcorp-stack
 sudo docker compose --env-file .env ps
+```
+
+```bash
 source ~/vc-course/course-env.sh
 curl --fail "http://$UBUNTU_CLIENT_IP:8088/api/visits"
 ```
@@ -565,15 +719,44 @@ curl --fail "http://$UBUNTU_CLIENT_IP:8088/api/visits"
 
 ```bash
 cd ~/vc-course/lab10/techcorp-stack
-{
-  date -Is
-  sha256sum compose.yaml .env.example .gitignore
-  sudo docker compose --env-file .env config --services
-  sudo docker compose --env-file .env config --images
-  sudo docker compose --env-file .env ps
-  sudo docker volume ls --filter name=vcstack
-  sudo docker network ls --filter name=vcstack
-} > evidence/lab10-result.txt
+script -q evidence/lab10-result.txt
+```
+
+```bash
+cd ~/vc-course/lab10/techcorp-stack
+date -Is
+```
+
+```bash
+cd ~/vc-course/lab10/techcorp-stack
+sha256sum compose.yaml .env.example .gitignore
+```
+
+```bash
+cd ~/vc-course/lab10/techcorp-stack
+sudo docker compose --env-file .env config --services
+```
+
+```bash
+cd ~/vc-course/lab10/techcorp-stack
+sudo docker compose --env-file .env config --images
+```
+
+```bash
+cd ~/vc-course/lab10/techcorp-stack
+sudo docker compose --env-file .env ps
+```
+
+```bash
+sudo docker volume ls --filter name=vcstack
+```
+
+```bash
+sudo docker network ls --filter name=vcstack
+```
+
+```bash
+exit
 ```
 
 ## 七、独立实践
@@ -631,7 +814,15 @@ lab10-学号-姓名/
 ```bash
 cd ~/vc-course/lab10/techcorp-stack
 ls -la .env .env.example
+```
+
+```bash
+cd ~/vc-course/lab10/techcorp-stack
 grep -E '^[A-Z0-9_]+=' .env | sed 's/=.*/=<hidden>/'
+```
+
+```bash
+cd ~/vc-course/lab10/techcorp-stack
 sudo docker compose --env-file .env config --quiet
 ```
 
@@ -642,7 +833,14 @@ sudo docker compose --env-file .env config --quiet
 ```bash
 cd ~/vc-course/lab10/techcorp-stack
 sudo docker compose --env-file .env ps db
+```
+
+```bash
+cd ~/vc-course/lab10/techcorp-stack
 sudo docker compose --env-file .env logs --tail 100 db
+```
+
+```bash
 sudo docker inspect vcstack-db-1 --format '{{json .State.Health}}'
 ```
 
@@ -655,7 +853,14 @@ sudo docker inspect vcstack-db-1 --format '{{json .State.Health}}'
 ```bash
 cd ~/vc-course/lab10/techcorp-stack
 sudo docker compose --env-file .env ps api
+```
+
+```bash
+cd ~/vc-course/lab10/techcorp-stack
 sudo docker compose --env-file .env logs --tail 100 gateway api
+```
+
+```bash
 sudo docker inspect vcstack-api-1 --format '{{json .NetworkSettings.Networks}}'
 ```
 
@@ -668,8 +873,11 @@ sudo docker inspect vcstack-api-1 --format '{{json .NetworkSettings.Networks}}'
 ```bash
 cd ~/vc-course/lab10/techcorp-stack
 sudo docker compose --env-file .env config --quiet
-SERVICE_NAME='api'
-sudo docker compose --env-file .env up -d --force-recreate "$SERVICE_NAME"
+```
+
+```bash
+cd ~/vc-course/lab10/techcorp-stack
+sudo docker compose --env-file .env up -d --force-recreate api
 ```
 
 先确认改的是当前目录中的文件和当前项目。

@@ -6,7 +6,7 @@
 >
 > 实验方式：个人
 >
-> 对应教材：《模块一 服务器虚拟化与云资源基础》第2章
+> 对应学习通章节：[1.2 KVM、QEMU与libvirt虚拟机管理](../../textbooks/virtualization-container/模块一/1.2-KVM、QEMU与libvirt虚拟机管理.md)
 >
 > 知识前置：实验1中的虚拟化层次、KVM、QEMU和libvirt关系
 >
@@ -102,12 +102,34 @@ TechCorp需要在一台Linux服务器中运行多台隔离的测试主机。你�
 
 ```bash
 mkdir -p ~/vc-course/evidence ~/vc-course/backup ~/vc-course/manifests
-{
-  date -Is
-  grep -Ewo 'vmx|svm' /proc/cpuinfo | sort -u
-  ls -l /dev/kvm 2>&1 || true
-  rpm -q qemu-kvm libvirt virt-install 2>&1 || true
-} | tee ~/vc-course/evidence/lab02-before.txt
+```
+
+```bash
+script -q ~/vc-course/evidence/lab02-before.txt
+```
+
+在录制子Shell中逐条执行：
+
+```bash
+date -Is
+```
+
+```bash
+grep -Ewo 'vmx|svm' /proc/cpuinfo | sort -u
+```
+
+```bash
+ls -l /dev/kvm
+```
+
+```bash
+rpm -q qemu-kvm libvirt virt-install
+```
+
+如果软件包尚未安装，最后一条命令返回非0属于本步骤的正常基线。完成后退出录制：
+
+```bash
+exit
 ```
 
 如果CPU标志为空，停止安装并使用教师远程KVM环境。软件安装不能弥补未暴露的硬件虚拟化能力。
@@ -129,7 +151,13 @@ sudo dnf install -y \
 
 ```bash
 rpm -q qemu-kvm libvirt virt-install
+```
+
+```bash
 virsh --version
+```
+
+```bash
 virt-install --version
 ```
 
@@ -141,7 +169,13 @@ Rocky 9可能使用模块化守护进程。先执行：
 
 ```bash
 sudo systemctl enable --now virtqemud.socket
+```
+
+```bash
 sudo systemctl enable --now virtnetworkd.socket
+```
+
+```bash
 sudo systemctl enable --now virtstoraged.socket
 ```
 
@@ -149,8 +183,17 @@ sudo systemctl enable --now virtstoraged.socket
 
 ```bash
 systemctl is-active virtqemud.socket
+```
+
+```bash
 systemctl is-active virtnetworkd.socket
+```
+
+```bash
 systemctl is-active virtstoraged.socket
+```
+
+```bash
 sudo virsh -c qemu:///system uri
 ```
 
@@ -166,14 +209,37 @@ sudo systemctl enable --now libvirtd
 
 ```bash
 sudo modprobe kvm
-if grep -q vmx /proc/cpuinfo; then
-  sudo modprobe kvm_intel
-elif grep -q svm /proc/cpuinfo; then
-  sudo modprobe kvm_amd
-fi
+```
 
+先确认处理器标志：
+
+```bash
+grep -Ewo 'vmx|svm' /proc/cpuinfo | sort -u
+```
+
+看到`vmx`时执行Intel模块命令：
+
+```bash
+sudo modprobe kvm_intel
+```
+
+看到`svm`时执行AMD模块命令：
+
+```bash
+sudo modprobe kvm_amd
+```
+
+只执行与本机处理器匹配的一条，然后逐项验证：
+
+```bash
 lsmod | grep '^kvm'
+```
+
+```bash
 ls -l /dev/kvm
+```
+
+```bash
 sudo virt-host-validate qemu
 ```
 
@@ -199,6 +265,9 @@ sudo virsh net-list --all
 
 ```bash
 sudo virsh net-start default
+```
+
+```bash
 sudo virsh net-autostart default
 ```
 
@@ -206,6 +275,9 @@ sudo virsh net-autostart default
 
 ```bash
 sudo virsh net-info default
+```
+
+```bash
 ip -brief address | grep virbr || true
 ```
 
@@ -213,8 +285,25 @@ ip -brief address | grep virbr || true
 
 ```bash
 source ~/vc-course/course-env.sh
+```
+
+先确认教师文件真实存在：
+
+```bash
+test -f "$COURSE_MEDIA/kvm/default-network.xml"
+```
+
+确认后再逐条执行：
+
+```bash
 sudo virsh net-define "$COURSE_MEDIA/kvm/default-network.xml"
+```
+
+```bash
 sudo virsh net-start default
+```
+
+```bash
 sudo virsh net-autostart default
 ```
 
@@ -222,6 +311,11 @@ sudo virsh net-autostart default
 
 ```bash
 sudo virsh pool-list --all
+```
+
+只有在确认默认存储池不存在时，才准备其目标目录：
+
+```bash
 sudo mkdir -p /var/lib/libvirt/images
 ```
 
@@ -235,8 +329,17 @@ sudo virsh pool-define-as default dir --target /var/lib/libvirt/images
 
 ```bash
 sudo virsh pool-start default 2>/dev/null || true
+```
+
+```bash
 sudo virsh pool-autostart default
+```
+
+```bash
 sudo virsh pool-info default
+```
+
+```bash
 sudo virsh pool-refresh default
 ```
 
@@ -250,9 +353,25 @@ sudo virsh pool-refresh default
 
 ```bash
 source ~/vc-course/course-env.sh
-[[ "$COURSE_MEDIA" != 'CHANGE_ME' && -d "$COURSE_MEDIA" ]]
+```
+
+```bash
+test "$COURSE_MEDIA" != 'CHANGE_ME'
+```
+
+```bash
+test -d "$COURSE_MEDIA"
+```
+
+```bash
 ls -lh "$COURSE_MEDIA/kvm/course-base.qcow2"
+```
+
+```bash
 sha256sum "$COURSE_MEDIA/kvm/course-base.qcow2"
+```
+
+```bash
 qemu-img info "$COURSE_MEDIA/kvm/course-base.qcow2"
 ```
 
@@ -270,12 +389,27 @@ sudo test ! -e /var/lib/libvirt/images/course-vm01.qcow2
 
 ```bash
 source ~/vc-course/course-env.sh
+```
+
+```bash
 sudo cp --reflink=auto --sparse=always \
   "$COURSE_MEDIA/kvm/course-base.qcow2" \
   /var/lib/libvirt/images/course-vm01.qcow2
+```
+
+```bash
 sudo chown qemu:qemu /var/lib/libvirt/images/course-vm01.qcow2
+```
+
+```bash
 sudo restorecon -v /var/lib/libvirt/images/course-vm01.qcow2
+```
+
+```bash
 sudo virsh pool-refresh default
+```
+
+```bash
 sudo virsh vol-list default
 ```
 
@@ -289,6 +423,9 @@ sudo virsh vol-list default
 
 ```bash
 sudo virsh list --all
+```
+
+```bash
 sudo virsh dominfo course-vm01 2>/dev/null || true
 ```
 
@@ -323,8 +460,17 @@ sudo virt-install \
 
 ```bash
 sudo virsh list --all
+```
+
+```bash
 sudo virsh dominfo course-vm01
+```
+
+```bash
 sudo virsh domblklist course-vm01
+```
+
+```bash
 sudo virsh domiflist course-vm01
 ```
 
@@ -334,23 +480,25 @@ sudo virsh domiflist course-vm01
 
 ```bash
 sudo virsh net-dhcp-leases default
+```
+
+```bash
 sudo virsh domifaddr course-vm01 --source lease
 ```
 
 启动后的前几十秒可能尚未获得地址，可以稍后重试。记录MAC地址与IPv4地址的对应关系。
 
-租约出现后自动提取IPv4地址，并写回后续实验共用的参数文件：
+从上一条`domifaddr`输出中读取斜杠前的IPv4地址。输出为空时等待客户机启动完成后重试，不继续使用空地址。得到地址后执行`vim ~/vc-course/course-env.sh`，删除旧的`KVM_GUEST_IP`行（如果存在），再追加一行，地址替换成刚才观察到的实际值：
+
+```text
+export KVM_GUEST_IP='实际IPv4地址'
+```
+
+保存后重新载入并确认。这里的两行属于一次短小的参数校验，按顺序执行：
 
 ```bash
-KVM_GUEST_IP=$(sudo virsh domifaddr course-vm01 --source lease | \
-  awk '/ipv4/ {split($4,a,"/"); print a[1]; exit}')
-if [[ -z "$KVM_GUEST_IP" ]]; then
-  echo '尚未取得客户机IPv4地址，请等待启动完成后重试'
-else
-  sed -i '/^export KVM_GUEST_IP=/d' ~/vc-course/course-env.sh
-  printf 'export KVM_GUEST_IP=%q\n' "$KVM_GUEST_IP" >> ~/vc-course/course-env.sh
-  printf 'kvm_guest_ip=%s\n' "$KVM_GUEST_IP"
-fi
+source ~/vc-course/course-env.sh
+test -n "$KVM_GUEST_IP"
 ```
 
 #### 步骤12：使用控制台连接
@@ -378,8 +526,17 @@ ssh student@"$KVM_GUEST_IP"
 
 ```bash
 hostnamectl
+```
+
+```bash
 ip -brief address
+```
+
+```bash
 ip route
+```
+
+```bash
 df -hT /
 ```
 
@@ -389,8 +546,17 @@ df -hT /
 
 ```bash
 sudo virsh list
+```
+
+```bash
 ps -eo pid,cmd | grep '[q]emu-system' | sed -n '1,3p'
+```
+
+```bash
 sudo virsh vcpucount course-vm01
+```
+
+```bash
 sudo virsh dommemstat course-vm01
 ```
 
@@ -414,6 +580,9 @@ sudo virsh list --all
 
 ```bash
 sudo virsh start course-vm01
+```
+
+```bash
 sudo virsh list
 ```
 
@@ -429,6 +598,9 @@ sudo virsh reboot course-vm01
 
 ```bash
 sudo virsh destroy course-vm01
+```
+
+```bash
 sudo virsh list --all
 ```
 
@@ -448,6 +620,9 @@ sudo journalctl -b -p warning --no-pager | tail -n 20
 
 ```bash
 sudo virsh autostart course-vm01
+```
+
+```bash
 sudo virsh dominfo course-vm01 | grep -i autostart
 ```
 
@@ -474,17 +649,48 @@ grep -E '<name>|<memory|<vcpu|source file=|source network=' \
 
 #### 步骤18：生成验收记录
 
+使用终端录制保存最终状态：
+
 ```bash
-{
-  date -Is
-  sudo virsh version
-  sudo virsh list --all
-  sudo virsh dominfo course-vm01
-  sudo virsh domblklist course-vm01
-  sudo virsh domiflist course-vm01
-  sudo virsh net-dhcp-leases default
-  sudo virsh pool-info default
-} > ~/vc-course/evidence/lab02-kvm-result.txt
+script -q ~/vc-course/evidence/lab02-kvm-result.txt
+```
+
+在录制子Shell中逐条执行：
+
+```bash
+date -Is
+```
+
+```bash
+sudo virsh version
+```
+
+```bash
+sudo virsh list --all
+```
+
+```bash
+sudo virsh dominfo course-vm01
+```
+
+```bash
+sudo virsh domblklist course-vm01
+```
+
+```bash
+sudo virsh domiflist course-vm01
+```
+
+```bash
+sudo virsh net-dhcp-leases default
+```
+
+```bash
+sudo virsh pool-info default
+```
+
+```bash
+exit
 ```
 
 ## 七、独立实践
@@ -533,6 +739,9 @@ lab02-学号-姓名/
 
 ```bash
 systemctl status virtqemud.socket --no-pager
+```
+
+```bash
 sudo journalctl -u virtqemud -n 50 --no-pager
 ```
 
@@ -546,8 +755,17 @@ sudo journalctl -u virtqemud -n 50 --no-pager
 
 ```bash
 sudo virsh domiflist course-vm01
+```
+
+```bash
 sudo virsh net-info default
+```
+
+```bash
 sudo virsh net-dhcp-leases default
+```
+
+```bash
 ip -brief address | grep virbr
 ```
 
@@ -561,7 +779,13 @@ ip -brief address | grep virbr
 
 ```bash
 ls -lZ /var/lib/libvirt/images/course-vm01.qcow2
+```
+
+```bash
 sudo restorecon -v /var/lib/libvirt/images/course-vm01.qcow2
+```
+
+```bash
 sudo journalctl -u virtqemud -n 50 --no-pager
 ```
 

@@ -6,7 +6,7 @@
 >
 > 实验方式：个人
 >
-> 对应教材：《模块一 服务器虚拟化与云资源基础》第4章
+> 对应学习通章节：[1.4 KVM虚拟网络与服务访问](../../textbooks/virtualization-container/模块一/1.4-KVM虚拟网络与服务访问.md)
 >
 > 知识前置：实验3中的镜像、克隆和恢复关系；Linux网络与服务验证方法
 >
@@ -101,19 +101,43 @@ Windows或Ubuntu VMware虚拟机通常不能直接访问嵌套KVM客户机，因
 
 ```bash
 mkdir -p ~/vc-course/evidence ~/vc-course/manifests
-{
-  date -Is
-  sudo virsh net-list --all
-  sudo virsh net-info default
-  ip -brief address
-  ip route
-} | tee ~/vc-course/evidence/lab04-network-before.txt
+```
+
+```bash
+script -q ~/vc-course/evidence/lab04-network-before.txt
+```
+
+```bash
+date -Is
+```
+
+```bash
+sudo virsh net-list --all
+```
+
+```bash
+sudo virsh net-info default
+```
+
+```bash
+ip -brief address
+```
+
+```bash
+ip route
+```
+
+```bash
+exit
 ```
 
 `default`应为active。若不是：
 
 ```bash
 sudo virsh net-start default
+```
+
+```bash
 sudo virsh net-autostart default
 ```
 
@@ -122,6 +146,9 @@ sudo virsh net-autostart default
 ```bash
 sudo virsh net-dumpxml default \
   | tee ~/vc-course/manifests/default-network.xml > /dev/null
+```
+
+```bash
 grep -E '<name>|<bridge|<forward|<ip |<range ' \
   ~/vc-course/manifests/default-network.xml
 ```
@@ -140,7 +167,13 @@ grep -E '<name>|<bridge|<forward|<ip |<range ' \
 
 ```bash
 ip -brief link | grep -E 'virbr|vnet' || true
+```
+
+```bash
 ip -brief address | grep virbr || true
+```
+
+```bash
 sudo virsh net-dhcp-leases default
 ```
 
@@ -152,7 +185,13 @@ sudo virsh net-dhcp-leases default
 
 ```bash
 sudo virsh start course-vm01 2>/dev/null || true
+```
+
+```bash
 sudo virsh start course-vm02 2>/dev/null || true
+```
+
+```bash
 sudo virsh list
 ```
 
@@ -162,6 +201,9 @@ sudo virsh list
 
 ```bash
 sudo virsh domiflist course-vm01
+```
+
+```bash
 sudo virsh domiflist course-vm02
 ```
 
@@ -169,28 +211,29 @@ sudo virsh domiflist course-vm02
 
 ```bash
 sudo virsh net-dhcp-leases default
+```
+
+```bash
 sudo virsh domifaddr course-vm01 --source lease
+```
+
+```bash
 sudo virsh domifaddr course-vm02 --source lease
 ```
 
-自动提取两台客户机的IPv4地址和`course-vm01`网卡MAC，并保存到统一参数文件：
+从前三条命令输出中记录两台客户机的IPv4地址和`course-vm01`网卡MAC。执行`vim ~/vc-course/course-env.sh`，删除其中旧的同名变量行（如果存在），再写入本机实际值：
+
+```text
+export VM01_IP='course-vm01实际IPv4地址'
+export VM02_IP='course-vm02实际IPv4地址'
+export VM01_MAC='course-vm01实际MAC地址'
+```
+
+三个值不得为空或保留说明文字。保存后做一次短小的参数检查：
 
 ```bash
-VM01_IP=$(sudo virsh domifaddr course-vm01 --source lease | awk '/ipv4/ {split($4,a,"/"); print a[1]; exit}')
-VM02_IP=$(sudo virsh domifaddr course-vm02 --source lease | awk '/ipv4/ {split($4,a,"/"); print a[1]; exit}')
-VM01_MAC=$(sudo virsh domiflist course-vm01 | awk '/network/ {print $5; exit}')
-
-if [[ -z "$VM01_IP" || -z "$VM02_IP" || -z "$VM01_MAC" ]]; then
-  echo 'IP或MAC尚未取得：等待客户机和DHCP租约就绪后重试'
-else
-  sed -i '/^export \(VM01_IP\|VM02_IP\|VM01_MAC\)=/d' ~/vc-course/course-env.sh
-  {
-    printf 'export VM01_IP=%q\n' "$VM01_IP"
-    printf 'export VM02_IP=%q\n' "$VM02_IP"
-    printf 'export VM01_MAC=%q\n' "$VM01_MAC"
-  } >> ~/vc-course/course-env.sh
-  printf 'vm01=%s vm02=%s mac01=%s\n' "$VM01_IP" "$VM02_IP" "$VM01_MAC"
-fi
+source ~/vc-course/course-env.sh
+test -n "$VM01_IP" && test -n "$VM02_IP" && test -n "$VM01_MAC"
 ```
 
 #### 步骤6：从客户机内部确认
@@ -199,8 +242,17 @@ fi
 
 ```bash
 hostnamectl --static
+```
+
+```bash
 ip -brief address
+```
+
+```bash
 ip route
+```
+
+```bash
 cat /etc/resolv.conf
 ```
 
@@ -215,9 +267,31 @@ cat /etc/resolv.conf
 ```bash
 source ~/vc-course/course-env.sh
 ping -c 3 "$VM01_IP"
+```
+
+```bash
+source ~/vc-course/course-env.sh
 ping -c 3 "$VM02_IP"
-ssh student@"$VM01_IP" 'hostname; ip -brief address'
-ssh student@"$VM02_IP" 'hostname; ip -brief address'
+```
+
+```bash
+source ~/vc-course/course-env.sh
+ssh student@"$VM01_IP" hostname
+```
+
+```bash
+source ~/vc-course/course-env.sh
+ssh student@"$VM01_IP" 'ip -brief address'
+```
+
+```bash
+source ~/vc-course/course-env.sh
+ssh student@"$VM02_IP" hostname
+```
+
+```bash
+source ~/vc-course/course-env.sh
+ssh student@"$VM02_IP" 'ip -brief address'
 ```
 
 若ICMP被客户机策略限制，以SSH或目标服务连接作为功能证据，同时记录ICMP限制。
@@ -243,9 +317,8 @@ ssh student@"$VM02_IP" "ping -c 3 '$VM01_IP'"
 从Ubuntu VMware虚拟机尝试：
 
 ```bash
-VM01_IP=$(ssh rocky-server \
-  'source ~/vc-course/course-env.sh && printf "%s\n" "$VM01_IP"')
-[[ "$VM01_IP" =~ ^[0-9]+(\.[0-9]+){3}$ ]]
+VM01_IP=$(ssh rocky-server 'source ~/vc-course/course-env.sh && printf "%s\n" "$VM01_IP"')
+printf 'vm01=%s\n' "$VM01_IP"
 ping -c 2 "$VM01_IP" || true
 ```
 
@@ -261,23 +334,38 @@ ping -c 2 "$VM01_IP" || true
 
 ```bash
 mkdir -p ~/lab04-web
-cat > ~/lab04-web/index.html <<'HTML'
+```
+
+执行`vim ~/lab04-web/index.html`并输入：
+
+```html
 <!doctype html>
 <meta charset="utf-8">
 <title>KVM Network Lab</title>
 <h1>KVM_NETWORK_OK</h1>
 <p>service=course-vm01</p>
-HTML
 ```
 
 启动只用于实验的HTTP服务：
 
 ```bash
 cd ~/lab04-web
+```
+
+```bash
 nohup python3 -m http.server 8080 --bind 0.0.0.0 \
   > ~/lab04-http.log 2>&1 &
-echo $! > ~/lab04-http.pid
+```
+
+```bash
+pgrep -f 'python3 -m http.server 8080' | head -n 1 > ~/lab04-http.pid
+```
+
+```bash
 ss -lntp | grep ':8080'
+```
+
+```bash
 curl --fail http://127.0.0.1:8080/ | grep KVM_NETWORK_OK
 ```
 
@@ -287,6 +375,9 @@ curl --fail http://127.0.0.1:8080/ | grep KVM_NETWORK_OK
 
 ```bash
 sudo firewall-cmd --add-port=8080/tcp
+```
+
+```bash
 sudo firewall-cmd --query-port=8080/tcp
 ```
 
@@ -325,14 +416,32 @@ tail -n 20 ~/lab04-http.log
 在Rocky宿主机：
 
 ```bash
+script -q ~/vc-course/evidence/lab04-good-state.txt
+```
+
+```bash
+sudo virsh list
+```
+
+```bash
+sudo virsh net-info default
+```
+
+```bash
+sudo virsh domiflist course-vm01
+```
+
+```bash
+sudo virsh net-dhcp-leases default
+```
+
+```bash
 source ~/vc-course/course-env.sh
-{
-  sudo virsh list
-  sudo virsh net-info default
-  sudo virsh domiflist course-vm01
-  sudo virsh net-dhcp-leases default
-  curl -sS -o /dev/null -w 'http=%{http_code}\n' "http://$VM01_IP:8080/"
-} > ~/vc-course/evidence/lab04-good-state.txt
+curl -sS -o /dev/null -w 'http=%{http_code}\n' "http://$VM01_IP:8080/"
+```
+
+```bash
+exit
 ```
 
 #### 步骤14：注入虚拟网卡断开故障
@@ -342,6 +451,10 @@ source ~/vc-course/course-env.sh
 ```bash
 source ~/vc-course/course-env.sh
 sudo virsh domif-setlink course-vm01 "$VM01_MAC" down
+```
+
+```bash
+source ~/vc-course/course-env.sh
 sudo virsh domif-getlink course-vm01 "$VM01_MAC"
 ```
 
@@ -350,6 +463,10 @@ sudo virsh domif-getlink course-vm01 "$VM01_MAC"
 ```bash
 source ~/vc-course/course-env.sh
 ping -c 2 "$VM01_IP" || true
+```
+
+```bash
+source ~/vc-course/course-env.sh
 curl --connect-timeout 3 "http://$VM01_IP:8080/" || true
 ```
 
@@ -358,11 +475,23 @@ curl --connect-timeout 3 "http://$VM01_IP:8080/" || true
 #### 步骤15：按层次采集证据
 
 ```bash
-source ~/vc-course/course-env.sh
 sudo virsh domstate course-vm01
+```
+
+```bash
 sudo virsh domiflist course-vm01
+```
+
+```bash
+source ~/vc-course/course-env.sh
 sudo virsh domif-getlink course-vm01 "$VM01_MAC"
+```
+
+```bash
 sudo virsh net-info default
+```
+
+```bash
 sudo virsh net-dhcp-leases default
 ```
 
@@ -373,6 +502,10 @@ sudo virsh net-dhcp-leases default
 ```bash
 source ~/vc-course/course-env.sh
 sudo virsh domif-setlink course-vm01 "$VM01_MAC" up
+```
+
+```bash
+source ~/vc-course/course-env.sh
 sudo virsh domif-getlink course-vm01 "$VM01_MAC"
 ```
 
@@ -381,6 +514,10 @@ sudo virsh domif-getlink course-vm01 "$VM01_MAC"
 ```bash
 source ~/vc-course/course-env.sh
 ping -c 3 "$VM01_IP"
+```
+
+```bash
+source ~/vc-course/course-env.sh
 curl --fail "http://$VM01_IP:8080/" | grep KVM_NETWORK_OK
 ```
 
@@ -391,16 +528,43 @@ curl --fail "http://$VM01_IP:8080/" | grep KVM_NETWORK_OK
 #### 步骤17：生成实验报告数据
 
 ```bash
-{
-  date -Is
-  sudo virsh net-info default
-  sudo virsh net-dumpxml default
-  sudo virsh list --all
-  sudo virsh domiflist course-vm01
-  sudo virsh domiflist course-vm02
-  sudo virsh net-dhcp-leases default
-  ip -brief address | grep -E 'virbr|vnet' || true
-} > ~/vc-course/evidence/lab04-network-result.txt
+script -q ~/vc-course/evidence/lab04-network-result.txt
+```
+
+```bash
+date -Is
+```
+
+```bash
+sudo virsh net-info default
+```
+
+```bash
+sudo virsh net-dumpxml default
+```
+
+```bash
+sudo virsh list --all
+```
+
+```bash
+sudo virsh domiflist course-vm01
+```
+
+```bash
+sudo virsh domiflist course-vm02
+```
+
+```bash
+sudo virsh net-dhcp-leases default
+```
+
+```bash
+ip -brief address | grep -E 'virbr|vnet' || true
+```
+
+```bash
+exit
 ```
 
 ## 七、独立实践
@@ -448,9 +612,18 @@ lab04-学号-姓名/
 
 ```bash
 sudo virsh net-info default
+```
+
+```bash
 sudo virsh domiflist course-vm01
+```
+
+```bash
 source ~/vc-course/course-env.sh
 sudo virsh domif-getlink course-vm01 "$VM01_MAC"
+```
+
+```bash
 sudo virsh net-dhcp-leases default
 ```
 
@@ -462,8 +635,17 @@ sudo virsh net-dhcp-leases default
 
 ```bash
 ss -lntp | grep ':8080'
+```
+
+```bash
 curl -v http://127.0.0.1:8080/
+```
+
+```bash
 sudo firewall-cmd --query-port=8080/tcp 2>/dev/null || true
+```
+
+```bash
 tail -n 30 ~/lab04-http.log
 ```
 
@@ -486,10 +668,22 @@ DHCP地址可能变化。每次以`net-dhcp-leases`和客户机内部地址为�
 在`course-vm01`停止HTTP服务并删除临时运行时端口规则：
 
 ```bash
-if test -f ~/lab04-http.pid; then
-  HTTP_PID=$(cat ~/lab04-http.pid)
-  ps -p "$HTTP_PID" -o args= 2>/dev/null | grep -Fq 'http.server 8080' && kill "$HTTP_PID" || true
-fi
+cat ~/lab04-http.pid
+```
+
+先把显示的PID与进程命令核对：
+
+```bash
+ps -fp "$(cat ~/lab04-http.pid)"
+```
+
+只有输出明确包含`python3 -m http.server 8080`时才停止：
+
+```bash
+kill "$(cat ~/lab04-http.pid)"
+```
+
+```bash
 sudo firewall-cmd --remove-port=8080/tcp 2>/dev/null || true
 ```
 

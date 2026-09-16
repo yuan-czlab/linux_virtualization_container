@@ -6,7 +6,7 @@
 >
 > 实验方式：个人
 >
-> 对应教材：《模块二 Docker容器化应用构建与交付》第7章
+> 对应学习通章节：[2.2 镜像、容器、Registry与离线交付](../../textbooks/virtualization-container/模块二/2.2-镜像、容器、Registry与离线交付.md)
 >
 > 知识前置：实验6中的Docker架构、服务和双发行版差异
 >
@@ -122,9 +122,21 @@
 
 ```bash
 mkdir -p ~/vc-course/evidence ~/vc-course/offline
+```
+
+```bash
 sudo docker image ls --digests
+```
+
+```bash
 sudo docker container ls -a
+```
+
+```bash
 df -hT /
+```
+
+```bash
 sudo docker system df
 ```
 
@@ -136,8 +148,7 @@ sudo docker system df
 
 ```bash
 source ~/vc-course/course-env.sh
-WEB_IMAGE="$COURSE_REGISTRY/vc/web:$COURSE_TAG"
-sudo docker pull "$WEB_IMAGE"
+sudo docker pull "$COURSE_REGISTRY/vc/web:$COURSE_TAG"
 ```
 
 需要登录时，教师通过安全渠道提供个人或课程只读凭据。避免把密码直接写在命令参数：
@@ -165,17 +176,14 @@ sudo docker logout "$COURSE_REGISTRY"
 
 ```bash
 source ~/vc-course/course-env.sh
-WEB_ARCHIVE="$COURSE_MEDIA/docker-images/vc-web-$COURSE_TAG.tar"
-sha256sum "$WEB_ARCHIVE"
+sha256sum "$COURSE_MEDIA/docker-images/vc-web-$COURSE_TAG.tar"
 ```
 
 与清单一致后：
 
 ```bash
 source ~/vc-course/course-env.sh
-WEB_ARCHIVE="$COURSE_MEDIA/docker-images/vc-web-$COURSE_TAG.tar"
-sudo docker load -i \
-  "$WEB_ARCHIVE"
+sudo docker load -i "$COURSE_MEDIA/docker-images/vc-web-$COURSE_TAG.tar"
 ```
 
 导入后完整镜像名称必须与后续命令一致。如果离线包中的标签不同，使用教师清单规定的`docker tag`补充，不能自行猜测仓库地址。
@@ -186,14 +194,21 @@ sudo docker load -i \
 
 ```bash
 source ~/vc-course/course-env.sh
-WEB_IMAGE="$COURSE_REGISTRY/vc/web:$COURSE_TAG"
 sudo docker image ls --digests \
   "$COURSE_REGISTRY/vc/web"
+```
+
+```bash
+source ~/vc-course/course-env.sh
 sudo docker image inspect \
-  "$WEB_IMAGE" \
+  "$COURSE_REGISTRY/vc/web:$COURSE_TAG" \
   --format 'id={{.Id}} arch={{.Architecture}} os={{.Os}} size={{.Size}}'
+```
+
+```bash
+source ~/vc-course/course-env.sh
 sudo docker image inspect \
-  "$WEB_IMAGE" \
+  "$COURSE_REGISTRY/vc/web:$COURSE_TAG" \
   --format '{{json .RepoDigests}}'
 ```
 
@@ -203,11 +218,14 @@ sudo docker image inspect \
 
 ```bash
 source ~/vc-course/course-env.sh
-WEB_IMAGE="$COURSE_REGISTRY/vc/web:$COURSE_TAG"
 sudo docker history --no-trunc \
-  "$WEB_IMAGE" | sed -n '1,15p'
+  "$COURSE_REGISTRY/vc/web:$COURSE_TAG" | sed -n '1,15p'
+```
+
+```bash
+source ~/vc-course/course-env.sh
 sudo docker image inspect \
-  "$WEB_IMAGE" \
+  "$COURSE_REGISTRY/vc/web:$COURSE_TAG" \
   --format 'entrypoint={{json .Config.Entrypoint}} cmd={{json .Config.Cmd}} ports={{json .Config.ExposedPorts}} user={{json .Config.User}}'
 ```
 
@@ -228,11 +246,13 @@ sudo docker container inspect vc-web01 >/dev/null 2>&1 \
 
 ```bash
 source ~/vc-course/course-env.sh
-WEB_IMAGE="$COURSE_REGISTRY/vc/web:$COURSE_TAG"
 sudo docker create \
   --name vc-web01 \
   -p "$ROCKY_SERVER_IP:8081:80" \
-  "$WEB_IMAGE"
+  "$COURSE_REGISTRY/vc/web:$COURSE_TAG"
+```
+
+```bash
 sudo docker container ls -a --filter name=vc-web01
 ```
 
@@ -242,9 +262,21 @@ sudo docker container ls -a --filter name=vc-web01
 
 ```bash
 sudo docker start vc-web01
+```
+
+```bash
 sudo docker container ls --filter name=vc-web01
+```
+
+```bash
 sudo docker port vc-web01
+```
+
+```bash
 sudo ss -lntp | grep ':8081'
+```
+
+```bash
 source ~/vc-course/course-env.sh
 curl --fail "http://$ROCKY_SERVER_IP:8081/" | grep VC_WEB_OK
 ```
@@ -252,9 +284,14 @@ curl --fail "http://$ROCKY_SERVER_IP:8081/" | grep VC_WEB_OK
 跨主机验证前，在`rocky-server`记录发布地址和Docker过滤链：
 
 ```bash
-source ~/vc-course/course-env.sh
 sudo docker port vc-web01
+```
+
+```bash
 sudo iptables -S DOCKER-USER 2>/dev/null || true
+```
+
+```bash
 sudo firewall-cmd --state
 ```
 
@@ -273,8 +310,17 @@ curl --fail "http://$ROCKY_SERVER_IP:8081/" | grep VC_WEB_OK
 
 ```bash
 sudo docker logs --tail 20 vc-web01
+```
+
+```bash
 sudo docker top vc-web01
+```
+
+```bash
 sudo docker stats --no-stream vc-web01
+```
+
+```bash
 sudo docker inspect vc-web01 \
   --format 'status={{.State.Status}} ip={{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}} image={{.Image}}'
 ```
@@ -286,8 +332,19 @@ sudo docker inspect vc-web01 \
 教师Web镜像支持`/bin/sh`时：
 
 ```bash
-sudo docker exec vc-web01 sh -c \
-  'hostname; id; cat /etc/os-release; ps'
+sudo docker exec vc-web01 hostname
+```
+
+```bash
+sudo docker exec vc-web01 id
+```
+
+```bash
+sudo docker exec vc-web01 cat /etc/os-release
+```
+
+```bash
+sudo docker exec vc-web01 ps
 ```
 
 容器内发行版信息来自镜像用户空间，不等于宿主机发行版。容器仍共享宿主机内核。
@@ -296,11 +353,27 @@ sudo docker exec vc-web01 sh -c \
 
 ```bash
 sudo docker stop --time 10 vc-web01
+```
+
+```bash
 sudo docker container ls -a --filter name=vc-web01
+```
+
+```bash
 source ~/vc-course/course-env.sh
 curl --connect-timeout 2 "http://$ROCKY_SERVER_IP:8081/" || true
+```
+
+```bash
 sudo docker start vc-web01
+```
+
+```bash
 sudo docker restart vc-web01
+```
+
+```bash
+source ~/vc-course/course-env.sh
 curl --fail "http://$ROCKY_SERVER_IP:8081/" | grep VC_WEB_OK
 ```
 
@@ -308,10 +381,12 @@ curl --fail "http://$ROCKY_SERVER_IP:8081/" | grep VC_WEB_OK
 
 ```bash
 source ~/vc-course/course-env.sh
-VERIFY_IMAGE="$COURSE_REGISTRY/vc/verify:$COURSE_TAG"
 sudo docker run --rm \
   --name vc-once \
-  "$VERIFY_IMAGE"
+  "$COURSE_REGISTRY/vc/verify:$COURSE_TAG"
+```
+
+```bash
 sudo docker container ls -a --filter name=vc-once
 ```
 
@@ -323,11 +398,12 @@ sudo docker container ls -a --filter name=vc-once
 
 ```bash
 source ~/vc-course/course-env.sh
-WEB_IMAGE="$COURSE_REGISTRY/vc/web:$COURSE_TAG"
-OFFLINE_IMAGE="vc-offline/web:$COURSE_TAG"
 sudo docker tag \
-  "$WEB_IMAGE" \
-  "$OFFLINE_IMAGE"
+  "$COURSE_REGISTRY/vc/web:$COURSE_TAG" \
+  "vc-offline/web:$COURSE_TAG"
+```
+
+```bash
 sudo docker image ls --digests | grep -E 'vc/web|vc-offline/web'
 ```
 
@@ -337,19 +413,26 @@ sudo docker image ls --digests | grep -E 'vc/web|vc-offline/web'
 
 ```bash
 source ~/vc-course/course-env.sh
-WEB_IMAGE="$COURSE_REGISTRY/vc/web:$COURSE_TAG"
-OFFLINE_IMAGE="vc-offline/web:$COURSE_TAG"
-LOCAL_ARCHIVE="$HOME/vc-course/offline/vc-web-$COURSE_TAG-amd64.tar"
 sudo docker save \
-  -o "$LOCAL_ARCHIVE" \
-  "$WEB_IMAGE" \
-  "$OFFLINE_IMAGE"
+  -o "$HOME/vc-course/offline/vc-web-$COURSE_TAG-amd64.tar" \
+  "$COURSE_REGISTRY/vc/web:$COURSE_TAG" \
+  "vc-offline/web:$COURSE_TAG"
+```
+
+```bash
+source ~/vc-course/course-env.sh
 sudo chown "$(id -u):$(id -g)" \
-  "$LOCAL_ARCHIVE"
-ls -lh "$LOCAL_ARCHIVE"
-(cd ~/vc-course/offline && \
-  sha256sum "vc-web-$COURSE_TAG-amd64.tar" \
-    | tee SHA256SUMS)
+  "$HOME/vc-course/offline/vc-web-$COURSE_TAG-amd64.tar"
+```
+
+```bash
+source ~/vc-course/course-env.sh
+ls -lh "$HOME/vc-course/offline/vc-web-$COURSE_TAG-amd64.tar"
+```
+
+```bash
+source ~/vc-course/course-env.sh
+(cd ~/vc-course/offline && sha256sum "vc-web-$COURSE_TAG-amd64.tar" | tee SHA256SUMS)
 ```
 
 校验清单必须记录相对文件名。若把`/home/rocky-server/...`绝对路径写入清单，复制到`ubuntu-client`后会因用户主目录不同而无法校验。
@@ -370,8 +453,17 @@ sha256sum -c SHA256SUMS
 
 ```bash
 sudo docker version
+```
+
+```bash
 sudo docker container ls -a
+```
+
+```bash
 sudo docker image ls --digests
+```
+
+```bash
 df -hT /
 ```
 
@@ -380,10 +472,19 @@ df -hT /
 将归档和`SHA256SUMS`复制到Ubuntu的`~/vc-course/offline/`，执行：
 
 ```bash
-source ~/vc-course/course-env.sh
 cd ~/vc-course/offline
+```
+
+```bash
 sha256sum -c SHA256SUMS
-sudo docker load -i "vc-web-$COURSE_TAG-amd64.tar"
+```
+
+```bash
+source ~/vc-course/course-env.sh
+sudo docker load -i "$HOME/vc-course/offline/vc-web-$COURSE_TAG-amd64.tar"
+```
+
+```bash
 sudo docker image ls --digests | grep -E 'vc/web|vc-offline/web'
 ```
 
@@ -391,13 +492,21 @@ sudo docker image ls --digests | grep -E 'vc/web|vc-offline/web'
 
 ```bash
 source ~/vc-course/course-env.sh
-OFFLINE_IMAGE="vc-offline/web:$COURSE_TAG"
 sudo docker run -d \
   --name vc-web-ubuntu \
   -p 8081:80 \
-  "$OFFLINE_IMAGE"
+  "vc-offline/web:$COURSE_TAG"
+```
+
+```bash
 sudo docker container ls --filter name=vc-web-ubuntu
+```
+
+```bash
 curl --fail http://127.0.0.1:8081/ | grep VC_WEB_OK
+```
+
+```bash
 sudo docker logs --tail 20 vc-web-ubuntu
 ```
 
@@ -421,6 +530,9 @@ sudo docker container ls -a \
 
 ```bash
 sudo docker stop vc-web01 2>/dev/null || true
+```
+
+```bash
 sudo docker rm vc-web01
 ```
 
@@ -428,6 +540,9 @@ sudo docker rm vc-web01
 
 ```bash
 sudo docker stop vc-web-ubuntu
+```
+
+```bash
 sudo docker rm vc-web-ubuntu
 ```
 
@@ -437,17 +552,31 @@ sudo docker rm vc-web-ubuntu
 
 #### 步骤19：生成镜像交付记录
 
-在两台主机分别执行并标注主机名：
+在两台主机分别使用终端录制并标注主机名：
+
+```bash
+script -q ~/vc-course/evidence/lab07-image-result.txt
+```
+
+```bash
+date -Is
+```
+
+```bash
+hostname
+```
+
+```bash
+sudo docker image ls --digests
+```
 
 ```bash
 source ~/vc-course/course-env.sh
-{
-  date -Is
-  hostname
-  sudo docker image ls --digests
-  sudo docker image inspect "vc-offline/web:$COURSE_TAG" \
-    --format 'id={{.Id}} arch={{.Architecture}} os={{.Os}}'
-} > ~/vc-course/evidence/lab07-image-result.txt
+sudo docker image inspect "vc-offline/web:$COURSE_TAG" --format 'id={{.Id}} arch={{.Architecture}} os={{.Os}}'
+```
+
+```bash
+exit
 ```
 
 ## 七、独立实践
@@ -503,6 +632,9 @@ lab07-学号-姓名/
 
 ```bash
 sudo ss -lntp | grep ':8081'
+```
+
+```bash
 sudo docker container ls --format '{{.Names}} {{.Ports}}'
 ```
 

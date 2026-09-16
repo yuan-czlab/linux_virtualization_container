@@ -6,9 +6,9 @@
 >
 > 实验方式：个人
 >
-> 对应教材：《模块二 Docker容器化应用构建与交付》第6章
+> 对应学习通章节：[2.1 Docker基础与双发行版部署](../../textbooks/virtualization-container/模块二/2.1-Docker基础与双发行版部署.md)
 >
-> 知识前置：Linux服务、软件源、网络、权限和教材第6章；不依赖OpenStack操作结果
+> 知识前置：Linux服务、软件源、网络、权限和学习通章节2.1；不依赖OpenStack操作结果
 >
 > 状态依赖：可用的`rocky-server`和`ubuntu-client`，课程Docker仓库或离线安装包
 >
@@ -96,19 +96,58 @@ Docker守护进程通常以root权限运行。能够访问Docker Socket的用户
 
 ```bash
 mkdir -p ~/vc-course/evidence ~/vc-course/backup
+```
+
+```bash
 test -r ~/vc-course/course-env.sh
-{
-  date -Is
-  cat /etc/os-release
-  uname -r
-  uname -m
-  free -h
-  df -hT /
-  rpm -qa | grep -Ei 'docker|containerd|podman|runc' || true
-  systemctl list-unit-files | grep -E 'docker|containerd|podman' || true
-  getenforce
-  firewall-cmd --state 2>/dev/null || true
-} | tee ~/vc-course/evidence/lab06-rocky-before.txt
+```
+
+```bash
+script -q ~/vc-course/evidence/lab06-rocky-before.txt
+```
+
+```bash
+date -Is
+```
+
+```bash
+cat /etc/os-release
+```
+
+```bash
+uname -r
+```
+
+```bash
+uname -m
+```
+
+```bash
+free -h
+```
+
+```bash
+df -hT /
+```
+
+```bash
+rpm -qa | grep -Ei 'docker|containerd|podman|runc' || true
+```
+
+```bash
+systemctl list-unit-files | grep -E 'docker|containerd|podman' || true
+```
+
+```bash
+getenforce
+```
+
+```bash
+firewall-cmd --state 2>/dev/null || true
+```
+
+```bash
+exit
 ```
 
 若已经存在Docker，停止并报告教师，不覆盖安装，也不删除`/var/lib/docker`。
@@ -117,6 +156,9 @@ test -r ~/vc-course/course-env.sh
 
 ```bash
 ssh ubuntu-client@ubuntu-client 'mkdir -p ~/vc-course && chmod 700 ~/vc-course'
+```
+
+```bash
 scp ~/vc-course/course-env.sh ubuntu-client@ubuntu-client:~/vc-course/course-env.sh
 ```
 
@@ -124,19 +166,58 @@ scp ~/vc-course/course-env.sh ubuntu-client@ubuntu-client:~/vc-course/course-env
 
 ```bash
 mkdir -p ~/vc-course/evidence ~/vc-course/backup
+```
+
+```bash
 chmod 600 ~/vc-course/course-env.sh
+```
+
+```bash
 source ~/vc-course/course-env.sh
-{
-  date -Is
-  cat /etc/os-release
-  uname -r
-  uname -m
-  free -h
-  df -hT /
-  dpkg -l | grep -Ei 'docker|containerd|podman|runc' || true
-  systemctl list-unit-files | grep -E 'docker|containerd|podman' || true
-  sudo ufw status 2>/dev/null || true
-} | tee ~/vc-course/evidence/lab06-ubuntu-before.txt
+```
+
+```bash
+script -q ~/vc-course/evidence/lab06-ubuntu-before.txt
+```
+
+```bash
+date -Is
+```
+
+```bash
+cat /etc/os-release
+```
+
+```bash
+uname -r
+```
+
+```bash
+uname -m
+```
+
+```bash
+free -h
+```
+
+```bash
+df -hT /
+```
+
+```bash
+dpkg -l | grep -Ei 'docker|containerd|podman|runc' || true
+```
+
+```bash
+systemctl list-unit-files | grep -E 'docker|containerd|podman' || true
+```
+
+```bash
+sudo ufw status 2>/dev/null || true
+```
+
+```bash
+exit
 ```
 
 两台主机架构应与教师镜像清单一致，通常为`x86_64/amd64`。
@@ -159,8 +240,14 @@ rpm -q podman podman-docker runc containerd docker docker-client 2>/dev/null || 
 
 ```bash
 sudo dnf install -y dnf-plugins-core
+```
+
+```bash
 sudo dnf config-manager --add-repo \
   https://download.docker.com/linux/rhel/docker-ce.repo
+```
+
+```bash
 sudo dnf makecache
 ```
 
@@ -169,6 +256,12 @@ sudo dnf makecache
 ```bash
 source ~/vc-course/course-env.sh
 ls -lh "$COURSE_MEDIA/docker-packages/rocky9/"
+```
+
+确认目录内容与教师清单一致后安装：
+
+```bash
+source ~/vc-course/course-env.sh
 sudo dnf install -y "$COURSE_MEDIA"/docker-packages/rocky9/*.rpm
 ```
 
@@ -186,7 +279,11 @@ dnf list docker-ce --showduplicates | sort -r | sed -n '1,15p'
 
 ```bash
 source ~/vc-course/course-env.sh
-[[ "$ROCKY_DOCKER_VERSION" != 'CHANGE_ME' ]]
+test "$ROCKY_DOCKER_VERSION" != 'CHANGE_ME'
+```
+
+```bash
+source ~/vc-course/course-env.sh
 sudo dnf install -y \
   "docker-ce-$ROCKY_DOCKER_VERSION" \
   "docker-ce-cli-$ROCKY_DOCKER_VERSION" \
@@ -201,11 +298,29 @@ sudo dnf install -y \
 
 ```bash
 sudo systemctl enable --now docker
+```
+
+```bash
 systemctl is-active docker
+```
+
+```bash
 systemctl is-enabled docker
+```
+
+```bash
 sudo docker version
+```
+
+```bash
 sudo docker compose version
+```
+
+```bash
 sudo docker info
+```
+
+```bash
 sudo ss -lx | grep docker.sock || true
 ```
 
@@ -231,24 +346,51 @@ dpkg --get-selections \
 
 ```bash
 sudo apt update
+```
+
+```bash
 sudo apt install -y ca-certificates curl
+```
+
+```bash
 sudo install -m 0755 -d /etc/apt/keyrings
+```
+
+```bash
 sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
   -o /etc/apt/keyrings/docker.asc
+```
+
+```bash
 sudo chmod a+r /etc/apt/keyrings/docker.asc
 ```
 
 创建APT源：
 
+先查看当前代号和体系结构：
+
 ```bash
-sudo tee /etc/apt/sources.list.d/docker.sources > /dev/null <<EOF
+. /etc/os-release && printf 'codename=%s\n' "${UBUNTU_CODENAME:-$VERSION_CODENAME}"
+```
+
+```bash
+dpkg --print-architecture
+```
+
+执行`sudo vim /etc/apt/sources.list.d/docker.sources`，根据上面两条命令的实际输出填写`Suites`和`Architectures`：
+
+```text
 Types: deb
 URIs: https://download.docker.com/linux/ubuntu
-Suites: $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")
+Suites: jammy
 Components: stable
-Architectures: $(dpkg --print-architecture)
+Architectures: amd64
 Signed-By: /etc/apt/keyrings/docker.asc
-EOF
+```
+
+Ubuntu 22.04 amd64应分别为`jammy`和`amd64`；若实际输出不同，以实际值和教师验证结果为准。保存后更新索引：
+
+```bash
 sudo apt update
 ```
 
@@ -257,6 +399,12 @@ sudo apt update
 ```bash
 source ~/vc-course/course-env.sh
 ls -lh "$COURSE_MEDIA/docker-packages/ubuntu22.04/"
+```
+
+确认目录内容与教师清单一致后安装：
+
+```bash
+source ~/vc-course/course-env.sh
 sudo apt install -y "$COURSE_MEDIA"/docker-packages/ubuntu22.04/*.deb
 ```
 
@@ -272,7 +420,11 @@ apt list --all-versions docker-ce 2>/dev/null | sed -n '1,15p'
 
 ```bash
 source ~/vc-course/course-env.sh
-[[ "$UBUNTU_DOCKER_VERSION" != 'CHANGE_ME' ]]
+test "$UBUNTU_DOCKER_VERSION" != 'CHANGE_ME'
+```
+
+```bash
+source ~/vc-course/course-env.sh
 sudo apt install -y \
   "docker-ce=$UBUNTU_DOCKER_VERSION" \
   "docker-ce-cli=$UBUNTU_DOCKER_VERSION" \
@@ -287,10 +439,25 @@ sudo apt install -y \
 
 ```bash
 sudo systemctl enable --now docker
+```
+
+```bash
 systemctl is-active docker
+```
+
+```bash
 systemctl is-enabled docker
+```
+
+```bash
 sudo docker version
+```
+
+```bash
 sudo docker compose version
+```
+
+```bash
 sudo docker info
 ```
 
@@ -306,17 +473,21 @@ sudo docker info
 
 ```bash
 source ~/vc-course/course-env.sh
-VERIFY_IMAGE="$COURSE_REGISTRY/vc/verify:$COURSE_TAG"
-sudo docker pull "$VERIFY_IMAGE"
+sudo docker pull "$COURSE_REGISTRY/vc/verify:$COURSE_TAG"
 ```
 
 离线：
 
 ```bash
 source ~/vc-course/course-env.sh
-VERIFY_ARCHIVE="$COURSE_MEDIA/docker-images/vc-verify-$COURSE_TAG.tar"
-sha256sum "$VERIFY_ARCHIVE"
-sudo docker load -i "$VERIFY_ARCHIVE"
+sha256sum "$COURSE_MEDIA/docker-images/vc-verify-$COURSE_TAG.tar"
+```
+
+校验值与教师清单一致后导入：
+
+```bash
+source ~/vc-course/course-env.sh
+sudo docker load -i "$COURSE_MEDIA/docker-images/vc-verify-$COURSE_TAG.tar"
 ```
 
 校验值必须与教师镜像清单一致。
@@ -325,11 +496,14 @@ sudo docker load -i "$VERIFY_ARCHIVE"
 
 ```bash
 source ~/vc-course/course-env.sh
-VERIFY_IMAGE="$COURSE_REGISTRY/vc/verify:$COURSE_TAG"
 sudo docker image ls --digests
+```
+
+```bash
+source ~/vc-course/course-env.sh
 sudo docker run --rm \
   --name vc-verify-rocky \
-  "$VERIFY_IMAGE"
+  "$COURSE_REGISTRY/vc/verify:$COURSE_TAG"
 ```
 
 预期输出至少包含课程定义的`VC_DOCKER_OK`、容器架构和运行时信息。
@@ -340,10 +514,9 @@ sudo docker run --rm \
 
 ```bash
 source ~/vc-course/course-env.sh
-VERIFY_IMAGE="$COURSE_REGISTRY/vc/verify:$COURSE_TAG"
 sudo docker run --rm \
   --name vc-verify-ubuntu \
-  "$VERIFY_IMAGE"
+  "$COURSE_REGISTRY/vc/verify:$COURSE_TAG"
 ```
 
 两台主机应运行同一镜像摘要并得到相同应用结果。
@@ -352,17 +525,38 @@ sudo docker run --rm \
 
 #### 步骤14：输出结构化基线
 
-在两台主机分别执行：
+在两台主机分别使用终端录制：
 
 ```bash
-{
-  date -Is
-  cat /etc/os-release
-  sudo docker version
-  sudo docker compose version
-  sudo docker info
-  sudo docker image ls --digests
-} > ~/vc-course/evidence/lab06-docker-result.txt
+script -q ~/vc-course/evidence/lab06-docker-result.txt
+```
+
+```bash
+date -Is
+```
+
+```bash
+cat /etc/os-release
+```
+
+```bash
+sudo docker version
+```
+
+```bash
+sudo docker compose version
+```
+
+```bash
+sudo docker info
+```
+
+```bash
+sudo docker image ls --digests
+```
+
+```bash
+exit
 ```
 
 将两台文件分别重命名为：
@@ -428,8 +622,17 @@ lab06-学号-姓名/
 
 ```bash
 systemctl status docker --no-pager
+```
+
+```bash
 sudo journalctl -u docker -n 100 --no-pager
+```
+
+```bash
 sudo dockerd --validate 2>/dev/null || true
+```
+
+```bash
 df -hT /
 ```
 

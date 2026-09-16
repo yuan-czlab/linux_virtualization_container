@@ -6,9 +6,9 @@
 >
 > 实验方式：2—3人协作，个人操作与个人答辩
 >
-> 对应教材：《模块二 Docker容器化应用构建与交付》第11章
+> 对应学习通章节：[2.6 Kubernetes编排体验与综合项目](../../textbooks/virtualization-container/模块二/2.6-Kubernetes编排体验与综合项目.md)
 >
-> 知识前置：实验6—10全部容器能力和教材第11章Kubernetes对象
+> 知识前置：实验6—10全部容器能力和学习通章节2.6中的Kubernetes对象
 >
 > 状态依赖：实验10的`~/vc-course/lab10/techcorp-stack`、应用镜像、Compose运行证据和数据库备份；另需教师预建Kubernetes环境
 >
@@ -115,9 +115,16 @@ kubectl version --client
 教师提供个人kubeconfig后保存：
 
 ```bash
-source ~/vc-course/course-env.sh
 mkdir -p ~/.kube ~/vc-course/lab11/k8s ~/vc-course/evidence
+```
+
+```bash
+source ~/vc-course/course-env.sh
 [[ "$KUBECONFIG_SOURCE" != 'CHANGE_ME' && -r "$KUBECONFIG_SOURCE" ]]
+```
+
+```bash
+source ~/vc-course/course-env.sh
 install -m 600 "$KUBECONFIG_SOURCE" ~/.kube/config
 ```
 
@@ -126,11 +133,23 @@ install -m 600 "$KUBECONFIG_SOURCE" ~/.kube/config
 #### 步骤2：检查Context和权限
 
 ```bash
-source ~/vc-course/course-env.sh
 kubectl config current-context
+```
+
+```bash
 kubectl config get-contexts
+```
+
+```bash
 kubectl cluster-info
+```
+
+```bash
+source ~/vc-course/course-env.sh
 kubectl auth can-i get pods -n "$K8S_NAMESPACE"
+```
+
+```bash
 kubectl auth can-i delete namespaces
 ```
 
@@ -143,11 +162,23 @@ kubectl auth can-i delete namespaces
 ```bash
 source ~/vc-course/course-env.sh
 [[ "$K8S_CONTEXT" != 'CHANGE_ME' && "$K8S_NAMESPACE" != 'CHANGE_ME' ]]
-kubectl config use-context "$K8S_CONTEXT"
-kubectl config set-context --current --namespace="$K8S_NAMESPACE"
-kubectl config view --minify \
-  --output 'jsonpath={..namespace}'; echo
 ```
+
+```bash
+source ~/vc-course/course-env.sh
+kubectl config use-context "$K8S_CONTEXT"
+```
+
+```bash
+source ~/vc-course/course-env.sh
+kubectl config set-context --current --namespace="$K8S_NAMESPACE"
+```
+
+```bash
+kubectl config view --minify --output 'jsonpath={..namespace}'
+```
+
+命令输出必须与教师分配的命名空间一致。如果输出为空或错误，不得继续部署。
 
 后续命令仍建议在关键删除操作中显式写`-n "$K8S_NAMESPACE"`。
 
@@ -157,12 +188,16 @@ kubectl config view --minify \
 
 #### 步骤4：创建课程应用清单
 
-清单中的镜像从统一参数文件写入，必须是教师发布、集群能够拉取的固定镜像：
+先查看教师发布的固定镜像完整名称：
 
 ```bash
 source ~/vc-course/course-env.sh
-[[ "$K8S_IMAGE" != 'CHANGE_ME' ]]
-cat > ~/vc-course/lab11/k8s/vc-api.yaml <<YAML
+printf '%s\n' "$K8S_IMAGE"
+```
+
+输出不得为`CHANGE_ME`。执行`vim ~/vc-course/lab11/k8s/vc-api.yaml`，输入下列清单，并把`registry.example.invalid/vc/techcorp-api:course-fixed`替换为刚才显示的完整镜像名称：
+
+```yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -181,7 +216,7 @@ spec:
     spec:
       containers:
         - name: api
-          image: $K8S_IMAGE
+          image: registry.example.invalid/vc/techcorp-api:course-fixed
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -221,16 +256,25 @@ spec:
       port: 80
       targetPort: http
   type: ClusterIP
-YAML
 ```
+
+这里采用手工编辑，是为了让学习者读懂Deployment和Service的层级、缩进及对应关系，不使用脚本代替这一过程。
 
 #### 步骤5：检查清单对象
 
 ```bash
-grep -E '^kind:|^  name:|image:|replicas:|path:|type:' \
-  ~/vc-course/lab11/k8s/vc-api.yaml
-kubectl apply --dry-run=server \
-  -f ~/vc-course/lab11/k8s/vc-api.yaml
+grep -E '^kind:|^  name:|image:|replicas:|path:|type:' ~/vc-course/lab11/k8s/vc-api.yaml
+```
+
+```bash
+grep -n 'registry.example.invalid' ~/vc-course/lab11/k8s/vc-api.yaml
+```
+
+第二条命令应无输出。如果仍显示示例镜像，回到`vim`修改，不得带着占位值部署。
+
+```bash
+source ~/vc-course/course-env.sh
+kubectl apply --dry-run=server -f ~/vc-course/lab11/k8s/vc-api.yaml -n "$K8S_NAMESPACE"
 ```
 
 服务端dry-run通过后再实际应用。若学生权限不允许server dry-run，使用`--dry-run=client`并由教师统一验证。
@@ -240,23 +284,42 @@ kubectl apply --dry-run=server \
 #### 步骤6：应用YAML
 
 ```bash
-kubectl apply -f ~/vc-course/lab11/k8s/vc-api.yaml
-kubectl rollout status deployment/vc-api --timeout=120s
+source ~/vc-course/course-env.sh
+kubectl apply -f ~/vc-course/lab11/k8s/vc-api.yaml -n "$K8S_NAMESPACE"
+```
+
+```bash
+source ~/vc-course/course-env.sh
+kubectl rollout status deployment/vc-api --timeout=120s -n "$K8S_NAMESPACE"
 ```
 
 查看对象：
 
 ```bash
-kubectl get deployment,replicaset,pod,service -o wide
-kubectl get pods -l app=vc-api --show-labels
+source ~/vc-course/course-env.sh
+kubectl get deployment,replicaset,pod,service -o wide -n "$K8S_NAMESPACE"
+```
+
+```bash
+source ~/vc-course/course-env.sh
+kubectl get pods -l app=vc-api --show-labels -n "$K8S_NAMESPACE"
 ```
 
 #### 步骤7：查看Deployment和Pod细节
 
 ```bash
-kubectl describe deployment vc-api
-kubectl describe pods -l app=vc-api
-kubectl get events --sort-by=.metadata.creationTimestamp | tail -n 30
+source ~/vc-course/course-env.sh
+kubectl describe deployment vc-api -n "$K8S_NAMESPACE"
+```
+
+```bash
+source ~/vc-course/course-env.sh
+kubectl describe pods -l app=vc-api -n "$K8S_NAMESPACE"
+```
+
+```bash
+source ~/vc-course/course-env.sh
+kubectl get events --sort-by=.metadata.creationTimestamp -n "$K8S_NAMESPACE" | tail -n 30
 ```
 
 重点观察镜像、期望/可用副本、节点、Pod IP、探针、重启次数和事件。
@@ -264,16 +327,23 @@ kubectl get events --sort-by=.metadata.creationTimestamp | tail -n 30
 #### 步骤8：查看日志
 
 ```bash
-kubectl logs deployment/vc-api --tail=50
+source ~/vc-course/course-env.sh
+kubectl logs deployment/vc-api --tail=50 -n "$K8S_NAMESPACE"
 ```
 
 如果有多个Pod，查看具体Pod：
 
 ```bash
-kubectl get pods -l app=vc-api
-POD_NAME=$(kubectl get pods -l app=vc-api \
-  -o jsonpath='{.items[0].metadata.name}')
-test -n "$POD_NAME" && kubectl logs "$POD_NAME" --tail=50
+source ~/vc-course/course-env.sh
+kubectl get pods -l app=vc-api -n "$K8S_NAMESPACE"
+```
+
+为了体验查看某一个Pod的日志，下面保留一个小型Shell变量用法：先取得第一个匹配的Pod名称，再传给日志命令。它只服务于当前任务，不是批量脚本：
+
+```bash
+source ~/vc-course/course-env.sh
+POD_NAME=$(kubectl get pods -l app=vc-api -n "$K8S_NAMESPACE" -o jsonpath='{.items[0].metadata.name}')
+kubectl logs "$POD_NAME" --tail=50 -n "$K8S_NAMESPACE"
 ```
 
 ### 任务四：访问Service
@@ -281,20 +351,29 @@ test -n "$POD_NAME" && kubectl logs "$POD_NAME" --tail=50
 #### 步骤9：检查Service与后端
 
 ```bash
-kubectl get service vc-api
-kubectl get endpointslice -l kubernetes.io/service-name=vc-api
+source ~/vc-course/course-env.sh
+kubectl get service vc-api -n "$K8S_NAMESPACE"
+```
+
+```bash
+source ~/vc-course/course-env.sh
+kubectl get endpointslice -l kubernetes.io/service-name=vc-api -n "$K8S_NAMESPACE"
 ```
 
 Service的ClusterIP通常只在集群内部可达。使用端口转发建立本地体验通道：
 
 ```bash
-kubectl port-forward service/vc-api 18080:80
+source ~/vc-course/course-env.sh
+kubectl port-forward service/vc-api 18080:80 -n "$K8S_NAMESPACE"
 ```
 
 保持终端A运行，在终端B执行：
 
 ```bash
 curl --fail http://127.0.0.1:18080/health
+```
+
+```bash
 curl --fail http://127.0.0.1:18080/info
 ```
 
@@ -307,22 +386,40 @@ curl --fail http://127.0.0.1:18080/info
 #### 步骤10：扩容到3个副本
 
 ```bash
-kubectl scale deployment/vc-api --replicas=3
-kubectl rollout status deployment/vc-api --timeout=120s
-kubectl get pods -l app=vc-api -o wide
+source ~/vc-course/course-env.sh
+kubectl scale deployment/vc-api --replicas=3 -n "$K8S_NAMESPACE"
+```
+
+```bash
+source ~/vc-course/course-env.sh
+kubectl rollout status deployment/vc-api --timeout=120s -n "$K8S_NAMESPACE"
+```
+
+```bash
+source ~/vc-course/course-env.sh
+kubectl get pods -l app=vc-api -o wide -n "$K8S_NAMESPACE"
 ```
 
 记录新增Pod和所在节点。
 
 #### 步骤11：删除一个Pod观察恢复
 
-自动取得自己命名空间中一个明确的Pod名称并显示：
+先列出Pod，观察名称和创建时间：
 
 ```bash
-POD_NAME=$(kubectl get pods -l app=vc-api \
-  -o jsonpath='{.items[0].metadata.name}')
-printf 'selected_pod=%s\n' "$POD_NAME"
-printf '%s\n' "$POD_NAME" > ~/vc-course/evidence/lab11-selected-pod.txt
+source ~/vc-course/course-env.sh
+kubectl get pods -l app=vc-api -o wide -n "$K8S_NAMESPACE"
+```
+
+为防止删错对象，将第一个匹配的Pod名称持久保存：
+
+```bash
+source ~/vc-course/course-env.sh
+kubectl get pods -l app=vc-api -n "$K8S_NAMESPACE" -o jsonpath='{.items[0].metadata.name}' > ~/vc-course/evidence/lab11-selected-pod.txt
+```
+
+```bash
+cat ~/vc-course/evidence/lab11-selected-pod.txt
 ```
 
 确认输出不是空值，并且名称带有当前Deployment生成的`vc-api-`前缀。
@@ -330,14 +427,22 @@ printf '%s\n' "$POD_NAME" > ~/vc-course/evidence/lab11-selected-pod.txt
 执行删除前重新读取并验证对象，防止换终端后变量丢失或旧Pod名称已经失效：
 
 ```bash
+source ~/vc-course/course-env.sh
 POD_NAME=$(cat ~/vc-course/evidence/lab11-selected-pod.txt)
-if [[ -n "$POD_NAME" ]] && \
-   [[ "$(kubectl get pod "$POD_NAME" -o jsonpath='{.metadata.labels.app}' 2>/dev/null)" == 'vc-api' ]]; then
-  kubectl delete pod "$POD_NAME"
-  kubectl get pods -l app=vc-api -w
-else
-  echo '所选Pod不存在或不属于vc-api，未执行删除'
-fi
+kubectl get pod "$POD_NAME" -n "$K8S_NAMESPACE" -o jsonpath='{.metadata.labels.app}'
+```
+
+只有上一条命令明确输出`vc-api`时才执行删除：
+
+```bash
+source ~/vc-course/course-env.sh
+POD_NAME=$(cat ~/vc-course/evidence/lab11-selected-pod.txt)
+kubectl delete pod "$POD_NAME" -n "$K8S_NAMESPACE"
+```
+
+```bash
+source ~/vc-course/course-env.sh
+kubectl get pods -l app=vc-api -w -n "$K8S_NAMESPACE"
 ```
 
 看到旧Pod删除且新Pod创建后按`Ctrl+C`。Deployment期望副本仍为3。
@@ -345,10 +450,23 @@ fi
 #### 步骤12：缩容回2个副本
 
 ```bash
-kubectl scale deployment/vc-api --replicas=2
-kubectl rollout status deployment/vc-api --timeout=120s
-kubectl get deployment vc-api
-kubectl get pods -l app=vc-api
+source ~/vc-course/course-env.sh
+kubectl scale deployment/vc-api --replicas=2 -n "$K8S_NAMESPACE"
+```
+
+```bash
+source ~/vc-course/course-env.sh
+kubectl rollout status deployment/vc-api --timeout=120s -n "$K8S_NAMESPACE"
+```
+
+```bash
+source ~/vc-course/course-env.sh
+kubectl get deployment vc-api -n "$K8S_NAMESPACE"
+```
+
+```bash
+source ~/vc-course/course-env.sh
+kubectl get pods -l app=vc-api -n "$K8S_NAMESPACE"
 ```
 
 把YAML中的`replicas`也保持为2，避免下次`apply`覆盖命令式扩缩容结果而产生理解偏差。
@@ -358,13 +476,36 @@ kubectl get pods -l app=vc-api
 #### 步骤13：保存证据
 
 ```bash
-{
-  date -Is
-  kubectl config current-context
-  kubectl get deployment,replicaset,pod,service -o wide
-  kubectl describe deployment vc-api
-  kubectl get events --sort-by=.metadata.creationTimestamp
-} > ~/vc-course/evidence/lab11-k8s-result.txt
+script -q ~/vc-course/evidence/lab11-k8s-result.txt
+```
+
+录制开始后逐条执行：
+
+```bash
+date -Is
+```
+
+```bash
+kubectl config current-context
+```
+
+```bash
+source ~/vc-course/course-env.sh
+kubectl get deployment,replicaset,pod,service -o wide -n "$K8S_NAMESPACE"
+```
+
+```bash
+source ~/vc-course/course-env.sh
+kubectl describe deployment vc-api -n "$K8S_NAMESPACE"
+```
+
+```bash
+source ~/vc-course/course-env.sh
+kubectl get events --sort-by=.metadata.creationTimestamp -n "$K8S_NAMESPACE"
+```
+
+```bash
+exit
 ```
 
 检查文件不包含Token或证书内容。
@@ -374,16 +515,18 @@ kubectl get pods -l app=vc-api
 确认当前命名空间：
 
 ```bash
-kubectl config view --minify \
-  --output 'jsonpath={..namespace}'; echo
+kubectl config view --minify --output 'jsonpath={..namespace}'
 ```
 
 执行：
 
 ```bash
 source ~/vc-course/course-env.sh
-kubectl delete -f ~/vc-course/lab11/k8s/vc-api.yaml \
-  -n "$K8S_NAMESPACE"
+kubectl delete -f ~/vc-course/lab11/k8s/vc-api.yaml -n "$K8S_NAMESPACE"
+```
+
+```bash
+source ~/vc-course/course-env.sh
 kubectl get all -n "$K8S_NAMESPACE"
 ```
 
@@ -398,9 +541,20 @@ kubectl get all -n "$K8S_NAMESPACE"
 ```bash
 cd ~/vc-course/lab10/techcorp-stack
 sudo docker compose --env-file .env up -d
+```
+
+```bash
+cd ~/vc-course/lab10/techcorp-stack
 sudo docker compose --env-file .env ps
+```
+
+```bash
 source ~/vc-course/course-env.sh
 curl --fail "http://$UBUNTU_CLIENT_IP:8088/health"
+```
+
+```bash
+source ~/vc-course/course-env.sh
 curl --fail "http://$UBUNTU_CLIENT_IP:8088/api/info"
 ```
 
@@ -408,11 +562,13 @@ curl --fail "http://$UBUNTU_CLIENT_IP:8088/api/info"
 
 ```bash
 cd ~/vc-course/lab10/techcorp-stack
-VC_DB_ROOT_PASSWORD_VALUE=$(awk -F= '$1=="VC_DB_ROOT_PASSWORD" {print substr($0,index($0,"=")+1)}' .env)
 sudo docker compose --env-file .env exec -T db \
-  mysqldump -uroot -p"$VC_DB_ROOT_PASSWORD_VALUE" --databases vcdb \
+  sh -c 'mysqldump -uroot -p"$MYSQL_ROOT_PASSWORD" --databases "$MYSQL_DATABASE"' \
   > backup/vcdb-final.sql
-unset VC_DB_ROOT_PASSWORD_VALUE
+```
+
+```bash
+cd ~/vc-course/lab10/techcorp-stack
 test -s backup/vcdb-final.sql
 ```
 
@@ -422,15 +578,13 @@ test -s backup/vcdb-final.sql
 
 ```bash
 cd ~/vc-course/lab10/techcorp-stack
-sudo docker compose --env-file .env config --images \
-  | sort -u | tee evidence/compose-images.txt
+sudo docker compose --env-file .env config --images | sort -u | tee evidence/compose-images.txt
 ```
 
 建立独立交付目录。后续校验文件统一使用交付目录内的相对文件名，避免复制到目标主机后路径失效：
 
 ```bash
-VC_DELIVERY_DIR="$(readlink -f ~/vc-course/lab11/delivery)"
-install -d -m 700 "$VC_DELIVERY_DIR"
+install -d -m 700 ~/vc-course/lab11/delivery
 ```
 
 教师提供经过审核的明确导出命令。示例：
@@ -438,16 +592,21 @@ install -d -m 700 "$VC_DELIVERY_DIR"
 ```bash
 cd ~/vc-course/lab10/techcorp-stack
 source ~/vc-course/course-env.sh
-VC_DELIVERY_DIR="$(readlink -f ~/vc-course/lab11/delivery)"
-test -d "$VC_DELIVERY_DIR"
 sudo docker save \
-  -o "$VC_DELIVERY_DIR/vcstack-images.tar" \
+  -o ~/vc-course/lab11/delivery/vcstack-images.tar \
   "$COURSE_REGISTRY/vc/gateway:$COURSE_TAG" \
   "$COURSE_REGISTRY/vc/techcorp-api:$COURSE_TAG" \
   "$COURSE_REGISTRY/vc/mysql:$COURSE_TAG" \
   "$COURSE_REGISTRY/vc/redis:$COURSE_TAG"
-sudo chown "$(id -u):$(id -g)" "$VC_DELIVERY_DIR/vcstack-images.tar"
-cp backup/vcdb-final.sql "$VC_DELIVERY_DIR/"
+```
+
+```bash
+sudo chown "$(id -u):$(id -g)" ~/vc-course/lab11/delivery/vcstack-images.tar
+```
+
+```bash
+cd ~/vc-course/lab10/techcorp-stack
+cp backup/vcdb-final.sql ~/vc-course/lab11/delivery/
 ```
 
 #### 步骤17：打包项目配置
@@ -456,20 +615,42 @@ cp backup/vcdb-final.sql "$VC_DELIVERY_DIR/"
 
 ```bash
 cd ~/vc-course/lab10/techcorp-stack
-VC_DELIVERY_DIR="$(readlink -f ~/vc-course/lab11/delivery)"
-test -s "$VC_DELIVERY_DIR/vcstack-images.tar"
-test -s "$VC_DELIVERY_DIR/vcdb-final.sql"
-cp compose.yaml .env.example .gitignore "$VC_DELIVERY_DIR/"
-cp evidence/compose-images.txt "$VC_DELIVERY_DIR/image-manifest.txt"
-tar -czf "$VC_DELIVERY_DIR/vcstack-project.tar.gz" \
+test -s ~/vc-course/lab11/delivery/vcstack-images.tar
+```
+
+```bash
+cd ~/vc-course/lab10/techcorp-stack
+test -s ~/vc-course/lab11/delivery/vcdb-final.sql
+```
+
+```bash
+cd ~/vc-course/lab10/techcorp-stack
+cp compose.yaml .env.example .gitignore ~/vc-course/lab11/delivery/
+```
+
+```bash
+cd ~/vc-course/lab10/techcorp-stack
+cp evidence/compose-images.txt ~/vc-course/lab11/delivery/image-manifest.txt
+```
+
+```bash
+cd ~/vc-course/lab10/techcorp-stack
+tar -czf ~/vc-course/lab11/delivery/vcstack-project.tar.gz \
   compose.yaml .env.example .gitignore evidence/compose-images.txt
-(cd "$VC_DELIVERY_DIR" && \
-  sha256sum vcstack-images.tar vcdb-final.sql vcstack-project.tar.gz \
-    compose.yaml .env.example .gitignore image-manifest.txt \
-    > SHA256SUMS && \
-  sha256sum -c SHA256SUMS)
-find "$VC_DELIVERY_DIR" -maxdepth 1 -type f -printf '%f\n' | sort
-unset VC_DELIVERY_DIR
+```
+
+```bash
+cd ~/vc-course/lab11/delivery
+sha256sum vcstack-images.tar vcdb-final.sql vcstack-project.tar.gz compose.yaml .env.example .gitignore image-manifest.txt > SHA256SUMS
+```
+
+```bash
+cd ~/vc-course/lab11/delivery
+sha256sum -c SHA256SUMS
+```
+
+```bash
+find ~/vc-course/lab11/delivery -maxdepth 1 -type f -printf '%f\n' | sort
 ```
 
 交付清单必须说明`.env`或实际凭据由接收方安全提供，不包含在公开项目包中。此时`delivery`目录至少包含镜像归档、数据库备份、项目配置、镜像清单、项目归档和`SHA256SUMS`。
@@ -483,10 +664,19 @@ unset VC_DELIVERY_DIR
 ```bash
 source ~/vc-course/course-env.sh
 test -d ~/vc-course/lab11/delivery
+```
+
+```bash
 ssh rocky-server \
   'mkdir -p ~/vc-course && test ! -e ~/vc-course/final-delivery && install -d -m 700 ~/vc-course/final-delivery'
+```
+
+```bash
 scp -r ~/vc-course/lab11/delivery/. \
   rocky-server:~/vc-course/final-delivery/
+```
+
+```bash
 ssh rocky-server \
   'test -s ~/vc-course/final-delivery/SHA256SUMS && test -s ~/vc-course/final-delivery/vcstack-images.tar'
 ```
@@ -496,7 +686,14 @@ ssh rocky-server \
 ```bash
 cd ~/vc-course/final-delivery
 sha256sum -c SHA256SUMS
+```
+
+```bash
+cd ~/vc-course/final-delivery
 sudo docker load -i vcstack-images.tar
+```
+
+```bash
 sudo docker image ls --digests
 ```
 
@@ -505,37 +702,67 @@ sudo docker image ls --digests
 ```bash
 cd ~/vc-course/final-delivery
 cp .env.example .env
-TARGET_BIND_IP=$(ip route get 1.1.1.1 | awk 'NR==1 {for(i=1;i<=NF;i++) if($i=="src") print $(i+1)}')
-sed -i "s/^VC_BIND_IP=.*/VC_BIND_IP=$TARGET_BIND_IP/" .env
-chmod 600 .env
-vim .env
 ```
 
-确认`TARGET_BIND_IP`是目标主机固定地址，`.env`中不再含`CHANGE_ME`或`replace_me`。
+```bash
+ip -br -4 address show
+```
+
+根据网卡输出确认Rocky的固定IPv4地址。执行`vim ~/vc-course/final-delivery/.env`，把`VC_BIND_IP`和三个课堂密码项改为目标环境实际值。不使用批量替换脚本，让学习者逐项确认迁移配置。
+
+```bash
+cd ~/vc-course/final-delivery
+chmod 600 .env
+```
+
+检查占位值：
+
+```bash
+cd ~/vc-course/final-delivery
+grep -En '=(CHANGE_ME|replace_me)$|课程仓库|课程标签' .env
+```
+
+该命令应无输出；只要显示一行就不得启动。
 
 #### 步骤19：在目标主机启动
 
 ```bash
 cd ~/vc-course/final-delivery
 sudo docker compose --env-file .env config --quiet
+```
+
+```bash
+cd ~/vc-course/final-delivery
 sudo docker compose --env-file .env up -d
+```
+
+```bash
+cd ~/vc-course/final-delivery
 sudo docker compose --env-file .env ps
-TARGET_BIND_IP=$(awk -F= '$1=="VC_BIND_IP" {print substr($0,index($0,"=")+1)}' .env)
-curl --fail "http://$TARGET_BIND_IP:8088/health"
-curl --fail "http://$TARGET_BIND_IP:8088/api/info"
+```
+
+```bash
+source ~/vc-course/course-env.sh
+curl --fail "http://$ROCKY_SERVER_IP:8088/health"
+```
+
+```bash
+source ~/vc-course/course-env.sh
+curl --fail "http://$ROCKY_SERVER_IP:8088/api/info"
 ```
 
 如果需要恢复源数据库数据，在目标MySQL健康后执行：
 
 ```bash
 cd ~/vc-course/final-delivery
-VC_DB_ROOT_PASSWORD_VALUE=$(awk -F= '$1=="VC_DB_ROOT_PASSWORD" {print substr($0,index($0,"=")+1)}' .env)
 sudo docker compose --env-file .env exec -T db \
-  mysql -uroot -p"$VC_DB_ROOT_PASSWORD_VALUE" \
+  sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD"' \
   < vcdb-final.sql
-unset VC_DB_ROOT_PASSWORD_VALUE
-TARGET_BIND_IP=$(awk -F= '$1=="VC_BIND_IP" {print substr($0,index($0,"=")+1)}' .env)
-curl --fail "http://$TARGET_BIND_IP:8088/api/info"
+```
+
+```bash
+source ~/vc-course/course-env.sh
+curl --fail "http://$ROCKY_SERVER_IP:8088/api/info"
 ```
 
 从另一台主机访问目标地址，形成外部功能证据。
@@ -658,7 +885,13 @@ lab11-组号/
 
 ```bash
 kubectl config current-context
+```
+
+```bash
 kubectl config view --minify
+```
+
+```bash
 kubectl cluster-info
 ```
 
@@ -667,10 +900,13 @@ kubectl cluster-info
 ### 2. Pod为ImagePullBackOff
 
 ```bash
-POD_NAME=$(kubectl get pods -l app=vc-api \
-  -o jsonpath='{.items[0].metadata.name}')
-test -n "$POD_NAME" && kubectl describe pod "$POD_NAME"
-kubectl get events --sort-by=.metadata.creationTimestamp | tail -n 30
+source ~/vc-course/course-env.sh
+kubectl describe pods -l app=vc-api -n "$K8S_NAMESPACE"
+```
+
+```bash
+source ~/vc-course/course-env.sh
+kubectl get events --sort-by=.metadata.creationTimestamp -n "$K8S_NAMESPACE" | tail -n 30
 ```
 
 检查镜像完整名称、固定标签、集群到课程Registry的网络和教师预置拉取凭据。
@@ -680,10 +916,13 @@ kubectl get events --sort-by=.metadata.creationTimestamp | tail -n 30
 查看探针和应用日志：
 
 ```bash
-POD_NAME=$(kubectl get pods -l app=vc-api \
-  -o jsonpath='{.items[0].metadata.name}')
-test -n "$POD_NAME" && kubectl describe pod "$POD_NAME"
-test -n "$POD_NAME" && kubectl logs "$POD_NAME" --tail=100
+source ~/vc-course/course-env.sh
+kubectl describe pods -l app=vc-api -n "$K8S_NAMESPACE"
+```
+
+```bash
+source ~/vc-course/course-env.sh
+kubectl logs deployment/vc-api --tail=100 -n "$K8S_NAMESPACE"
 ```
 
 Running只说明容器进程存在，不代表应用通过就绪检查。
@@ -691,9 +930,18 @@ Running只说明容器进程存在，不代表应用通过就绪检查。
 ### 4. Service没有后端
 
 ```bash
-kubectl get service vc-api -o yaml
-kubectl get pods --show-labels
-kubectl get endpointslice -l kubernetes.io/service-name=vc-api
+source ~/vc-course/course-env.sh
+kubectl get service vc-api -o yaml -n "$K8S_NAMESPACE"
+```
+
+```bash
+source ~/vc-course/course-env.sh
+kubectl get pods --show-labels -n "$K8S_NAMESPACE"
+```
+
+```bash
+source ~/vc-course/course-env.sh
+kubectl get endpointslice -l kubernetes.io/service-name=vc-api -n "$K8S_NAMESPACE"
 ```
 
 重点比较Service selector与Pod label。
@@ -705,10 +953,29 @@ kubectl get endpointslice -l kubernetes.io/service-name=vc-api
 ```bash
 cd ~/vc-course/final-delivery
 sha256sum -c SHA256SUMS
+```
+
+```bash
 sudo docker image ls --digests
+```
+
+```bash
+cd ~/vc-course/final-delivery
 sudo docker compose --env-file .env config --quiet
+```
+
+```bash
+cd ~/vc-course/final-delivery
 sudo docker compose --env-file .env config --images
+```
+
+```bash
+cd ~/vc-course/final-delivery
 sudo docker compose --env-file .env ps -a
+```
+
+```bash
+cd ~/vc-course/final-delivery
 sudo docker compose --env-file .env logs --tail 100
 ```
 

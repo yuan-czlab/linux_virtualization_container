@@ -6,7 +6,7 @@
 >
 > 实验方式：个人
 >
-> 对应教材：《模块一 服务器虚拟化与云资源基础》第1章
+> 对应学习通章节：[1.1 虚拟化技术与嵌套实验环境](../../textbooks/virtualization-container/模块一/1.1-虚拟化技术与嵌套实验环境.md)
 >
 > 知识前置：《Linux操作系统》核心能力、计算机组成原理和网络基础
 >
@@ -141,49 +141,131 @@ ubuntu-client
 
 ```bash
 hostnamectl
+```
+
+```bash
 cat /etc/os-release
+```
+
+```bash
 uname -r
+```
+
+```bash
 lscpu | sed -n '1,25p'
+```
+
+```bash
 free -h
+```
+
+```bash
 df -hT /
+```
+
+```bash
 ip -brief address
+```
+
+```bash
 ip route
+```
+
+```bash
 systemctl is-active sshd
+```
+
+```bash
 getenforce
 ```
 
-将结果保存：
+不要把上述命令一次性粘贴运行。逐条观察后，创建证据目录，并使用`script`录制一次复查过程：
 
 ```bash
 mkdir -p ~/vc-course/evidence ~/vc-course/backup
-{
-  date -Is
-  hostnamectl
-  cat /etc/os-release
-  uname -r
-  lscpu
-  free -h
-  df -hT
-  ip -brief address
-  ip route
-  nmcli connection show --active
-  test -d ~/m1-project && echo 'm1_project=present' || echo 'm1_project=missing'
-  systemctl is-active sshd
-  systemctl is-active firewalld
-  getenforce
-} > ~/vc-course/evidence/lab01-rocky-server-baseline.txt
+```
+
+```bash
+script -q ~/vc-course/evidence/lab01-rocky-server-baseline.txt
+```
+
+终端出现新的Shell提示符后，逐条执行以下复查命令：
+
+```bash
+date -Is
+```
+
+```bash
+hostnamectl
+```
+
+```bash
+cat /etc/os-release
+```
+
+```bash
+uname -r
+```
+
+```bash
+lscpu
+```
+
+```bash
+free -h
+```
+
+```bash
+df -hT
+```
+
+```bash
+ip -brief address
+```
+
+```bash
+ip route
+```
+
+```bash
+nmcli connection show --active
+```
+
+```bash
+test -d ~/m1-project
+```
+
+```bash
+systemctl is-active sshd
+```
+
+```bash
+systemctl is-active firewalld
+```
+
+```bash
+getenforce
+```
+
+完成复查后退出录制子Shell：
+
+```bash
+exit
 ```
 
 预期：系统为Rocky Linux 9，`course-static`或教师登记的静态连接处于活动状态，`~/m1-project`存在，SSH与firewalld为active，根文件系统空间满足后续镜像需要，SELinux保持Enforcing。缺失项应先从`Linux-L4`恢复，不能在第二门课创建空目录冒充成果。
 
 #### 步骤3A：建立第二门课程统一参数文件
 
-课程媒体目录、镜像仓库和平台地址会随学期或机房变化，但它们不应散落在每条命令中反复手填。在`rocky-server`创建统一参数文件；如果文件已存在则保留原内容：
+课程媒体目录、镜像仓库和平台地址会随学期或机房变化，但它们不应散落在每条命令中反复手填。先确认统一参数文件是否已经存在：
 
 ```bash
-mkdir -p ~/vc-course
-if [[ ! -f ~/vc-course/course-env.sh ]]; then
-  cat > ~/vc-course/course-env.sh <<'EOF'
+test -e ~/vc-course/course-env.sh
+```
+
+返回0表示文件已经存在，先备份并核对原内容；返回1表示尚未创建。需要新建时，执行`vim ~/vc-course/course-env.sh`，输入以下内容：
+
+```text
 [[ -r "$HOME/m1-project/course-env.sh" ]] && source "$HOME/m1-project/course-env.sh"
 export COURSE_MEDIA='CHANGE_ME'
 export COURSE_REGISTRY='CHANGE_ME'
@@ -199,21 +281,44 @@ export K8S_CONTEXT='CHANGE_ME'
 export K8S_NAMESPACE='CHANGE_ME'
 export K8S_IMAGE='CHANGE_ME'
 export KUBECONFIG_SOURCE='CHANGE_ME'
-EOF
-  chmod 600 ~/vc-course/course-env.sh
-fi
-nano ~/vc-course/course-env.sh
 ```
 
-将教师本学期已经发布的值写在等号右侧，变量值保留单引号。尚未创建的OpenStack实例地址、个人私钥下载路径等动态值可以暂时保留`CHANGE_ME`，但进入对应实验前必须填写并通过该实验的单项检查。文件只保存地址、目录、命名空间和非机密标签，不保存平台密码或仓库密码。保存后核验本阶段立即要用的三项：
+将教师本学期已经发布的值写在等号右侧，变量值保留单引号。尚未创建的OpenStack实例地址、个人私钥下载路径等动态值可以暂时保留`CHANGE_ME`，但进入对应实验前必须填写并通过该实验的单项检查。文件只保存地址、目录、命名空间和非机密标签，不保存平台密码或仓库密码。
+
+设置文件权限并检查语法：
+
+```bash
+chmod 600 ~/vc-course/course-env.sh
+```
+
+```bash
+bash -n ~/vc-course/course-env.sh
+```
+
+语法检查通过后，载入参数并逐项核验本阶段立即要用的三个值：
 
 ```bash
 source ~/vc-course/course-env.sh
-printf 'media=%s\nregistry=%s\ntag=%s\n' \
-  "$COURSE_MEDIA" "$COURSE_REGISTRY" "$COURSE_TAG"
-[[ "$COURSE_MEDIA" != 'CHANGE_ME' && -d "$COURSE_MEDIA" ]]
-[[ "$COURSE_REGISTRY" != 'CHANGE_ME' ]]
-[[ "$COURSE_TAG" != 'CHANGE_ME' ]]
+```
+
+```bash
+printf 'media=%s\nregistry=%s\ntag=%s\n' "$COURSE_MEDIA" "$COURSE_REGISTRY" "$COURSE_TAG"
+```
+
+```bash
+test "$COURSE_MEDIA" != 'CHANGE_ME'
+```
+
+```bash
+test -d "$COURSE_MEDIA"
+```
+
+```bash
+test "$COURSE_REGISTRY" != 'CHANGE_ME'
+```
+
+```bash
+test "$COURSE_TAG" != 'CHANGE_ME'
 ```
 
 任一核验命令返回非0时先修正参数，不继续执行依赖该参数的实验。此文件随`VC-V0`及后续检查点保留；在`ubuntu-client`进入Docker阶段时，从`rocky-server`安全复制同一份非机密参数文件。
@@ -224,30 +329,86 @@ printf 'media=%s\nregistry=%s\ntag=%s\n' \
 
 ```bash
 mkdir -p ~/vc-course/evidence ~/vc-course/backup
-{
-  date -Is
-  hostnamectl
-  cat /etc/os-release
-  uname -r
-  lscpu
-  free -h
-  df -hT
-  ip -brief address
-  ip route
-  nmcli connection show --active
-  test -d ~/m1-project && echo 'm1_project=present' || echo 'm1_project=missing'
-  test -f ~/.ssh/config && sed -n '/^Host rocky-server$/,/^$/p' ~/.ssh/config || true
-  systemctl is-active ssh
-} > ~/vc-course/evidence/lab01-ubuntu-baseline.txt
+```
+
+```bash
+script -q ~/vc-course/evidence/lab01-ubuntu-baseline.txt
+```
+
+在录制子Shell中逐条执行：
+
+```bash
+date -Is
+```
+
+```bash
+hostnamectl
+```
+
+```bash
+cat /etc/os-release
+```
+
+```bash
+uname -r
+```
+
+```bash
+lscpu
+```
+
+```bash
+free -h
+```
+
+```bash
+df -hT
+```
+
+```bash
+ip -brief address
+```
+
+```bash
+ip route
+```
+
+```bash
+nmcli connection show --active
+```
+
+```bash
+test -d ~/m1-project
+```
+
+```bash
+sed -n '/^Host rocky-server$/,/^$/p' ~/.ssh/config
+```
+
+```bash
+systemctl is-active ssh
+```
+
+```bash
+exit
 ```
 
 确认`ubuntu-client`可以连接两台Rocky：
 
 ```bash
 ping -c 3 rocky-server
+```
+
+```bash
 ping -c 3 rocky-web
-ssh rocky-server 'hostname; date -Is'
-ssh rocky-web 'hostname; date -Is'
+```
+
+```bash
+ssh rocky-server hostname
+```
+
+```bash
+ssh rocky-web hostname
 ```
 
 若实验10没有保留SSH别名，使用`rocky-server@<ROCKY_SERVER_IP>`和`rocky-web@<ROCKY_WEB_IP>`连接。
@@ -256,17 +417,52 @@ ssh rocky-web 'hostname; date -Is'
 
 ```bash
 mkdir -p ~/vc-course/evidence
-{
-  date -Is
-  hostnamectl
-  cat /etc/os-release
-  ip -brief address
-  nmcli connection show --active
-  test -d ~/m1-project && echo 'm1_project=present' || echo 'm1_project=missing'
-  systemctl is-active sshd
-  systemctl is-active firewalld
-  systemctl is-active nginx
-} > ~/vc-course/evidence/lab01-rocky-web-baseline.txt
+```
+
+```bash
+script -q ~/vc-course/evidence/lab01-rocky-web-baseline.txt
+```
+
+在录制子Shell中逐条执行：
+
+```bash
+date -Is
+```
+
+```bash
+hostnamectl
+```
+
+```bash
+cat /etc/os-release
+```
+
+```bash
+ip -brief address
+```
+
+```bash
+nmcli connection show --active
+```
+
+```bash
+test -d ~/m1-project
+```
+
+```bash
+systemctl is-active sshd
+```
+
+```bash
+systemctl is-active firewalld
+```
+
+```bash
+systemctl is-active nginx
+```
+
+```bash
+exit
 ```
 
 > **验收点**：三台Linux主机的身份与基线文件均已确认，`ubuntu-client`能够通过原有SSH路径连接两台Rocky。
@@ -303,6 +499,9 @@ sudo systemctl poweroff
 
 ```bash
 grep -Ewo 'vmx|svm' /proc/cpuinfo | sort -u
+```
+
+```bash
 lscpu | grep -E 'Virtualization|虚拟化' || true
 ```
 
@@ -320,6 +519,9 @@ grep -Eoc '(vmx|svm)' /proc/cpuinfo
 
 ```bash
 ls -l /dev/kvm 2>/dev/null || echo '/dev/kvm 尚不存在'
+```
+
+```bash
 lsmod | grep '^kvm' || echo 'KVM模块尚未加载'
 ```
 
@@ -329,23 +531,22 @@ lsmod | grep '^kvm' || echo 'KVM模块尚未加载'
 
 #### 步骤9：生成环境检查表
 
-在`rocky-server`执行：
+在`rocky-server`执行`vim ~/vc-course/evidence/lab01-environment-check.txt`，依据前三台主机的录制文件填写以下结论表，不允许只复制命令而不判断结果：
 
-```bash
-{
-  echo 'course=virtualization-container'
-  echo "checked_at=$(date -Is)"
-  echo "host=$(hostname)"
-  echo "arch=$(uname -m)"
-  echo "kernel=$(uname -r)"
-  echo "virtualization_flags=$(grep -Ewo 'vmx|svm' /proc/cpuinfo | sort -u | paste -sd, -)"
-  echo "memory=$(free -h | awk '/^Mem:/ {print $2}')"
-  echo "root_free=$(df -hP / | awk 'NR==2 {print $4}')"
-  echo "ipv4=$(ip -4 -brief address | awk '$1!="lo" {print $3}' | paste -sd, -)"
-} | tee ~/vc-course/evidence/lab01-environment-check.txt
+```text
+course=virtualization-container
+checked_at=实际检查时间
+host=rocky-server
+arch=实际架构
+kernel=实际内核版本
+virtualization_flags=vmx或svm
+memory=实际总内存
+root_free=根文件系统实际可用空间
+ipv4=rocky-server实际IPv4地址
+linux_l4=通过或未通过，并写明依据
 ```
 
-打开文件核对，不能出现关键字段为空而不说明原因。
+打开文件复查，不能出现关键字段为空或保留“实际值”字样而不说明原因。
 
 #### 步骤10：创建VMware快照
 

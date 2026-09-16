@@ -6,7 +6,7 @@
 >
 > 实验方式：个人
 >
-> 对应教材：《模块一 服务器虚拟化与云资源基础》第5章
+> 对应学习通章节：[1.5 OpenStack云主机与模块综合交付](../../textbooks/virtualization-container/模块一/1.5-OpenStack云主机与模块综合交付.md)
 >
 > 知识前置：实验1—4中的虚拟机、镜像、规格和虚拟网络对象
 >
@@ -151,13 +151,41 @@ vc-key-<学号>
 
 ```bash
 source ~/vc-course/course-env.sh
+test "$OPENSTACK_KEY_SOURCE" != 'CHANGE_ME'
+```
+
+```bash
+source ~/vc-course/course-env.sh
+test -f "$OPENSTACK_KEY_SOURCE"
+```
+
+两项检查均成功后创建受控目录：
+
+```bash
 mkdir -p ~/vc-course/keys
-[[ "$OPENSTACK_KEY_SOURCE" != 'CHANGE_ME' && -f "$OPENSTACK_KEY_SOURCE" ]]
-OPENSTACK_KEY="$HOME/vc-course/keys/$(basename "$OPENSTACK_KEY_SOURCE")"
-mv "$OPENSTACK_KEY_SOURCE" "$OPENSTACK_KEY"
-chmod 600 "$OPENSTACK_KEY"
-sed -i '/^export OPENSTACK_KEY=/d' ~/vc-course/course-env.sh
-printf 'export OPENSTACK_KEY=%q\n' "$OPENSTACK_KEY" >> ~/vc-course/course-env.sh
+```
+
+把浏览器下载的私钥移入固定位置：
+
+```bash
+source ~/vc-course/course-env.sh
+mv "$OPENSTACK_KEY_SOURCE" ~/vc-course/keys/openstack-course.pem
+```
+
+```bash
+chmod 600 ~/vc-course/keys/openstack-course.pem
+```
+
+执行`vim ~/vc-course/course-env.sh`，删除旧的`OPENSTACK_KEY`行（如果存在），再加入：
+
+```text
+export OPENSTACK_KEY="$HOME/vc-course/keys/openstack-course.pem"
+```
+
+最后载入并检查权限：
+
+```bash
+source ~/vc-course/course-env.sh
 ls -l "$OPENSTACK_KEY"
 ```
 
@@ -201,7 +229,13 @@ ls -l "$OPENSTACK_KEY"
 
 ```bash
 hostname
+```
+
+```bash
 cat /etc/os-release
+```
+
+```bash
 ip -brief address
 ```
 
@@ -228,6 +262,10 @@ ip -brief address
 ```bash
 source ~/vc-course/course-env.sh
 ping -c 3 "$OPENSTACK_INSTANCE_IP"
+```
+
+```bash
+source ~/vc-course/course-env.sh
 nc -vz "$OPENSTACK_INSTANCE_IP" 22
 ```
 
@@ -247,9 +285,21 @@ ssh -i "$OPENSTACK_KEY" \
 
 ```bash
 hostnamectl
+```
+
+```bash
 cat /etc/os-release
+```
+
+```bash
 ip -brief address
+```
+
+```bash
 ip route
+```
+
+```bash
 curl -s http://169.254.169.254/ 2>/dev/null | head || true
 ```
 
@@ -305,10 +355,29 @@ vc-os-<学号>
 
 ```bash
 sudo virsh shutdown course-vm01
+```
+
+```bash
 sudo virsh shutdown course-vm02
+```
+
+等待两台虚拟机都正常关机后检查：
+
+```bash
 sudo virsh list --all
+```
+
+只有两台状态均为`shut off`才导出最终配置：
+
+```bash
 sudo virsh dumpxml course-vm01 > ~/vc-course/manifests/course-vm01-final.xml
+```
+
+```bash
 sudo virsh dumpxml course-vm02 > ~/vc-course/manifests/course-vm02-final.xml
+```
+
+```bash
 sudo virsh net-dumpxml default > ~/vc-course/manifests/default-network-final.xml
 ```
 
@@ -316,22 +385,46 @@ sudo virsh net-dumpxml default > ~/vc-course/manifests/default-network-final.xml
 
 #### 步骤15：生成资源清单
 
+使用终端录制生成模块一资产清单：
+
 ```bash
-{
-  date -Is
-  echo '=== host ==='
-  hostnamectl
-  sudo virt-host-validate qemu
-  echo '=== domains ==='
-  sudo virsh list --all
-  echo '=== networks ==='
-  sudo virsh net-list --all
-  echo '=== pools ==='
-  sudo virsh pool-list --all
-  echo '=== images ==='
-  sudo qemu-img info /var/lib/libvirt/images/course-vm01.qcow2
-  sudo qemu-img info /var/lib/libvirt/images/course-vm02.qcow2
-} > ~/vc-course/evidence/module1-inventory.txt
+script -q ~/vc-course/evidence/module1-inventory.txt
+```
+
+```bash
+date -Is
+```
+
+```bash
+hostnamectl
+```
+
+```bash
+sudo virt-host-validate qemu
+```
+
+```bash
+sudo virsh list --all
+```
+
+```bash
+sudo virsh net-list --all
+```
+
+```bash
+sudo virsh pool-list --all
+```
+
+```bash
+sudo qemu-img info /var/lib/libvirt/images/course-vm01.qcow2
+```
+
+```bash
+sudo qemu-img info /var/lib/libvirt/images/course-vm02.qcow2
+```
+
+```bash
+exit
 ```
 
 生成校验值：
@@ -341,6 +434,9 @@ sudo sha256sum \
   /var/lib/libvirt/images/course-vm01.qcow2 \
   /var/lib/libvirt/images/course-vm02.qcow2 \
   | sudo tee ~/vc-course/evidence/module1-image-SHA256SUMS > /dev/null
+```
+
+```bash
 sudo chown "$(id -u):$(id -g)" ~/vc-course/evidence/module1-image-SHA256SUMS
 ```
 
