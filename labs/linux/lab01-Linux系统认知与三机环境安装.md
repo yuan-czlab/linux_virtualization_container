@@ -164,14 +164,17 @@ msinfo32
 ```text
 D:\LinuxCourse\
 ├── ISO\
-├── VMwareInstaller\
-├── VirtualMachines\
+├── Virtual Machines\
 └── Evidence\
 ```
 
++ ISO：保存系统安装镜像；
++ VirtualMachines：保存虚拟机文件；
++ Evidence：保存环境基线和必要的验收材料。
+
 三台虚拟机必须分别保存到独立子目录，不得共用虚拟磁盘。
 
-#### 步骤3：校验安装文件
+#### 步骤3：校验安装文件(非必须)
 
 在PowerShell中执行，文件名按教师实际版本替换：
 
@@ -191,6 +194,66 @@ Get-FileHash 'D:\LinuxCourse\VMwareInstaller\VMware-workstation-full.exe' -Algor
 2. Windows中存在VMware Network Adapter VMnet8。
 3. “编辑 → 虚拟网络编辑器”中VMnet8使用NAT并启用DHCP。
 4. 记录VMnet8子网、掩码、NAT网关和DHCP范围，不照抄教材示例地址。
+
+##### 安装VMware
+
+1.解压安装包
+
+2.鼠标右击【VMware17.6】选择【以管理员身份运行】。
+
+<img src="./images/1-1.png" width="400">
+
+3.点击【下一步】。
+
+<img src="./images/1-2.png" width="400">
+
+4.勾选【我接受许可协议……】，点击【下一步】。
+
+<img src="./images/1-3.png" width="400">
+
+5.点击【更改】。
+
+<img src="./images/1-4.png" width="400">
+
+6.修改路径地址中的第一个字符C可更改安装位置（如：把C改为D软件将安装到D盘），点击【确定】。
+
+<img src="./images/1-5.png" width="400">
+
+7.点击【下一步】。
+
+<img src="./images/1-6.png" width="400">
+
+8.取消勾选【启动时……】和【加入Vmware……】，点击【下一步】。
+
+<img src="./images/1-7.png" width="400">
+
+9.点击【下一步】。
+
+<img src="./images/1-8.png" width="400">
+
+10.点击【安装】。
+
+<img src="./images/1-9.png" width="400">
+
+11.安装中……
+
+<img src="./images/1-10.png" width="400">
+
+12.点击【许可证】。
+
+<img src="./images/1-11.png" width="400">
+
+13.输入密钥【MC60H-DWHD5-H80U9-6V85M-8280D】，点击【输入】。
+
+<img src="./images/1-12.png" width="400">
+
+14.点击【完成】。
+
+<img src="./images/1-13.png" width="400">
+
+15.双击桌面【VMware……】图标启动软件。
+
+<img src="./images/1-14.png" width="400">
 
 ### 任务二：创建三台虚拟机
 
@@ -221,7 +284,7 @@ Get-FileHash 'D:\LinuxCourse\VMwareInstaller\VMware-workstation-full.exe' -Algor
 
 | 项目 | 设置 |
 |---|---|
-| 语言、键盘 | English (United States) / English (US) |
+| 语言、键盘 | 中文（中国）/ 简体中文 |
 | 时间 | Asia/Shanghai |
 | 安装目标 | 选择50GB虚拟磁盘，自动LVM |
 | 软件选择 | Minimal Install，不安装图形界面 |
@@ -666,6 +729,118 @@ Ubuntu通过右上角系统菜单正常关机，或在Terminal执行同一命令
 
 快照完成后重新开机，确认三台机器仍能使用规定账号登录。
 
+## 八、安装Rocky Linux和ubuntu的详细步骤
+
+### 安装Rocky Linux
+
+1.创建虚拟机
+
+<img src="./images/1-15.png" width="400">
+
+2.选择典型
+
+<img src="./images/1-16.png" width="400">
+
+3.选择稍后安装操作系统
+
+<img src="./images/1-17.png" width="400">
+
+4.客户机操作系统选择linux，版本选择Rocky Linux 64位
+
+<img src="./images/1-18.png" width="400">
+
+
+
+<img src="./images/1-19.png" width="400">
+
+5.虚拟机名称为：rocky-web或rocky-server 位置自定义
+
+<img src="./images/1-20.png" width="400">
+
+6.磁盘分区的大小为40G（根据自己电脑的实际情况来定）
+
+<img src="./images/1-21.png" width="400">
+
+7.完成基础内容的搭建
+
+<img src="./images/1-22.png" width="400">
+
+8.导入操作系统镜像
+
+<img src="./images/1-23.png" width="400">
+
+<img src="./images/1-24.png" width="400">
+
+9.启动操作系统
+
+<img src="./images/1-25.png" width="400">
+
+10.选择第一个进行安装
+
+<img src="./images/1-26.png" width="400">
+
+11.选择中文
+
+<img src="./images/1-27.png" width="400">
+
+12.配置磁盘，使用默认方式即可
+
+<img src="./images/1-28.png" width="400">
+
+<img src="./images/1-29.png" width="400">
+
+13.设置用户名和密码
+
+用户名:rocky-web或rocky-server
+
+密码：123456
+
+<img src="./images/1-30.png" width="400">
+
+<img src="./images/1-31.png" width="400">
+
+14.安装成功后重启
+
+<img src="./images/1-32.png" width="400">
+
+### 安装ubuntu
+
+<img src="./images/1-33.png" width="400">
+
+<img src="./images/1-34.png" width="400">
+
+<img src="./images/1-35.png" width="400">
+
+<img src="./images/1-36.png" width="400">
+
+<img src="./images/1-37.png" width="400">
+
+<img src="./images/1-38.png" width="400">
+
+<img src="./images/1-39.png" width="400">
+
+<img src="./images/1-40.png" width="400">
+
+<img src="./images/1-41.png" width="400">
+
+<img src="./images/1-42.png" width="400">
+
+<img src="./images/1-43.png" width="400">
+
+<img src="./images/1-44.png" width="400">
+
+<img src="./images/1-45.png" width="400">
+
+<img src="./images/1-46.png" width="400">
+
+<img src="./images/1-47.png" width="400">
+
+<img src="./images/1-48.png" width="400">
+
+<img src="./images/1-49.png" width="400">
+
+<img src="./images/1-50.png" width="400">
+
 ## 八、独立实践
 
 1. 分别使用什么命令查看发行版版本和Linux内核版本？
@@ -698,15 +873,10 @@ Ubuntu通过右上角系统菜单正常关机，或在Terminal执行同一命令
 
 ```text
 学号-姓名-实验01/
-├── README.md
-├── host-check.md
-├── three-host-baseline.md
-└── evidence/
-    ├── vmware-three-hosts.png
-    ├── rocky-server-baseline.txt
-    ├── rocky-web-baseline.txt
-    ├── ubuntu-client-desktop.png
-    └── snapshots.png
+├── 使用说明.md
+├── 主机检查.md
+├── 三台主机的基本信息.md
+└── 实验报告
 ```
 
 `README.md`回答独立实践问题；基线文件记录三台机器的身份、版本、资源、地址、网关、工具和快照。截图不得包含除本课程统一教学口令以外的个人密码、Token或私钥。
