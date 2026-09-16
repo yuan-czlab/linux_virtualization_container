@@ -4,9 +4,9 @@
 > 建议学时：4学时  
 > 实验方式：个人  
 > 对应教材：《模块一 Linux基础运维》第1—2章  
-> 知识前置：计算机组成原理基础、IP地址基本概念\
-> 状态依赖：无，使用具备虚拟化能力的Windows宿主机\
-> 建议起点：干净宿主机与教师发布的ISO资源\
+> 知识前置：计算机组成原理基础、IP地址基本概念
+> 状态依赖：无，使用具备虚拟化能力的Windows宿主机
+> 建议起点：干净宿主机与教师发布的ISO资源
 > 项目成果：两台Rocky Linux 9服务器、一台Ubuntu 22.04图形客户端、三机基线表和初始快照
 
 ## 一、项目情境
@@ -61,6 +61,9 @@ Windows 10/11宿主机
 
 ```bash
 cat /etc/os-release
+```
+
+```bash
 uname -r
 ```
 
@@ -278,8 +281,21 @@ rocky-server login:
 
 ```bash
 whoami
+```
+
+确认输出为`rocky-server`，再检查主机名：
+
+```bash
 hostnamectl --static
+```
+
+```bash
 id
+```
+
+`id`结果中应包含`wheel`组。最后验证sudo：
+
+```bash
 sudo whoami
 ```
 
@@ -293,14 +309,41 @@ sudo whoami
 
 ```bash
 cat /etc/rocky-release
+```
+
+```bash
 uname -r
+```
+
+```bash
 uname -m
+```
+
+```bash
 timedatectl
+```
+
+```bash
 ip -brief address
+```
+
+```bash
 ip route
+```
+
+```bash
 free -h
+```
+
+```bash
 lsblk -f
+```
+
+```bash
 df -h /
+```
+
+```bash
 systemctl --failed
 ```
 
@@ -316,59 +359,123 @@ sudo timedatectl set-timezone Asia/Shanghai
 
 ```bash
 cat /etc/rocky-release
+```
+
+```bash
 uname -m
+```
+
+```bash
 ip -brief address
+```
+
+```bash
 ip route
+```
+
+```bash
 cat /etc/resolv.conf
 ```
 
-只有系统为Rocky Linux 9 x86_64且基础网络正常时才继续。先备份仓库配置并记录实际备份位置：
+只有系统为Rocky Linux 9 x86_64且基础网络正常时才继续。先创建固定备份目录：
 
 ```bash
-ROCKY_REPO_BACKUP="/root/yum-repos-before-course-$(date +%F-%H%M%S)"
-sudo mkdir -p "$ROCKY_REPO_BACKUP"
-sudo cp -a /etc/yum.repos.d/. "$ROCKY_REPO_BACKUP/"
-printf '%s\n' "$ROCKY_REPO_BACKUP" | \
-  sudo tee /var/tmp/course-rocky-repo-backup.path
+sudo mkdir -p /root/yum-repos-before-course
+```
+
+复制现有仓库文件：
+
+```bash
+sudo cp -a /etc/yum.repos.d/. /root/yum-repos-before-course/
+```
+
+确认备份中存在repo文件：
+
+```bash
+sudo find /root/yum-repos-before-course -maxdepth 1 -type f -name '*.repo' -print
 ```
 
 使用开课前已验证的阿里云Rocky镜像配置：
 
 ```bash
-sudo find /etc/yum.repos.d -maxdepth 1 -type f -iname 'rocky*.repo' \
-  -exec sed -e 's|^mirrorlist=|#mirrorlist=|g' \
-  -e 's|^#baseurl=http://dl.rockylinux.org/$contentdir|baseurl=https://mirrors.aliyun.com/rockylinux|g' \
-  -i.bak '{}' +
+sudo find /etc/yum.repos.d -maxdepth 1 -type f -iname 'rocky*.repo' -exec sed -e 's|^mirrorlist=|#mirrorlist=|g' -e 's|^#baseurl=http://dl.rockylinux.org/$contentdir|baseurl=https://mirrors.aliyun.com/rockylinux|g' -i.bak '{}' +
+```
+
+清理旧缓存：
+
+```bash
 sudo dnf clean all
+```
+
+重新生成缓存：
+
+```bash
 sudo dnf makecache
+```
+
+最后查看启用的仓库：
+
+```bash
 dnf repolist
 ```
 
 如果`makecache`失败，停止安装，保留报错并检查地址、路由、DNS、系统时间和镜像配置。需要回退时执行：
 
 ```bash
-ROCKY_REPO_BACKUP=$(cat /var/tmp/course-rocky-repo-backup.path)
-sudo cp -a "$ROCKY_REPO_BACKUP"/. /etc/yum.repos.d/
+sudo cp -a /root/yum-repos-before-course/. /etc/yum.repos.d/
+```
+
+```bash
 sudo dnf clean all
+```
+
+```bash
 sudo dnf makecache
 ```
 
 仓库刷新成功后安装基础工具：
 
 ```bash
-sudo dnf install -y \
-  open-vm-tools vim-enhanced curl wget git tar \
-  bash-completion openssh-server openssh-clients chrony
+sudo dnf install -y open-vm-tools vim-enhanced curl wget git tar bash-completion openssh-server openssh-clients chrony
+```
 
+安装成功后启动本课程需要的服务：
+
+```bash
 sudo systemctl enable --now vmtoolsd sshd chronyd
 ```
 
 验证：
 
+逐项执行下面的命令，均应返回实际路径：
+
 ```bash
-for cmd in vim curl wget git tar ssh; do
-  command -v "$cmd" || echo "MISSING $cmd"
-done
+command -v vim
+```
+
+```bash
+command -v curl
+```
+
+```bash
+command -v wget
+```
+
+```bash
+command -v git
+```
+
+```bash
+command -v tar
+```
+
+```bash
+command -v ssh
+```
+
+服务检查应依次输出三个`active`：
+
+```bash
 systemctl is-active vmtoolsd sshd chronyd
 ```
 
@@ -382,11 +489,29 @@ systemctl is-active vmtoolsd sshd chronyd
 
 ```bash
 whoami
+```
+
+```bash
 hostnamectl --static
+```
+
+```bash
 id
+```
+
+```bash
 sudo whoami
+```
+
+```bash
 cat /etc/os-release
+```
+
+```bash
 ip -brief address
+```
+
+```bash
 ip route
 ```
 
@@ -394,41 +519,72 @@ ip route
 
 #### 步骤14：安装客户端工具
 
-先确认Ubuntu版本、代号和架构：
+先查看Ubuntu版本和代号：
 
 ```bash
-. /etc/os-release
-printf 'version=%s codename=%s arch=%s\n' \
-  "$VERSION_ID" "$VERSION_CODENAME" "$(dpkg --print-architecture)"
+grep -E '^(VERSION_ID|VERSION_CODENAME)=' /etc/os-release
+```
+
+再查看架构：
+
+```bash
+dpkg --print-architecture
 ```
 
 只有结果为`22.04`、`jammy`、`amd64`时才执行下面的课程源配置：
 
 ```bash
-UBUNTU_SOURCE_BACKUP="/etc/apt/sources.list.before-course.$(date +%F-%H%M%S)"
-sudo cp -a /etc/apt/sources.list "$UBUNTU_SOURCE_BACKUP"
-printf '%s\n' "$UBUNTU_SOURCE_BACKUP" | \
-  sudo tee /var/tmp/course-ubuntu-source-backup.path
+sudo cp -a /etc/apt/sources.list /etc/apt/sources.list.before-course
+```
 
-sudo tee /etc/apt/sources.list >/dev/null <<'EOF'
+确认备份存在：
+
+```bash
+sudo test -s /etc/apt/sources.list.before-course
+```
+
+使用Vim编辑软件源：
+
+```bash
+sudo vim /etc/apt/sources.list
+```
+
+删除原内容后写入以下配置。这里是配置文件正文，不是Shell脚本：
+
+```sources-list
 deb https://mirrors.aliyun.com/ubuntu/ jammy main restricted universe multiverse
 deb https://mirrors.aliyun.com/ubuntu/ jammy-updates main restricted universe multiverse
 deb https://mirrors.aliyun.com/ubuntu/ jammy-backports main restricted universe multiverse
 deb https://mirrors.aliyun.com/ubuntu/ jammy-security main restricted universe multiverse
-EOF
+```
 
+保存后清理旧缓存：
+
+```bash
 sudo apt clean
+```
+
+重新获取软件索引：
+
+```bash
 sudo apt update
 ```
 
-`apt update`失败时停止安装，检查网络、DNS、时间和镜像配置。需要回退时读取`/var/tmp/course-ubuntu-source-backup.path`并恢复原文件。索引刷新成功后安装：
+`apt update`失败时停止安装，检查网络、DNS、时间和镜像配置。需要回退时执行`sudo cp -a /etc/apt/sources.list.before-course /etc/apt/sources.list`。索引刷新成功后安装：
 
 ```bash
-sudo apt install -y \
-  open-vm-tools open-vm-tools-desktop \
-  openssh-client openssh-server curl wget git vim
+sudo apt install -y open-vm-tools open-vm-tools-desktop openssh-client openssh-server curl wget git vim
+```
 
+启用SSH服务：
+
+```bash
 sudo systemctl enable --now ssh
+```
+
+确认安装过程已完成且没有未保存的工作，再重启：
+
+```bash
 sudo reboot
 ```
 
@@ -436,7 +592,13 @@ sudo reboot
 
 ```bash
 systemctl is-active ssh
+```
+
+```bash
 command -v ssh
+```
+
+```bash
 command -v curl
 ```
 
@@ -448,7 +610,13 @@ command -v curl
 
 ```bash
 hostnamectl --static
+```
+
+```bash
 ip -brief address
+```
+
+```bash
 ip route
 ```
 
@@ -464,12 +632,16 @@ ip route
 
 #### 步骤16：验证网关
 
-三台机器分别执行：
+三台机器分别取得默认网关：
 
 ```bash
-GATEWAY=$(ip route show default | awk 'NR==1 {print $3}')
-printf 'gateway=%s\n' "$GATEWAY"
-ping -c 3 "$GATEWAY"
+ip route show default
+```
+
+下面的命令会从默认路由中读取实际网关并发送3个测试包：
+
+```bash
+ping -c 3 "$(ip route show default | awk 'NR==1 {print $3}')"
 ```
 
 公共互联网或公共DNS不可用不等于Linux安装失败；以VMnet8网关和校内资源验证为准。
@@ -555,6 +727,9 @@ Ubuntu通过右上角系统菜单正常关机，或在Terminal执行同一命令
 
 ```bash
 id rocky-server
+```
+
+```bash
 id rocky-web
 ```
 
@@ -574,6 +749,9 @@ id rocky-web
 
 ```bash
 ip -brief link
+```
+
+```bash
 ip route
 ```
 

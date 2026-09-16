@@ -4,9 +4,9 @@
 > 建议学时：4学时  
 > 实验方式：个人，可两人互相验证  
 > 对应教材：《模块一 Linux基础运维》第7—9章  
-> 知识前置：实验3及教材第7—9章中的文件、用户和权限概念\
-> 状态依赖：`rocky-server`普通管理账号；账号、组和共享目录由本实验创建\
-> 建议起点：`Linux-L0`或保留实验3成果的当前环境\
+> 知识前置：实验3及教材第7—9章中的文件、用户和权限概念
+> 状态依赖：`rocky-server`普通管理账号；账号、组和共享目录由本实验创建
+> 建议起点：`Linux-L0`或保留实验3成果的当前环境
 > 项目成果：部门账号、用户组、共享目录、sudo最小授权和跨账号权限验证记录
 
 ## 一、项目情境
@@ -71,11 +71,28 @@ sudo不是共享root密码，而是根据规则授权指定用户执行指定命
 
 ```bash
 hostnamectl --static
+```
+
+```bash
 whoami
+```
+
+```bash
 sudo -v
-getent passwd dev01 dev02 auditor juniorops || true
-getent group project-dev project-audit || true
-sudo test -e /srv/course-share && sudo find /srv/course-share -maxdepth 2 -ls || true
+```
+
+分别检查同名旧对象；无输出表示对象不存在：
+
+```bash
+getent passwd dev01 dev02 auditor juniorops
+```
+
+```bash
+getent group project-dev project-audit
+```
+
+```bash
+sudo ls -ld /srv/course-share
 ```
 
 主机名和用户名应均为`rocky-server`，`sudo -v`应成功。如果身份或sudo检查失败，停止实验并恢复`Linux-L0`。如果发现同名对象，先判断它们是否为前一次课程实验成果；不要重复创建，也不要直接删除未知账号或目录。
@@ -97,8 +114,11 @@ sudo test -e /srv/course-share && sudo find /srv/course-share -maxdepth 2 -ls ||
 #### 步骤1：检查现有名称
 
 ```bash
-getent group project-dev || true
-for u in dev01 dev02 auditor juniorops; do getent passwd "$u" || true; done
+getent group project-dev
+```
+
+```bash
+getent passwd dev01 dev02 auditor juniorops
 ```
 
 若名称已被其他实验占用，先确认来源，不要直接删除未知账号。
@@ -107,9 +127,21 @@ for u in dev01 dev02 auditor juniorops; do getent passwd "$u" || true; done
 
 ```bash
 sudo groupadd project-dev
+```
+
+```bash
 sudo useradd -m -s /bin/bash -G project-dev dev01
+```
+
+```bash
 sudo useradd -m -s /bin/bash -G project-dev dev02
+```
+
+```bash
 sudo useradd -m -s /bin/bash auditor
+```
+
+```bash
 sudo useradd -m -s /bin/bash juniorops
 ```
 
@@ -117,8 +149,17 @@ sudo useradd -m -s /bin/bash juniorops
 
 ```bash
 sudo passwd dev01
+```
+
+```bash
 sudo passwd dev02
+```
+
+```bash
 sudo passwd auditor
+```
+
+```bash
 sudo passwd juniorops
 ```
 
@@ -128,9 +169,21 @@ sudo passwd juniorops
 
 ```bash
 getent group project-dev
+```
+
+```bash
 id dev01
+```
+
+```bash
 id dev02
+```
+
+```bash
 id auditor
+```
+
+```bash
 id juniorops
 ```
 
@@ -142,10 +195,33 @@ id juniorops
 
 ```bash
 sudo mkdir -p /srv/course-share
+```
+
+```bash
 sudo chown root:project-dev /srv/course-share
+```
+
+```bash
 sudo chmod 2770 /srv/course-share
-sudo -u dev01 bash -c 'umask 0002; printf "project=v1\n" > /srv/course-share/project.conf'
+```
+
+由`dev01`创建一个组可写文件：
+
+```bash
+sudo -u dev01 install -m 664 /dev/null /srv/course-share/project.conf
+```
+
+写入初始内容：
+
+```bash
+printf 'project=v1\n' | sudo -u dev01 tee /srv/course-share/project.conf
+```
+
+```bash
 ls -ld /srv/course-share
+```
+
+```bash
 ls -l /srv/course-share/project.conf
 ```
 
@@ -157,7 +233,13 @@ ls -l /srv/course-share/project.conf
 
 ```bash
 sudo -u dev02 cat /srv/course-share/project.conf
-sudo -u dev02 bash -c 'printf "updated_by=dev02\n" >> /srv/course-share/project.conf'
+```
+
+```bash
+printf 'updated_by=dev02\n' | sudo -u dev02 tee -a /srv/course-share/project.conf
+```
+
+```bash
 sudo -u dev01 tail -n 2 /srv/course-share/project.conf
 ```
 
@@ -167,10 +249,9 @@ sudo -u dev01 tail -n 2 /srv/course-share/project.conf
 
 ```bash
 sudo -u auditor cat /srv/course-share/project.conf
-printf 'exit_code=%s\n' "$?"
 ```
 
-当前应提示Permission denied并返回非0，因为auditor不属于project-dev。
+当前应提示Permission denied，因为auditor不属于project-dev。错误信息本身就是拒绝证据，不需要再拼接第二条命令读取退出码。
 
 > **验收点**：记录拒绝访问的命令、错误和退出码。
 
@@ -183,16 +264,34 @@ printf 'exit_code=%s\n' "$?"
 确认`setfacl`可用：
 
 ```bash
-command -v setfacl || sudo dnf install -y acl
+command -v setfacl
+```
+
+如果没有输出，再安装ACL工具：
+
+```bash
+sudo dnf install -y acl
 ```
 
 创建审计组并添加用户：
 
 ```bash
 sudo groupadd project-audit
+```
+
+```bash
 sudo usermod -aG project-audit auditor
+```
+
+```bash
 sudo setfacl -m g:project-audit:rx /srv/course-share
+```
+
+```bash
 sudo setfacl -m g:project-audit:r-- /srv/course-share/project.conf
+```
+
+```bash
 getfacl /srv/course-share /srv/course-share/project.conf
 ```
 
@@ -202,8 +301,12 @@ getfacl /srv/course-share /srv/course-share/project.conf
 
 ```bash
 sudo -u auditor cat /srv/course-share/project.conf
-sudo -u auditor bash -c 'printf "audit-change\n" >> /srv/course-share/project.conf'
-printf 'write_exit_code=%s\n' "$?"
+```
+
+尝试追加内容：
+
+```bash
+printf 'audit-change\n' | sudo -u auditor tee -a /srv/course-share/project.conf
 ```
 
 读取应成功，写入应失败。
@@ -214,9 +317,39 @@ printf 'write_exit_code=%s\n' "$?"
 
 #### 步骤9：比较不同umask
 
+进入`dev01`的登录Shell：
+
 ```bash
-sudo -u dev01 bash -c 'umask 0022; touch /srv/course-share/from-0022.txt'
-sudo -u dev01 bash -c 'umask 0002; touch /srv/course-share/from-0002.txt'
+sudo -iu dev01
+```
+
+下面三条命令在`dev01`会话中逐条执行：
+
+```bash
+umask 0022
+```
+
+```bash
+touch /srv/course-share/from-0022.txt
+```
+
+```bash
+umask 0002
+```
+
+```bash
+touch /srv/course-share/from-0002.txt
+```
+
+退出`dev01`会话，回到`rocky-server`管理员账号：
+
+```bash
+exit
+```
+
+比较结果：
+
+```bash
 ls -l /srv/course-share/from-*.txt
 ```
 
@@ -230,15 +363,29 @@ ls -l /srv/course-share/from-*.txt
 
 ```bash
 sudo chmod 3770 /srv/course-share
-ls -ld /srv/course-share
-sudo -u dev01 touch /srv/course-share/dev01-owned.txt
-sudo -u dev02 rm /srv/course-share/dev01-owned.txt
-printf 'delete_exit_code=%s\n' "$?"
-test -f /srv/course-share/dev01-owned.txt
-printf 'file_still_exists=%s\n' "$?"
 ```
 
-权限数字`3`由SGID的`2`和Sticky bit的`1`组成。`dev02`应能够在目录中协作写入，但不能删除`dev01`拥有的文件；`delete_exit_code`应为非0，`file_still_exists`应为0。
+```bash
+ls -ld /srv/course-share
+```
+
+```bash
+sudo -u dev01 touch /srv/course-share/dev01-owned.txt
+```
+
+让`dev02`尝试删除该文件：
+
+```bash
+sudo -u dev02 rm /srv/course-share/dev01-owned.txt
+```
+
+预期出现`Operation not permitted`。确认文件仍然存在：
+
+```bash
+test -f /srv/course-share/dev01-owned.txt
+```
+
+权限数字`3`由SGID的`2`和Sticky bit的`1`组成。`dev02`应能够在目录中协作写入，但不能删除`dev01`拥有的文件；最后的`test`应安静地返回命令提示符。
 
 > **验收点**：目录同时显示SGID和Sticky bit，组成员不能删除其他成员拥有的文件。
 
@@ -268,7 +415,13 @@ juniorops ALL=(root) NOPASSWD: /usr/bin/systemctl is-active nginx
 
 ```bash
 sudo visudo -cf /etc/sudoers.d/course-juniorops
+```
+
+```bash
 sudo chmod 440 /etc/sudoers.d/course-juniorops
+```
+
+```bash
 sudo -l -U juniorops
 ```
 
@@ -280,8 +433,12 @@ sudo -l -U juniorops
 
 ```bash
 sudo -u juniorops sudo /usr/bin/systemctl is-active nginx
+```
+
+再验证未授权的重启操作：
+
+```bash
 sudo -u juniorops sudo /usr/bin/systemctl restart nginx
-printf 'restart_exit_code=%s\n' "$?"
 ```
 
 这里使用`NOPASSWD`只为便于在实验环境中验证这一条精确查询命令，不代表可以对任意命令免密授权。`is-active nginx`应被sudo规则允许，重启命令应被拒绝。没有授权`systemctl status`，也避免免密命令进入交互式分页器。
@@ -294,6 +451,9 @@ printf 'restart_exit_code=%s\n' "$?"
 
 ```bash
 sudo passwd -l juniorops
+```
+
+```bash
 sudo passwd -S juniorops
 ```
 
@@ -309,14 +469,40 @@ sudo passwd -u juniorops
 
 ```bash
 mkdir -p ~/m1-project/evidence
-{
-    getent group project-dev
-    getent group project-audit
-    ls -ld /srv/course-share
-    ls -l /srv/course-share
-    getfacl /srv/course-share /srv/course-share/project.conf
-    sudo -l -U juniorops
-} > ~/m1-project/evidence/lab04-permissions.txt
+```
+
+先写入开发组信息：
+
+```bash
+getent group project-dev > ~/m1-project/evidence/lab04-permissions.txt
+```
+
+依次追加审计组、目录、文件、ACL和sudo信息：
+
+```bash
+getent group project-audit >> ~/m1-project/evidence/lab04-permissions.txt
+```
+
+```bash
+ls -ld /srv/course-share >> ~/m1-project/evidence/lab04-permissions.txt
+```
+
+```bash
+ls -l /srv/course-share >> ~/m1-project/evidence/lab04-permissions.txt
+```
+
+```bash
+getfacl /srv/course-share /srv/course-share/project.conf >> ~/m1-project/evidence/lab04-permissions.txt
+```
+
+```bash
+sudo -l -U juniorops >> ~/m1-project/evidence/lab04-permissions.txt
+```
+
+查看证据文件：
+
+```bash
+less ~/m1-project/evidence/lab04-permissions.txt
 ```
 
 > **验收点**：证据文件包含用户组、目录、ACL和sudo授权信息。
@@ -369,6 +555,9 @@ mkdir -p ~/m1-project/evidence
 
 ```bash
 ls -ld /srv/course-share
+```
+
+```bash
 id dev01
 ```
 
@@ -388,18 +577,6 @@ id dev01
 
 ## 十二、环境保留与清理
 
-`dev01`、`dev02`、`auditor`、`juniorops`、`project-dev`、`project-audit`和`/srv/course-share`会继续用于模块一教材中的权限、ACL和sudo综合检查。实验4完成后不要立即删除。只有在整门Linux课程结束、或者明确要求重置环境时，才执行以下清理命令：
+`dev01`、`dev02`、`auditor`、`juniorops`、`project-dev`、`project-audit`和`/srv/course-share`会继续用于模块一教材中的权限、ACL和sudo综合检查。实验4完成后不要删除。
 
-```bash
-sudo rm -f /etc/sudoers.d/course-juniorops
-sudo visudo -c
-sudo rm -rf /srv/course-share /srv/web-content
-for u in dev01 dev02 auditor juniorops operator01; do
-    id "$u" >/dev/null 2>&1 && sudo userdel -r "$u"
-done
-for g in project-dev project-audit web-ops; do
-    getent group "$g" >/dev/null && sudo groupdel "$g"
-done
-```
-
-删除前必须确认这些名称确为本实验创建，不得在共享服务器执行整段清理命令。
+整门课程结束后如需重置，应先用`getent`、`id`和`find`逐项确认对象来源，再由教师按账号、组、sudo规则和目录分别清理。本实验不提供可整段复制的批量删除脚本，避免在共享服务器误删同名真实对象。

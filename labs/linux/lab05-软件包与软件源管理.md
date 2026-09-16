@@ -4,9 +4,9 @@
 > 建议学时：2学时  
 > 实验方式：个人  
 > 对应教材：《模块一 Linux基础运维》第10章  
-> 知识前置：实验4中的权限与sudo；教材第10章的软件包和仓库概念\
-> 状态依赖：`rocky-server`可登录、sudo可用；不依赖实验4创建的账号和共享目录\
-> 建议起点：`Linux-L0`或当前连续实验环境\
+> 知识前置：实验4中的权限与sudo；教材第10章的软件包和仓库概念
+> 状态依赖：`rocky-server`可登录、sudo可用；不依赖实验4创建的账号和共享目录
+> 建议起点：`Linux-L0`或当前连续实验环境
 > 项目成果：软件源基线、指定软件安装查询卸载记录及仓库回退文件
 
 ## 一、项目情境
@@ -75,11 +75,24 @@ DNF读取仓库配置
 
 ```bash
 mkdir -p ~/m1-project/evidence ~/m1-project/backup/repos
-{
-    cat /etc/os-release
-    dnf --version
-    sudo dnf repolist --enabled
-} | tee ~/m1-project/evidence/lab05-repo-baseline.txt
+```
+
+依次把系统、DNF和仓库信息写入同一证据文件：
+
+```bash
+cat /etc/os-release > ~/m1-project/evidence/lab05-repo-baseline.txt
+```
+
+```bash
+dnf --version >> ~/m1-project/evidence/lab05-repo-baseline.txt
+```
+
+```bash
+sudo dnf repolist --enabled >> ~/m1-project/evidence/lab05-repo-baseline.txt
+```
+
+```bash
+less ~/m1-project/evidence/lab05-repo-baseline.txt
 ```
 
 > **验收点**：文件中包含Rocky Linux版本、DNF版本和启用仓库列表。
@@ -88,6 +101,9 @@ mkdir -p ~/m1-project/evidence ~/m1-project/backup/repos
 
 ```bash
 sudo cp -a /etc/yum.repos.d/. ~/m1-project/backup/repos/
+```
+
+```bash
 find ~/m1-project/backup/repos -maxdepth 1 -type f -printf '%f\n' | sort
 ```
 
@@ -95,10 +111,9 @@ find ~/m1-project/backup/repos -maxdepth 1 -type f -printf '%f\n' | sort
 
 ```bash
 test -n "$(find ~/m1-project/backup/repos -maxdepth 1 -type f -print -quit)"
-echo $?
 ```
 
-> **验收点**：退出码为0，备份目录中存在`.repo`文件。
+> **验收点**：命令安静地返回提示符，且备份目录中存在`.repo`文件。
 
 #### 步骤3：检查仓库配置关键字段
 
@@ -114,6 +129,9 @@ grep -RHE '^\[(.+)\]|^baseurl=|^mirrorlist=|^metalink=|^enabled=|^gpgcheck=' /et
 
 ```bash
 sudo dnf makecache
+```
+
+```bash
 sudo dnf repolist --enabled
 ```
 
@@ -125,7 +143,13 @@ sudo dnf repolist --enabled
 
 ```bash
 dnf search tree
+```
+
+```bash
 dnf info tree
+```
+
+```bash
 dnf repoquery --available tree
 ```
 
@@ -137,8 +161,17 @@ dnf repoquery --available tree
 
 ```bash
 sudo dnf install -y tree jq
+```
+
+```bash
 rpm -q tree jq
+```
+
+```bash
 command -v tree
+```
+
+```bash
 command -v jq
 ```
 
@@ -148,8 +181,17 @@ command -v jq
 
 ```bash
 rpm -qi tree
+```
+
+```bash
 rpm -ql tree | sed -n '1,40p'
+```
+
+```bash
 rpm -qf "$(command -v tree)"
+```
+
+```bash
 dnf repoquery --requires tree | sed -n '1,40p'
 ```
 
@@ -159,6 +201,9 @@ dnf repoquery --requires tree | sed -n '1,40p'
 
 ```bash
 tree -L 2 ~/m1-project
+```
+
+```bash
 printf '{"course":"linux","status":"ready"}\n' | jq .
 ```
 
@@ -180,8 +225,14 @@ sudo dnf remove tree --assumeno
 
 ```bash
 sudo dnf remove -y tree
+```
+
+```bash
 rpm -q tree
-command -v tree || true
+```
+
+```bash
+command -v tree
 ```
 
 `rpm -q tree`应提示未安装，`command -v`不应再找到命令。

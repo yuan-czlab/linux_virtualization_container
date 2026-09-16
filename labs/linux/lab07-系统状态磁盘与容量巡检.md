@@ -4,9 +4,9 @@
 > 建议学时：2学时  
 > 实验方式：个人  
 > 对应教材：《模块一 Linux基础运维》第12章  
-> 知识前置：实验6中的进程、服务、日志和退出状态\
-> 状态依赖：实验2起持续保留的`~/m1-project`；不依赖`course-demo.service`继续运行\
-> 建议起点：保留实验2—6成果的当前环境\
+> 知识前置：实验6中的进程、服务、日志和退出状态
+> 状态依赖：实验2起持续保留的`~/m1-project`；不依赖`course-demo.service`继续运行
+> 建议起点：保留实验2—6成果的当前环境
 > 项目成果：CPU、负载、内存、磁盘、文件系统、进程和容量巡检表
 
 ## 一、项目情境
@@ -58,10 +58,9 @@
 
 ```bash
 test -d "$HOME/m1-project"
-echo "project_dir_check=$?"
 ```
 
-只有`project_dir_check=0`时才继续。若结果不是0，恢复实验2起持续保留的项目目录，不得建立同名空目录代替。检查通过后创建本实验自己的证据目录：
+命令安静返回提示符才继续。若提示目录不存在，恢复实验2起持续保留的项目目录，不得建立同名空目录代替。检查通过后创建本实验自己的证据目录：
 
 ```bash
 mkdir -p "$HOME/m1-project/evidence"
@@ -82,8 +81,17 @@ mkdir -p "$HOME/m1-project/evidence"
 
 ```bash
 uptime
+```
+
+```bash
 nproc
+```
+
+```bash
 free -h
+```
+
+```bash
 top
 ```
 
@@ -97,7 +105,13 @@ top
 
 ```bash
 ps -eo pid,ppid,user,stat,%cpu,%mem,comm --sort=-%cpu | head -10
+```
+
+```bash
 ps -eo pid,ppid,user,stat,%cpu,%mem,comm --sort=-%mem | head -10
+```
+
+```bash
 ps -ef | wc -l
 ```
 
@@ -109,10 +123,25 @@ ps -ef | wc -l
 
 ```bash
 lsblk -o NAME,TYPE,SIZE,FSTYPE,MOUNTPOINTS
+```
+
+```bash
 findmnt
+```
+
+```bash
 df -hT
+```
+
+```bash
 df -i
+```
+
+```bash
 du -sh ~/m1-project
+```
+
+```bash
 du -h --max-depth=1 ~/m1-project | sort -h
 ```
 
@@ -126,19 +155,27 @@ du -h --max-depth=1 ~/m1-project | sort -h
 
 ```bash
 yes > /dev/null &
-LAB07_PID=$!
-printf '%s\n' "$LAB07_PID" > ~/m1-project/evidence/lab07-cpu.pid
-printf 'lab07_pid=%s\n' "$LAB07_PID"
 ```
 
-PID同时保存到证据文件，后续步骤即使更换终端也能继续；终止前仍要核对该PID对应的命令。
+终端会显示方括号中的任务号和进程PID。立即把最新启动的`yes`进程PID保存到证据文件：
+
+```bash
+pgrep -n -x yes | tee ~/m1-project/evidence/lab07-cpu.pid
+```
+
+后续步骤即使更换终端也能继续；终止前仍要核对该PID对应的命令。
 
 #### 步骤2：收集证据
 
 ```bash
-LAB07_PID=$(cat ~/m1-project/evidence/lab07-cpu.pid)
-ps -p "$LAB07_PID" -o pid,ppid,user,stat,%cpu,%mem,etime,cmd
-top -b -n 1 -p "$LAB07_PID" | tail -5
+ps -p "$(cat ~/m1-project/evidence/lab07-cpu.pid)" -o pid,ppid,user,stat,%cpu,%mem,etime,cmd
+```
+
+```bash
+top -b -n 1 -p "$(cat ~/m1-project/evidence/lab07-cpu.pid)" | tail -5
+```
+
+```bash
 uptime
 ```
 
@@ -147,44 +184,79 @@ uptime
 #### 步骤3：终止并复测
 
 ```bash
-LAB07_PID=$(cat ~/m1-project/evidence/lab07-cpu.pid)
-if ps -p "$LAB07_PID" -o comm= | grep -qx 'yes'; then
-  kill "$LAB07_PID"
-  sleep 1
-  ps -p "$LAB07_PID" -o pid,stat,cmd
-  printf 'ps_exit_code=%s\n' "$?"
-else
-  echo "PID $LAB07_PID 已不存在或不是yes进程，拒绝终止"
-fi
+ps -p "$(cat ~/m1-project/evidence/lab07-cpu.pid)" -o pid,user,comm,args
 ```
 
-普通`kill`发送TERM信号，让程序有机会正常退出。只有确认程序无法响应时才考虑KILL信号。
+使用精确匹配再次确认进程命令名为`yes`：
+
+```bash
+ps -p "$(cat ~/m1-project/evidence/lab07-cpu.pid)" -o comm= | grep -qx 'yes'
+```
+
+上一条命令安静返回时，才终止这个PID：
+
+```bash
+kill "$(cat ~/m1-project/evidence/lab07-cpu.pid)"
+```
+
+等待命令提示符重新出现后复查：
+
+```bash
+ps -p "$(cat ~/m1-project/evidence/lab07-cpu.pid)" -o pid,stat,cmd
+```
+
+复查预期只显示表头或提示进程不存在。普通`kill`发送TERM信号，让程序有机会正常退出。只有确认程序无法响应时才考虑KILL信号。
 
 > **验收点**：异常进程已经不存在，记录终止前后证据。
 
 ### 任务五：生成巡检报告
 
 ```bash
-REPORT=~/m1-project/evidence/lab07-health-report.txt
-{
-    printf '=== BASIC ===\n'
-    date
-    hostname
-    uptime
-    printf '\n=== CPU AND MEMORY ===\n'
-    nproc
-    free -h
-    printf '\n=== TOP PROCESSES ===\n'
-    ps -eo pid,user,%cpu,%mem,comm --sort=-%cpu | head -10
-    printf '\n=== STORAGE ===\n'
-    lsblk -o NAME,TYPE,SIZE,FSTYPE,MOUNTPOINTS
-    df -hT
-    df -i
-    printf '\n=== FAILED SERVICES ===\n'
-    systemctl --failed --no-pager
-} > "$REPORT"
-wc -l "$REPORT"
-sed -n '1,120p' "$REPORT"
+date > ~/m1-project/evidence/lab07-health-report.txt
+```
+
+下面各项逐条追加到同一文件：
+
+```bash
+hostname >> ~/m1-project/evidence/lab07-health-report.txt
+```
+
+```bash
+uptime >> ~/m1-project/evidence/lab07-health-report.txt
+```
+
+```bash
+nproc >> ~/m1-project/evidence/lab07-health-report.txt
+```
+
+```bash
+free -h >> ~/m1-project/evidence/lab07-health-report.txt
+```
+
+```bash
+ps -eo pid,user,%cpu,%mem,comm --sort=-%cpu | head -10 >> ~/m1-project/evidence/lab07-health-report.txt
+```
+
+```bash
+lsblk -o NAME,TYPE,SIZE,FSTYPE,MOUNTPOINTS >> ~/m1-project/evidence/lab07-health-report.txt
+```
+
+```bash
+df -hT >> ~/m1-project/evidence/lab07-health-report.txt
+```
+
+```bash
+df -i >> ~/m1-project/evidence/lab07-health-report.txt
+```
+
+```bash
+systemctl --failed --no-pager >> ~/m1-project/evidence/lab07-health-report.txt
+```
+
+查看报告：
+
+```bash
+less ~/m1-project/evidence/lab07-health-report.txt
 ```
 
 在报告末尾手工补充三条结论：当前是否存在CPU、内存或磁盘风险，判断依据是什么。
@@ -243,7 +315,7 @@ sed -n '1,120p' "$REPORT"
 确认没有遗留实验进程：
 
 ```bash
-pgrep -a yes || true
+pgrep -a -x yes
 ```
 
 若存在本实验创建的`yes`进程，只终止对应PID。保留巡检报告供模块验收。

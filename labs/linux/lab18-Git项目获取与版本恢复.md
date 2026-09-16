@@ -1,197 +1,429 @@
 # 实验18：Git项目获取与版本恢复
 
-> 所属模块：模块三 企业服务部署与综合运维  
-> 建议学时：2学时  
-> 实验方式：个人  
-> 对应教材：《模块三 企业服务部署与综合运维》第29章  
-> 知识前置：教材第29章以及文件、文本和版本恢复概念\
-> 状态依赖：`rocky-server`和可用软件源；仓库及全部练习文件由本实验创建，不依赖Redis数据\
-> 建议起点：`Linux-L2`或当前连续实验环境\
-> 项目成果：一个本地运维仓库、一个裸仓库、一个克隆副本、至少两次有效提交和一次版本恢复记录
+> 所属模块：模块三 企业服务器部署与综合运维
+> 建议学时：2学时
+> 实验方式：个人
+> 对应教材：3.5 Git与运维版本管理
+> 知识前置：已学习教材3.5，能够使用vim创建文本文件，理解工作区、暂存区和提交
+> 状态依赖：`rocky-server`和可用课程软件源；不依赖实验17的Redis数据
+> 建议起点：`Linux-L2`或当前连续实验环境
+> 项目成果：运维工作仓库、裸仓库、协作副本、三次有效提交、稳定标签和版本恢复证据
 
 ## 一、项目情境
 
-TechCorp服务器已经部署了多项服务。管理员需要记录站点说明、巡检文档和经过脱敏的配置模板，并能够在文件误改、误删后快速恢复。本实验使用本地仓库模拟团队仓库，不依赖GitHub等互联网平台。
+TechCorp已经部署Nginx、MySQL、MongoDB和Redis。配置经过多次修改后，仅靠“最终版”“最终版2”等文件名无法说明哪个版本通过验收，也不能可靠恢复误改。
 
-> Git只能恢复已经提交或暂存过的内容。数据库文件、密码、私钥和运行日志不应直接提交到仓库。
+你需要为团队建立一个Linux运维资料仓库，保存以下内容：
+
+- 服务端口与开放策略；
+- 脱敏后的Nginx配置模板；
+- 运维交接检查表；
+- 后续实验要加入的服务器巡检脚本。
+
+同时必须确保密码、私钥、日志、数据库转储和运行数据不进入Git。实验使用同机裸仓库模拟团队远程仓库，不依赖互联网账号。
 
 ## 二、实验目标
 
 ### 1. 知识目标
 
 1. 说明工作区、暂存区、本地仓库和远程仓库的关系。
-2. 区分`clone`、`pull`、`add`、`commit`和`restore`的用途。
-3. 理解提交是可追溯的版本记录，不等同于普通文件复制。
+2. 说明普通仓库与裸仓库的区别。
+3. 区分`git diff`与`git diff --cached`。
+4. 说明`.gitignore`的作用与边界。
+5. 根据文件状态选择恢复方法。
 
 ### 2. 能力目标
 
-1. 安装Git并完成用户身份配置。
-2. 初始化仓库，编写`.gitignore`并完成两次提交。
-3. 建立本地裸仓库，完成推送、克隆和拉取。
-4. 恢复未提交的误改、误删文件，并验证恢复结果。
+1. 初始化以`main`为默认分支的仓库并配置本地身份。
+2. 精确暂存文件，审查差异并形成小步提交。
+3. 创建裸仓库，完成推送、克隆和快进拉取。
+4. 恢复未暂存误改、误暂存和误删文件。
+5. 形成可由实验19和实验20继续使用的仓库。
 
-### 3. 素质目标
+### 3. 安全与规范目标
 
-1. 提交前先检查差异，避免密码、私钥和临时文件进入仓库。
-2. 使用能够说明变更目的的提交信息。
-3. 恢复前先确认目标版本和影响范围，不盲目覆盖工作成果。
+1. 不使用`git add .`盲目暂存整个运维目录。
+2. 不提交密码、令牌、私钥、日志或数据库备份。
+3. 恢复前先查看状态和差异。
+4. 不使用`git reset --hard`处理本实验的普通误改。
+5. 不把同机裸仓库误认为异机备份。
 
-## 三、知识准备
+## 三、最终目录规划
+
+实验完成后应形成：
 
 ```text
-工作区 --git add--> 暂存区 --git commit--> 本地仓库
-                                         |
-                                         +--git push--> 裸仓库（模拟远程仓库）
-                                                            |
-                                                            +--git clone/pull--> 另一工作副本
+~/m1-project/
+├── git-lab/                         # 主工作仓库
+│   ├── .git/
+│   ├── .gitignore
+│   ├── README.md
+│   ├── docs/
+│   │   ├── handover.md
+│   │   └── service-map.md
+│   ├── templates/
+│   │   └── techcorp.conf.example
+│   └── scripts/                     # 实验19继续使用
+├── git-server/
+│   └── techcorp.git/                # 模拟团队中心的裸仓库
+├── git-review/                      # 模拟另一名管理员的副本
+└── evidence/
+    └── lab18-git-*.txt
 ```
 
-| 命令 | 本实验中的用途 |
-|---|---|
-| `git status` | 查看文件处于未跟踪、已修改还是已暂存状态 |
-| `git diff` | 查看尚未暂存的内容变化 |
-| `git diff --cached` | 查看将要提交的内容 |
-| `git add` | 将确认过的变化放入暂存区 |
-| `git commit` | 形成一次有说明的本地版本记录 |
-| `git log` | 查看历史提交 |
-| `git restore` | 恢复工作区或暂存区文件 |
-| `git clone` | 从已有仓库创建完整工作副本 |
-| `git pull` | 获取并合并远端的新提交 |
+所有目录和文件都会在下面明确创建。不得假设`README.md`、`docs`或模板已经存在。
 
-## 四、实验环境
+## 四、任务一：检查环境并安装Git
 
-- `rocky-server`运行Rocky Linux 9，本实验回到数据与运维服务器完成。
-- 普通用户具有`sudo`权限。
-- 使用目录`~/m1-project/git-lab`。
-- 本实验不要求注册外部代码托管账号。
-
-## 五、项目任务
-
-1. 安装Git并设置实验身份。
-2. 建立运维资料仓库和忽略规则。
-3. 完成初始版本和配置模板更新版本。
-4. 建立本地裸仓库并完成首次推送。
-5. 从裸仓库克隆，模拟另一名管理员提交更新。
-6. 在原工作目录拉取更新。
-7. 模拟文件误改和误删，使用Git恢复。
-
-## 六、实验步骤
-
-### 任务一：安装并检查Git
+### 步骤1：确认主机
 
 ```bash
-test "$(hostnamectl --static)" = 'rocky-server' && echo HOST_PASS || echo HOST_FAIL
+hostnamectl --static
 ```
+
+预期为`rocky-server`。如果不是，切换到正确虚拟机。
+
+### 步骤2：确认项目根目录
+
+```bash
+ls -ld ~/m1-project
+```
+
+如果不存在，创建它：
+
+```bash
+mkdir -p ~/m1-project
+```
+
+### 步骤3：创建证据目录
+
+```bash
+mkdir -p ~/m1-project/evidence
+```
+
+### 步骤4：安装Git
 
 ```bash
 sudo dnf install -y git
+```
+
+### 步骤5：查看版本
+
+```bash
 git --version
-mkdir -p ~/m1-project/evidence ~/m1-project/backup ~/m1-project/git-lab
 ```
 
-只在当前实验仓库内设置身份，避免修改其他课程仓库的全局配置：
+### 步骤6：检查本次实验路径
+
+```bash
+ls -ld ~/m1-project/git-lab ~/m1-project/git-server ~/m1-project/git-review
+```
+
+首次实验时，三个路径都不存在是正常结果。如果其中任何路径已经存在，先执行`git status`或查看目录内容，确认是否是之前的实验成果。不要直接删除、覆盖或重新初始化。
+
+## 五、任务二：创建主工作仓库
+
+### 步骤1：创建工作目录
+
+```bash
+mkdir ~/m1-project/git-lab
+```
+
+如果命令提示目录已经存在，应返回上一步检查，不要加`-f`或改用删除命令。
+
+### 步骤2：进入工作目录
 
 ```bash
 cd ~/m1-project/git-lab
-git init
-git config user.name "Student Ops"
-git config user.email "student@example.test"
-git config --local --list
 ```
 
-预期能够看到`user.name`和`user.email`。
-
-> **验收点**：Git可用，仓库初始化完成，身份配置只作用于当前仓库。
-
-### 任务二：建立安全的运维仓库
-
-#### 步骤1：创建目录和说明文件
+### 步骤3：初始化main分支
 
 ```bash
-cd ~/m1-project/git-lab
-mkdir -p docs templates evidence runtime secrets
-cat > README.md <<'EOF'
+git init --initial-branch=main
+```
+
+预期提示已经初始化空Git仓库。
+
+### 步骤4：查看隐藏目录
+
+```bash
+ls -la
+```
+
+应看到`.git`。不要手工修改其中内容。
+
+### 步骤5：配置当前仓库作者姓名
+
+```bash
+git config --local user.name "Student Ops"
+```
+
+### 步骤6：配置当前仓库作者邮箱
+
+```bash
+git config --local user.email "student@example.test"
+```
+
+### 步骤7：查看配置来源
+
+```bash
+git config --list --show-origin
+```
+
+应看到姓名和邮箱来自当前仓库的`.git/config`，而不是要求修改全局配置。
+
+### 步骤8：确认当前分支
+
+```bash
+git branch --show-current
+```
+
+预期返回`main`。
+
+## 六、任务三：建立仓库内容与忽略规则
+
+### 步骤1：创建文档目录
+
+```bash
+mkdir docs
+```
+
+### 步骤2：创建模板目录
+
+```bash
+mkdir templates
+```
+
+### 步骤3：创建脚本目录
+
+```bash
+mkdir scripts
+```
+
+空目录不会被Git单独跟踪。`scripts`会在实验19加入巡检脚本。
+
+### 步骤4：编写仓库说明
+
+```bash
+vim README.md
+```
+
+逐行输入：
+
+```markdown
 # TechCorp Linux运维资料
 
-本仓库保存经过脱敏的配置模板、巡检说明和变更记录。
-禁止提交密码、私钥、数据库数据文件和运行日志。
-EOF
+本仓库保存经过脱敏的配置模板、巡检脚本和运维文档。
 
-cat > docs/service-map.md <<'EOF'
-# 服务清单
-
-| 服务 | 端口 | 对外策略 |
-|---|---:|---|
-| SSH | 22 | 按课程网络范围开放 |
-| Nginx | 80 | 对外提供Web访问 |
-| MySQL | 3306 | 仅本机或指定管理主机 |
-| MongoDB | 27017 | 仅本机 |
-| Redis | 6379 | 仅本机 |
-EOF
+禁止提交密码、令牌、私钥、数据库转储和运行日志。
+任何配置变更都应在提交前检查差异，并在提交后完成验证。
 ```
 
-#### 步骤2：建立忽略规则
+保存退出后查看：
 
 ```bash
-cat > .gitignore <<'EOF'
-# 密钥与密码
+sed -n '1,40p' README.md
+```
+
+### 步骤5：编写服务清单
+
+```bash
+vim docs/service-map.md
+```
+
+逐行输入：
+
+```markdown
+# TechCorp服务清单
+
+| 服务 | 主机 | 端口 | 开放策略 |
+|---|---|---:|---|
+| SSH | 三台虚拟机 | 22 | 仅课程管理网络 |
+| Nginx | rocky-web | 80 | 向ubuntu-client提供Web访问 |
+| MySQL | rocky-server | 3306 | 仅指定客户端或本机 |
+| MongoDB | rocky-server | 27017 | 仅本机 |
+| Redis | rocky-server | 6379 | 仅本机 |
+```
+
+保存后检查：
+
+```bash
+sed -n '1,40p' docs/service-map.md
+```
+
+### 步骤6：编写忽略规则
+
+```bash
+vim .gitignore
+```
+
+逐行输入：
+
+```gitignore
+# 密码、令牌与私钥
+.env
 *.key
 *.pem
-.env
 secrets/
 
 # 日志、数据库转储和运行数据
 *.log
 *.sql
-*.dump
+*.bson
+*.rdb
+*.aof
 runtime/
+backup/
 evidence/
 
 # 编辑器临时文件
 *~
 *.swp
-EOF
 ```
 
-创建几项用于验证的敏感或临时文件：
+保存后检查：
 
 ```bash
-printf 'DB_PASSWORD=do-not-commit\n' > .env
-printf 'temporary log\n' > runtime/app.log
-printf 'dummy key material for ignore-rule test\n' > secrets/server.key
+sed -n '1,80p' .gitignore
+```
+
+## 七、任务四：验证忽略规则
+
+本任务创建的是无真实秘密的测试文件，仅用于证明规则有效。
+
+### 步骤1：创建测试运行目录
+
+```bash
+mkdir runtime
+```
+
+### 步骤2：创建测试秘密目录
+
+```bash
+mkdir secrets
+```
+
+### 步骤3：创建环境文件样例
+
+```bash
+printf 'DEMO_VALUE=not-a-real-secret\n' > .env
+```
+
+### 步骤4：创建日志样例
+
+```bash
+printf 'temporary test log\n' > runtime/app.log
+```
+
+### 步骤5：创建私钥文件名样例
+
+```bash
+printf 'ignore-rule-test-only\n' > secrets/server.key
+```
+
+### 步骤6：查看包含忽略项的状态
+
+```bash
 git status --short --ignored
 ```
 
-预期`.env`、`runtime/`和`secrets/`显示为被忽略，不应出现在待提交文件中。
+预期：
 
-#### 步骤3：提交前检查
+- `README.md`、`.gitignore`和`docs/`显示为未跟踪；
+- `.env`、`runtime/`和`secrets/`以`!!`显示为已忽略；
+- 不应看到任何真实密码或私钥。
+
+### 步骤7：查明.env由哪条规则忽略
 
 ```bash
-git status
-git add README.md docs/service-map.md .gitignore
+git check-ignore -v .env
+```
+
+### 步骤8：确认.env尚未被跟踪
+
+```bash
+git ls-files -- .env
+```
+
+没有输出是预期结果。
+
+## 八、任务五：形成第一次提交
+
+### 步骤1：再次查看状态
+
+```bash
+git status --short
+```
+
+### 步骤2：精确暂存仓库说明
+
+```bash
+git add README.md
+```
+
+### 步骤3：精确暂存服务清单
+
+```bash
+git add docs/service-map.md
+```
+
+### 步骤4：精确暂存忽略规则
+
+```bash
+git add .gitignore
+```
+
+### 步骤5：观察暂存状态
+
+```bash
+git status --short
+```
+
+左列应显示`A`，表示三个文件已加入暂存区。
+
+### 步骤6：审查即将提交的内容
+
+```bash
 git diff --cached
+```
+
+逐行确认没有密码、私钥、日志和数据库转储。
+
+### 步骤7：形成提交
+
+```bash
 git commit -m "docs: initialize operations repository"
+```
+
+### 步骤8：查看提交
+
+```bash
 git log --oneline --decorate -n 3
 ```
 
-检查提交实际包含的文件：
+### 步骤9：确认实际跟踪文件
 
 ```bash
-git show --stat --oneline HEAD
 git ls-files
 ```
 
-> **验收点**：首次提交只包含README、服务清单和`.gitignore`，不包含任何敏感或运行文件。
+预期只有`.gitignore`、`README.md`和`docs/service-map.md`。
 
-### 任务三：提交脱敏配置模板
+## 九、任务六：增加脱敏Nginx模板
 
-创建Nginx模板。模板中的地址和域名可以公开，不得写入数据库密码：
+### 步骤1：创建模板文件
 
 ```bash
-cat > templates/techcorp.conf.example <<'EOF'
+vim templates/techcorp.conf.example
+```
+
+逐行输入：
+
+```nginx
 server {
     listen 80;
-    server_name _;
+    server_name techcorp.test;
     root /srv/techcorp/www;
     index index.html;
 
@@ -206,264 +438,662 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
     }
 }
-EOF
+```
 
+这是供审查和部署参考的脱敏模板，不包含数据库密码，也不直接覆盖`/etc/nginx`中的运行配置。
+
+### 步骤2：查看工作区变化
+
+```bash
 git status --short
-git diff
+```
+
+### 步骤3：暂存模板
+
+```bash
 git add templates/techcorp.conf.example
+```
+
+### 步骤4：审查暂存差异
+
+```bash
 git diff --cached
+```
+
+### 步骤5：形成第二次提交
+
+```bash
 git commit -m "feat: add sanitized nginx template"
+```
+
+### 步骤6：查看图形化历史
+
+```bash
 git log --oneline --decorate --graph --all
 ```
 
-给当前稳定版本添加标签：
+### 步骤7：标记已验收基线
 
 ```bash
-git tag -a linux-lab18-v1 -m "Lab 18 verified version"
-git tag
-git show --stat linux-lab18-v1
+git tag -a linux-lab18-v1 -m "Lab 18 verified baseline"
 ```
 
-> **验收点**：仓库至少包含两次提交和一个标签，第二次提交只增加脱敏模板。
-
-### 任务四：用本地裸仓库模拟团队远程仓库
-
-裸仓库没有工作区，通常用作多人交换提交的中心仓库。
+### 步骤8：查看标签
 
 ```bash
-mkdir -p ~/m1-project/git-server
-git init --bare ~/m1-project/git-server/techcorp.git
+git tag
+```
+
+## 十、任务七：创建团队裸仓库并推送
+
+创建裸仓库时直接指定`main`，避免裸仓库的`HEAD`错误指向没有创建的`master`分支。
+
+### 步骤1：创建父目录
+
+```bash
+mkdir ~/m1-project/git-server
+```
+
+### 步骤2：创建裸仓库
+
+```bash
+git init --bare --initial-branch=main ~/m1-project/git-server/techcorp.git
+```
+
+### 步骤3：回到主工作仓库
+
+```bash
 cd ~/m1-project/git-lab
-git branch -M main
-if git remote get-url origin >/dev/null 2>&1; then
-  git remote set-url origin ~/m1-project/git-server/techcorp.git
-else
-  git remote add origin ~/m1-project/git-server/techcorp.git
-fi
+```
+
+### 步骤4：添加远程
+
+```bash
+git remote add origin ~/m1-project/git-server/techcorp.git
+```
+
+### 步骤5：检查远程
+
+```bash
 git remote -v
+```
+
+### 步骤6：首次推送main
+
+```bash
 git push -u origin main
+```
+
+### 步骤7：推送标签
+
+```bash
 git push origin linux-lab18-v1
 ```
 
-验证远程分支：
+### 步骤8：检查远程引用
 
 ```bash
 git ls-remote --heads --tags origin
 ```
 
-> **验收点**：本地仓库的`main`分支和标签已推送到裸仓库。
+应看到`refs/heads/main`和`refs/tags/linux-lab18-v1`。
 
-### 任务五：模拟另一名管理员克隆和提交
+## 十一、任务八：模拟另一名管理员协作
+
+### 步骤1：回到项目根目录
 
 ```bash
 cd ~/m1-project
-test ! -e ~/m1-project/git-review
 ```
 
-如果`git-review`已存在，先检查其中是否有未提交成果；不要直接覆盖或删除。确认路径不存在后执行：
+### 步骤2：克隆团队仓库
 
 ```bash
 git clone ~/m1-project/git-server/techcorp.git git-review
+```
+
+克隆后不应出现“remote HEAD refers to nonexistent ref”。如果出现该提示，说明裸仓库的初始分支设置不正确，应停止并检查任务七，而不是在空工作区继续提交。
+
+### 步骤3：进入协作副本
+
+```bash
 cd ~/m1-project/git-review
-git config user.name "Reviewer Ops"
-git config user.email "reviewer@example.test"
-git status
-git log --oneline -n 3
 ```
 
-如果克隆后提示远端HEAD没有指向分支，可在裸仓库中设置后重新克隆：
-
-```bash
-git --git-dir=~/m1-project/git-server/techcorp.git symbolic-ref HEAD refs/heads/main
-```
-
-在克隆副本中增加交接说明：
-
-```bash
-cat > docs/handover.md <<'EOF'
-# 运维交接检查
-
-1. 先看服务状态和端口。
-2. 再检查配置语法和日志。
-3. 修改前备份，修改后验证。
-4. 提交前确认没有密码和私钥。
-EOF
-
-git add docs/handover.md
-git diff --cached
-git commit -m "docs: add operations handover checklist"
-git push origin main
-```
-
-回到原工作目录获取变化：
-
-```bash
-cd ~/m1-project/git-lab
-git status
-git pull --ff-only
-git log --oneline --decorate --graph -n 5
-test -f docs/handover.md && echo 'PASS: handover file received'
-```
-
-使用`--ff-only`可以在历史无法直接快进时停止，避免未经判断自动产生合并提交。
-
-### 任务六：恢复未提交的误改和误删
-
-#### 场景1：误改文件
-
-```bash
-cd ~/m1-project/git-lab
-printf '\n错误变更：所有数据库端口对公网开放。\n' >> docs/service-map.md
-git status --short
-git diff -- docs/service-map.md
-```
-
-确认这项修改应被丢弃后恢复：
-
-```bash
-git restore docs/service-map.md
-git status --short
-tail -n 5 docs/service-map.md
-```
-
-#### 场景2：误删文件
-
-```bash
-rm templates/techcorp.conf.example
-git status --short
-git diff -- templates/techcorp.conf.example
-git restore templates/techcorp.conf.example
-test -f templates/techcorp.conf.example && echo 'PASS: template restored'
-```
-
-> 此处删除的是实验仓库中已提交的模板，并立即用Git恢复；不要把此命令套用到其他目录。
-
-#### 场景3：恢复到指定历史版本的内容
-
-先比较当前README与标签版本：
-
-```bash
-git diff linux-lab18-v1 -- README.md
-git show linux-lab18-v1:README.md | sed -n '1,20p'
-```
-
-本实验不要求回退整个仓库。如果确需从标签取回单个文件，应先备份当前内容，再执行：
-
-```bash
-cp README.md ~/m1-project/backup/README.md.before-restore
-git restore --source=linux-lab18-v1 -- README.md
-git diff -- README.md
-```
-
-如果文件本来没有差异，`git diff`为空属于正常现象。
-
-### 任务七：形成实验记录
-
-```bash
-cd ~/m1-project/git-lab
-{
-    printf '=== repository ===\n'
-    git status --short --branch
-    printf '\n=== remotes ===\n'
-    git remote -v
-    printf '\n=== history ===\n'
-    git log --oneline --decorate --graph --all -n 10
-    printf '\n=== tracked files ===\n'
-    git ls-files
-    printf '\n=== ignored sample ===\n'
-    git status --short --ignored | sed -n '1,30p'
-} | tee ~/m1-project/evidence/lab18-git-final.txt
-```
-
-## 七、故障排查
-
-### 故障1：提交时提示身份未知
-
-```bash
-git config --local user.name
-git config --local user.email
-git config user.name "Student Ops"
-git config user.email "student@example.test"
-```
-
-### 故障2：文件明明存在却没有出现在状态中
-
-以下为排障命令格式，先把`文件路径`替换为要检查的实际文件：
-
-```text
-git check-ignore -v 文件路径
-```
-
-如果是应该跟踪的模板，调整`.gitignore`；如果是密码、密钥或日志，应继续忽略。
-
-### 故障3：推送提示没有上游分支
+### 步骤4：确认分支
 
 ```bash
 git branch --show-current
-git remote -v
-git push -u origin main
 ```
 
-### 故障4：拉取时无法快进
+预期为`main`。
+
+### 步骤5：配置模拟审核员姓名
+
+```bash
+git config --local user.name "Reviewer Ops"
+```
+
+### 步骤6：配置模拟审核员邮箱
+
+```bash
+git config --local user.email "reviewer@example.test"
+```
+
+### 步骤7：创建交接文档
+
+```bash
+vim docs/handover.md
+```
+
+逐行输入：
+
+```markdown
+# 运维交接检查
+
+1. 先确认主机身份、IP地址和时间。
+2. 检查服务状态、监听端口和防火墙。
+3. 检查配置语法和journal日志。
+4. 修改前备份，修改后验证。
+5. 提交前确认没有密码、私钥和运行数据。
+6. 备份必须通过恢复验证。
+```
+
+### 步骤8：查看未跟踪文件
+
+```bash
+git status --short
+```
+
+### 步骤9：精确暂存交接文档
+
+```bash
+git add docs/handover.md
+```
+
+### 步骤10：审查暂存内容
+
+```bash
+git diff --cached
+```
+
+### 步骤11：形成第三次提交
+
+```bash
+git commit -m "docs: add operations handover checklist"
+```
+
+### 步骤12：推送审核员提交
+
+```bash
+git push origin main
+```
+
+## 十二、任务九：在主仓库获取协作变化
+
+### 步骤1：回到主工作仓库
+
+```bash
+cd ~/m1-project/git-lab
+```
+
+### 步骤2：确认工作区干净
+
+```bash
+git status --short --branch
+```
+
+拉取前不能有未处理的本地修改。
+
+### 步骤3：只允许快进拉取
+
+```bash
+git pull --ff-only
+```
+
+### 步骤4：查看协作历史
+
+```bash
+git log --oneline --decorate --graph --all -n 6
+```
+
+应看到作者为`Reviewer Ops`的交接文档提交。
+
+### 步骤5：确认文件已到达
+
+```bash
+test -f docs/handover.md
+```
+
+没有输出且返回码为0表示文件存在。
+
+### 步骤6：查看交接内容
+
+```bash
+sed -n '1,40p' docs/handover.md
+```
+
+## 十三、任务十：恢复未暂存的误改
+
+被修改的`docs/service-map.md`已经在任务五创建并提交，因此本任务不会引用不存在的文件。
+
+### 步骤1：加入一条故意错误的策略
+
+```bash
+printf '\n错误策略：所有数据库端口对互联网开放。\n' >> docs/service-map.md
+```
+
+### 步骤2：查看状态
+
+```bash
+git status --short
+```
+
+预期看到` M docs/service-map.md`。
+
+### 步骤3：查看差异
+
+```bash
+git diff -- docs/service-map.md
+```
+
+确认新增策略违反本项目安全边界。
+
+### 步骤4：恢复工作区文件
+
+```bash
+git restore docs/service-map.md
+```
+
+### 步骤5：确认错误内容消失
+
+```bash
+grep '所有数据库端口' docs/service-map.md
+```
+
+没有输出是预期结果。
+
+### 步骤6：确认状态恢复
+
+```bash
+git status --short
+```
+
+## 十四、任务十一：撤销误暂存
+
+### 步骤1：加入一条待检查的变化
+
+```bash
+printf '\n临时内容：尚未完成审核。\n' >> docs/handover.md
+```
+
+### 步骤2：将修改加入暂存区
+
+```bash
+git add docs/handover.md
+```
+
+### 步骤3：查看短状态
+
+```bash
+git status --short
+```
+
+预期左列出现`M`，说明变化已经暂存。
+
+### 步骤4：查看已暂存差异
+
+```bash
+git diff --cached -- docs/handover.md
+```
+
+### 步骤5：撤销暂存
+
+```bash
+git restore --staged docs/handover.md
+```
+
+### 步骤6：再次查看状态
+
+```bash
+git status --short
+```
+
+此时`M`应位于右列，说明修改仍在工作区，只是退出了暂存区。
+
+### 步骤7：查看仍然存在的工作区差异
+
+```bash
+git diff -- docs/handover.md
+```
+
+### 步骤8：确认不需要后恢复工作区
+
+```bash
+git restore docs/handover.md
+```
+
+### 步骤9：确认仓库恢复干净
+
+```bash
+git status --short
+```
+
+## 十五、任务十二：恢复误删文件
+
+被删除的模板已经在任务六创建并提交，可以通过Git恢复。
+
+### 步骤1：删除实验模板
+
+```bash
+rm templates/techcorp.conf.example
+```
+
+此命令只删除实验仓库中的已提交模板，不得替换为其他系统路径。
+
+### 步骤2：查看删除状态
+
+```bash
+git status --short
+```
+
+### 步骤3：查看删除差异
+
+```bash
+git diff -- templates/techcorp.conf.example
+```
+
+### 步骤4：恢复模板
+
+```bash
+git restore templates/techcorp.conf.example
+```
+
+### 步骤5：确认模板存在
+
+```bash
+test -f templates/techcorp.conf.example
+```
+
+### 步骤6：查看模板开头
+
+```bash
+sed -n '1,20p' templates/techcorp.conf.example
+```
+
+### 步骤7：确认仓库干净
+
+```bash
+git status --short
+```
+
+## 十六、任务十三：读取并恢复指定版本
+
+本任务不回退整个仓库，只比较和恢复单个文件。
+
+### 步骤1：查看标签版本中的README
+
+```bash
+git show linux-lab18-v1:README.md
+```
+
+### 步骤2：比较当前README与标签版本
+
+```bash
+git diff linux-lab18-v1 -- README.md
+```
+
+如果没有输出，说明当前README与标签中的内容相同。
+
+### 步骤3：模拟修改README
+
+```bash
+printf '\n临时错误说明。\n' >> README.md
+```
+
+### 步骤4：查看当前差异
+
+```bash
+git diff -- README.md
+```
+
+### 步骤5：从标签恢复单个文件
+
+```bash
+git restore --source=linux-lab18-v1 -- README.md
+```
+
+### 步骤6：确认恢复结果
+
+```bash
+git diff -- README.md
+```
+
+没有输出是预期结果。`docs/handover.md`仍然保留，因为只恢复了README，没有回退整个仓库。
+
+## 十七、任务十四：形成验收证据
+
+所有证据写入仓库外部的`~/m1-project/evidence`，避免运行证据进入版本库。
+
+### 步骤1：保存分支状态
+
+```bash
+git status --short --branch > ~/m1-project/evidence/lab18-git-status.txt
+```
+
+### 步骤2：保存远程信息
+
+```bash
+git remote -v > ~/m1-project/evidence/lab18-git-remotes.txt
+```
+
+### 步骤3：保存提交历史
+
+```bash
+git log --oneline --decorate --graph --all -n 10 > ~/m1-project/evidence/lab18-git-history.txt
+```
+
+### 步骤4：保存已跟踪文件清单
+
+```bash
+git ls-files > ~/m1-project/evidence/lab18-git-tracked.txt
+```
+
+### 步骤5：保存忽略规则证明
+
+```bash
+git check-ignore -v .env runtime/app.log secrets/server.key > ~/m1-project/evidence/lab18-git-ignored.txt
+```
+
+### 步骤6：检查证据文件
+
+```bash
+ls -l ~/m1-project/evidence/lab18-git-*.txt
+```
+
+### 步骤7：确认仓库中没有跟踪.env
+
+```bash
+git ls-files -- .env
+```
+
+没有输出是预期结果。
+
+### 步骤8：确认仓库最终干净
+
+```bash
+git status --short
+```
+
+没有输出表示已跟踪文件没有未提交变化。已忽略的测试文件仍可存在，但不会进入提交。
+
+## 十八、实验验收
+
+### 1. 仓库与历史
+
+- [ ] 主仓库为`~/m1-project/git-lab`，当前分支为`main`。
+- [ ] 本地作者为`Student Ops`，协作副本作者为`Reviewer Ops`。
+- [ ] 历史中至少有三次目的明确的提交。
+- [ ] 标签`linux-lab18-v1`存在。
+- [ ] 主仓库最终没有未提交的已跟踪变化。
+
+### 2. 安全边界
+
+- [ ] `.env`、`*.key`、日志和数据库转储规则已经配置。
+- [ ] `.env`、测试日志和测试key没有进入跟踪清单。
+- [ ] 没有真实密码、令牌或私钥进入仓库和截图。
+- [ ] 能说明`.gitignore`不能清除已经提交的秘密。
+
+### 3. 协作流程
+
+- [ ] 裸仓库的默认分支正确指向`main`。
+- [ ] `main`和标签已经推送。
+- [ ] `git-review`克隆后直接得到正常工作区。
+- [ ] 协作副本的提交能够推送，主仓库能以`--ff-only`拉取。
+
+### 4. 恢复能力
+
+- [ ] 能恢复未暂存的误改。
+- [ ] 能撤销误暂存并说明工作区修改仍然存在。
+- [ ] 能恢复误删的已跟踪模板。
+- [ ] 能从标签读取并恢复单个文件。
+- [ ] 每次恢复前都查看了状态或差异。
+
+## 十九、提交材料
+
+1. `lab18-git-status.txt`；
+2. `lab18-git-remotes.txt`；
+3. `lab18-git-history.txt`；
+4. `lab18-git-tracked.txt`；
+5. `lab18-git-ignored.txt`；
+6. 三种恢复场景的操作记录或不含秘密的截图；
+7. 150—300字说明：Git适合保存哪些运维资产，为什么同机裸仓库不能替代备份。
+
+## 二十、常见问题与排查
+
+### 1. `git commit`提示Please tell me who you are
+
+检查当前仓库身份：
+
+```bash
+git config --local user.name
+```
+
+```bash
+git config --local user.email
+```
+
+缺少哪项就回到任务二设置哪项，不需要修改系统范围配置。
+
+### 2. 文件存在，但git status没有显示
+
+检查它是否被忽略：
+
+```bash
+git check-ignore -v .env
+```
+
+如果是密码、密钥或日志，应继续忽略；如果是应当跟踪的脱敏模板，应检查规则是否过宽。
+
+### 3. git add后，git diff没有输出
+
+变化已经进入暂存区，应查看：
+
+```bash
+git diff --cached
+```
+
+### 4. git restore后文件没有恢复到预期版本
+
+先检查文件现在是工作区修改、已暂存修改，还是希望从某个历史版本恢复。查看：
+
+```bash
+git status --short
+```
+
+```bash
+git diff
+```
+
+```bash
+git diff --cached
+```
+
+根据状态选择`git restore`、`git restore --staged`或带`--source`的恢复命令。
+
+### 5. clone提示remote HEAD refers to nonexistent ref
+
+裸仓库的HEAD没有指向已存在的默认分支。检查：
+
+```bash
+git --git-dir=~/m1-project/git-server/techcorp.git symbolic-ref HEAD
+```
+
+本实验应在创建裸仓库时使用`--initial-branch=main`，并在克隆前完成首次`main`推送。
+
+### 6. push被拒绝
+
+先查看全部历史：
+
+```bash
+git log --oneline --decorate --graph --all -n 10
+```
+
+再获取远程状态：
+
+```bash
+git fetch origin
+```
+
+不要立即使用`--force`。确认是否有其他提交、当前工作目录是否正确，再决定拉取或处理分歧。
+
+### 7. pull --ff-only拒绝更新
+
+说明本地与远程不能直接快进，或者本地工作区尚未处理。检查：
 
 ```bash
 git status
-git log --oneline --graph --decorate --all -n 10
 ```
 
-不要直接强制覆盖。先保存本地改动，确认分支历史，再决定提交、暂存或合并。本实验要求保持单线历史，正常情况下应能快进。
-
-### 故障5：把敏感文件加入了暂存区但尚未提交
-
-以下为恢复命令格式，先把`文件路径`替换为误暂存的实际文件：
-
-```text
-git restore --staged 文件路径
-git status
+```bash
+git log --oneline --decorate --graph --all -n 10
 ```
 
-随后补充`.gitignore`。如果已经推送，单纯删除最新文件并不能从历史中彻底清除秘密，应立即更换凭据并联系教师处理历史清理。
+本实验的正常流程保持单线历史，应能直接快进。出现分歧时保留现场并分析，不强制覆盖。
 
-## 八、项目验收
+## 二十一、独立实践
 
-### 1. 必做成果
+在`git-review`副本中完成以下任务：
 
-- `~/m1-project/git-lab`工作仓库。
-- `~/m1-project/git-server/techcorp.git`裸仓库。
-- `~/m1-project/git-review`克隆副本。
-- 至少两次个人提交和一次模拟协作提交。
-- 标签`linux-lab18-v1`。
-- `lab18-git-final.txt`证据文件。
+1. 为`docs/handover.md`增加“验证备份能否恢复”；
+2. 查看工作区差异；
+3. 只暂存该文件并查看暂存差异；
+4. 使用自己的提交信息形成一次提交；
+5. 推送到裸仓库；
+6. 回到`git-lab`使用`git pull --ff-only`获取提交；
+7. 使用`git show`读取该提交中的文档，而不修改工作区。
 
-### 2. 现场操作
+验收时需要解释每一步时数据位于工作区、暂存区、本地仓库还是裸仓库。
 
-1. 使用`git status`说明当前仓库状态。
-2. 使用`git log`指出某次提交的目的。
-3. 说明`.gitignore`为什么不能代替密码管理。
-4. 现场误改一个已提交文件，展示差异并恢复。
+## 二十二、环境保留
 
-### 3. 评分建议
+保留以下成果供实验19和实验20使用：
 
-| 项目 | 分值 | 评价要点 |
-|---|---:|---|
-| 仓库与身份配置 | 15 | Git可用，配置范围正确 |
-| 安全忽略规则 | 20 | 密码、私钥、日志和数据文件未提交 |
-| 提交质量 | 20 | 至少两次提交，信息清楚，提交前检查差异 |
-| 克隆、推送与拉取 | 20 | 本地团队流程完整 |
-| 误改误删恢复 | 15 | 能说明并正确使用`git restore` |
-| 证据与现场说明 | 10 | 记录完整、表述准确 |
+- `~/m1-project/git-lab`及其完整`.git`历史；
+- `~/m1-project/git-server/techcorp.git`；
+- `~/m1-project/git-review`；
+- `main`分支和`linux-lab18-v1`标签；
+- `docs`、`templates`和空的`scripts`目录规划；
+- `~/m1-project/evidence/lab18-git-*.txt`。
 
-## 九、独立练习
+实验19将在`git-lab/scripts`中创建`server-health.sh`并提交。实验20继续增加最终架构与交付记录。机房还原前必须保存课程快照或独立副本，因为同机三个Git目录会随虚拟机还原一起丢失。
 
-1. 修改`docs/handover.md`，增加“备份恢复必须验证”，提交并推送。
-2. 在克隆副本执行`git pull --ff-only`，确认收到新提交。
-3. 使用`git show <提交号>:docs/handover.md`读取历史内容，但不改变工作区。
+## 二十三、官方参考
 
-## 十、实验总结
-
-请用自己的语言回答：
-
-1. 工作区、暂存区和仓库分别保存什么？
-2. 为什么配置模板可以进入Git，而真实密码和私钥不可以？
-3. `git restore`能恢复什么，不能替代什么？
-4. 为什么运维提交应当小而清晰？
+- [Git教程](https://git-scm.com/docs/gittutorial)
+- [git init](https://git-scm.com/docs/git-init)
+- [git status](https://git-scm.com/docs/git-status)
+- [git diff](https://git-scm.com/docs/git-diff)
+- [git restore](https://git-scm.com/docs/git-restore)
+- [gitignore](https://git-scm.com/docs/gitignore)
+- [git pull](https://git-scm.com/docs/git-pull)

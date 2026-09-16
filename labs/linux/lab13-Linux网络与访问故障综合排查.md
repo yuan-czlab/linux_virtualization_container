@@ -1,375 +1,557 @@
 # 实验13：Linux网络与访问故障综合排查
 
-> 所属模块：模块二 网络、远程管理与基础防护  
-> 建议学时：4学时  
-> 实验方式：个人或两人互设故障  
-> 对应教材：《模块二 网络、远程管理与基础防护》第24章  
-> 知识前置：实验8—12全部网络、SSH、firewalld和SELinux内容\
-> 状态依赖：实验8—12形成的三机网络、SSH密钥、客户端别名和正确安全基线\
-> 建议起点：实验12结束后的正常状态，并先建立可回退快照\
-> 项目成果：不少于3个不同层次故障的完整证据链和模块二网络验收报告
+> 所属模块：模块二 网络远程管理与基础防护
+> 建议学时：4学时
+> 实验方式：2～3人小组互设故障
+> 对应教材：2.12 网络与安全综合排障
+> 知识前置：实验8～12
+> 状态依赖：三机网络、SSH密钥、客户端配置、firewalld和SELinux均处于正确基线
+> 建议起点：实验12结束后的正常状态，并先创建可回退快照
+> 项目成果：正常基线、至少3份不同层次故障报告、模块二验收矩阵
 
 ## 一、项目情境
 
-用户报告“服务器访问不了”。这句话可能指域名解析失败、路由错误、服务停止、端口未监听、防火墙阻断、SELinux拒绝或账号认证失败。你需要先明确影响范围，再按层检查，避免没有证据地同时修改多个配置。
+用户只报告“服务器访问不了”。排障人员需要补全信息、从客户端复现、按层取证，并在不破坏SSH和安全基线的前提下恢复业务。
 
-## 二、实验目标
+## 二、实验规则
 
-### 1. 知识目标
+1. 设置者保存原值和恢复方法，排障者不提前查看答案。
+2. 不设置会破坏VMware控制台的故障。
+3. 不删除唯一管理员账号、课程私钥或原网络连接。
+4. 不关闭firewalld，不把SELinux改为Disabled。
+5. 排障者一次只修改一个因素。
+6. 修复后必须从`ubuntu-client`按原路径复测。
+7. 每组至少完成3个不同层次故障。
 
-1. 建立“客户端—名称解析—网络—服务—监听—主机防护—应用”的排障模型。
-2. 区分现象、证据、判断、根因、修复和验证。
-3. 说明一次故障可能包含多个连锁原因。
+## 三、任务一：建立可重复测试服务
 
-### 2. 能力目标
+在`rocky-server`的VMware控制台完成。
 
-1. 根据错误信息缩小检查范围。
-2. 使用`ip`、`getent`、`curl`、`ss`、`systemctl`、firewalld和journal收集证据。
-3. 在保留回退的前提下修复网络与访问故障。
-4. 完成端到端复测和故障报告。
-
-### 3. 素质目标
-
-1. 一次只修改一个经过证据支持的对象。
-2. 不用重装系统、关闭防护或扩大权限代替排障。
-3. 修复后从原始客户端和原始访问方式复测。
-
-## 三、知识准备
-
-推荐排障顺序：
-
-```text
-1. 明确谁访问谁、使用什么名称、协议和端口
-2. 检查客户端自身网络和名称解析
-3. 检查服务器IP、网卡和路由
-4. 检查服务状态和启动日志
-5. 检查监听地址和端口
-6. 检查firewalld和SELinux
-7. 检查应用配置、权限和应用日志
-8. 修复后按原路径端到端复测
-```
-
-故障报告不能只写“重启后好了”，至少包含：
-
-```text
-现象 → 影响范围 → 证据 → 判断 → 根因 → 修复 → 验证 → 预防
-```
-
-开始故障卡前打开[Linux网络配置、路由与DNS动画](../../animations/05-linux-network-routing-dns/index.html)的“分层排障”。根据现象选择第一条只读检查命令；动画中一次只推进一层的规则同样适用于本实验。
-
-排查主机防护层时，复用[firewalld区域、规则与安全变更动画](../../animations/09-firewalld-zones-rules/index.html)和[SELinux双重判定、上下文与AVC排障动画](../../animations/10-selinux-dac-context-avc/index.html)。先区分网络包是否被阻止，还是进程访问文件、端口或上游时被策略拒绝，再决定收集哪一类证据。
-
-开始每张故障卡前打开[Linux网络与访问分层故障推理动画](../../animations/11-layered-troubleshooting/index.html)。使用“受理与基线”补全故障信息，在“分层证据”和“故障模式”中选择下一条最小只读检查，最后按“修复闭环”完成原客户端复测与报告。
-
-## 四、实验环境
-
-- 默认故障目标为`rocky-server`，`ubuntu-client`为正式客户端；教师可把一项Web类故障安排到`rocky-web`，但必须在故障单中明确目标主机。
-- SSH和firewalld保持运行，SELinux保持Enforcing。
-- 教师准备3—5个故障，至少覆盖三个不同层次。
-- 学生开始前保留VMware快照或可回退配置。
-
-## 五、项目任务
-
-1. 建立无故障环境基线。
-2. 从Ubuntu验证SSH和HTTP测试服务。
-3. 接收教师故障单，不直接询问根因。
-4. 逐个收集证据、定位和修复。
-5. 执行端到端复测，确认没有第二个故障。
-6. 提交模块二验收矩阵和故障报告。
-
-## 六、实验步骤
-
-### 任务一：建立正常基线
-
-启动受控HTTP服务：
+### 3.1 准备目录
 
 ```bash
-mkdir -p ~/m1-project/{module2-check,logs,evidence}
-sudo ss -lntp | grep ':8080' || true
+sudo mkdir -p /srv/module2-web
 ```
-
-若有输出，说明8080已被占用。先确认进程属于哪个实验或服务并按其手册清理，不要继续执行下面的启动命令，也不要直接杀死未知进程。确认无输出后执行：
 
 ```bash
-printf '<h1>MODULE2_OK</h1>\n' > ~/m1-project/module2-check/index.html
-cd ~/m1-project/module2-check
-python3 -m http.server 8080 --bind 0.0.0.0 > ~/m1-project/logs/module2-http.log 2>&1 &
-MODULE2_HTTP_PID=$!
-printf '%s\n' "$MODULE2_HTTP_PID" > ~/m1-project/module2-check/http.pid
-IFACE=$(ip route show default | awk 'NR==1 {print $5}')
-ZONE=$(firewall-cmd --get-zone-of-interface="$IFACE")
-if [[ -z "$ZONE" || "$ZONE" == 'no zone' ]]; then
-  ZONE=$(firewall-cmd --get-default-zone)
-fi
-printf '%s\n' "$ZONE" > ~/m1-project/module2-check/zone.txt
-sudo firewall-cmd --zone="$ZONE" --add-port=8080/tcp
+sudo chown rocky-server:rocky-server /srv/module2-web
 ```
 
-服务器基线：
+编辑首页：
 
 ```bash
-{
-    hostname
-    ip -br address
-    ip route
-    nmcli connection show --active
-    systemctl is-active sshd firewalld
-    sudo ss -lntp | grep -E ':(22|8080)'
-    firewall-cmd --list-all
-    getenforce
-    curl -s http://127.0.0.1:8080/
-} | tee ~/m1-project/evidence/lab13-baseline.txt
+vim /srv/module2-web/index.html
 ```
 
-Ubuntu客户端基线：
+写入：
+
+```html
+<h1>Module 2 baseline OK</h1>
+```
+
+### 3.2 创建systemd Unit
 
 ```bash
-source ~/m1-project/course-env.sh
-ROCKY_IP="$ROCKY_SERVER_IP"
-ip route get "$ROCKY_IP"
-nc -vz -w 3 "$ROCKY_IP" 22
-nc -vz -w 3 "$ROCKY_IP" 8080
-curl --fail "http://$ROCKY_IP:8080/"
-ssh rocky-server "hostname; uptime"
+sudo vim /etc/systemd/system/module2-web.service
 ```
 
-> **验收点**：故障注入前SSH和HTTP从客户端均可用，基线已保存。
+写入：
 
-### 任务二：填写故障受理信息
+```ini
+[Unit]
+Description=Module 2 troubleshooting web service
+After=network-online.target
+Wants=network-online.target
 
-每个故障先填写：
+[Service]
+Type=simple
+User=rocky-server
+WorkingDirectory=/srv/module2-web
+ExecStart=/usr/bin/python3 -m http.server 8080 --bind 0.0.0.0 --directory /srv/module2-web
+Restart=on-failure
 
-| 项目 | 记录 |
-|---|---|
-| 故障编号 |  |
-| 报告人或客户端 |  |
-| 访问目标 |  |
-| 使用名称或IP |  |
-| 协议和端口 |  |
-| 完整错误 |  |
-| 开始时间 |  |
-| 影响一个用户还是全部用户 |  |
-| 最近是否有变更 |  |
+[Install]
+WantedBy=multi-user.target
+```
 
-没有明确访问目标时，不应立即修改服务器。
-
-### 任务三：按层收集证据
-
-以下是检查工具箱，不要求每个故障机械执行全部命令。根据现象选择，并把关键输出放入报告。
-
-#### 客户端和名称解析
-
-Ubuntu客户端：
+加载Unit：
 
 ```bash
-source ~/m1-project/course-env.sh
-ROCKY_IP="$ROCKY_SERVER_IP"
-ip -brief address
-ip route
-TARGET_NAME='rocky-server'
-TARGET_IP="$ROCKY_IP"
-TARGET_PORT='8080'
-getent hosts "$TARGET_NAME"
-nc -vz -w 3 "$TARGET_IP" "$TARGET_PORT"
-curl -v "http://$TARGET_IP:$TARGET_PORT/"
-ssh -vv rocky-server
+sudo systemctl daemon-reload
 ```
 
-服务器：
+启动：
 
 ```bash
-getent hosts rocky-server
-cat /etc/hosts
+sudo systemctl enable --now module2-web
 ```
 
-#### 服务器网络
+检查：
 
 ```bash
-source ~/m1-project/course-env.sh
-ip -br link
-ip -br address
-ip route
-ip route get "$UBUNTU_CLIENT_IP"
-nmcli device status
-nmcli connection show --active
+systemctl status module2-web --no-pager
 ```
 
-#### 服务和监听
+检查监听：
 
 ```bash
-systemctl status sshd --no-pager
-systemctl --failed --no-pager
-sudo ss -lntup
-ps -ef | grep -E '[s]shd|[h]ttp.server'
+sudo ss -lntp | grep ':8080 '
 ```
 
-#### 防护和日志
+### 3.3 配置实验运行时规则
+
+查看活动zone：
 
 ```bash
 firewall-cmd --get-active-zones
-firewall-cmd --list-all
-getenforce
-sudo ausearch -m AVC,USER_AVC -ts recent 2>/dev/null | tail -50
-sudo journalctl -u sshd --since '-20 min' --no-pager | tail -50
-tail -n 50 ~/m1-project/logs/module2-http.log
 ```
 
-### 任务四：完成教师故障
+记录实际zone：
 
-教师从下列故障卡选择，学生只接收故障现象，不提前查看修复答案。
+| 项目 | 实际值 |
+|---|---|
+| 活动zone | |
+| 对应网卡 | |
 
-#### 故障卡A：错误IP或连接未激活
+添加运行时规则：
 
-- 典型现象：原IP不可达，SSH和HTTP同时失败。
-- 证据方向：`ip -br address`、活动连接、地址规划。
-- 修复原则：激活正确连接或恢复正确地址，不复制其他学生IP。
-
-#### 故障卡B：DNS或hosts错误
-
-- 典型现象：IP访问成功，名称访问失败或访问错误主机。
-- 证据方向：`getent hosts`、hosts、连接DNS。
-- 修复原则：恢复正确解析记录，分别用名称和IP复测。
-
-#### 故障卡C：sshd停止
-
-- 典型现象：主机可达，22端口拒绝连接。
-- 证据方向：sshd状态、22监听和journal。
-- 修复原则：确认配置语法后启动服务，不先改防火墙。
-
-#### 故障卡D：服务只监听回环地址
-
-- 典型现象：服务器本机访问成功，Ubuntu访问失败。
-- 证据方向：`ss -lntp`中的监听地址。
-- 修复原则：按业务范围调整监听，不盲目使用0.0.0.0。
-
-#### 故障卡E：firewalld阻断
-
-- 典型现象：服务active且监听正确，本机成功，外部超时。
-- 证据方向：接口zone、运行时规则和客户端端口测试。
-- 修复原则：最小开放目标端口或来源，保留SSH管理通道。
-
-#### 故障卡F：SSH密钥权限错误
-
-- 典型现象：密钥被拒绝，可能退回密码认证。
-- 证据方向：`ssh -vv`、`.ssh`权限、所有权和sshd日志。
-- 修复原则：目录700、文件600、所有者正确。
-
-#### 故障卡G：SELinux上下文错误
-
-- 典型现象：传统权限正常但服务被拒绝。
-- 证据方向：`ls -Z`、AVC日志和持久fcontext规则。
-- 修复原则：使用`semanage fcontext`与`restorecon`，不关闭SELinux。
-
-### 任务五：端到端复测
-
-每修复一个故障后，必须返回Ubuntu按原始路径复测：
-
-```bash
-source ~/m1-project/course-env.sh
-ROCKY_IP="$ROCKY_SERVER_IP"
-nc -vz -w 3 "$ROCKY_IP" 22
-nc -vz -w 3 "$ROCKY_IP" 8080
-curl --fail "http://$ROCKY_IP:8080/"
-ssh rocky-server "hostname; uptime"
+```text
+sudo firewall-cmd --zone=<实际活动区域> --add-port=8080/tcp
 ```
 
-服务器再次检查：
+查询：
+
+```text
+firewall-cmd --zone=<实际活动区域> --query-port=8080/tcp
+```
+
+## 四、任务二：保存无故障基线
+
+### 4.1 服务端基线
 
 ```bash
-systemctl --failed --no-pager
-sudo ss -lntp | grep -E ':(22|8080)'
-firewall-cmd --list-all
+systemctl is-active module2-web
+```
+
+```bash
+curl --fail http://127.0.0.1:8080/
+```
+
+```bash
+sudo ss -lntp | grep ':8080 '
+```
+
+```bash
+systemctl is-active sshd
+```
+
+```bash
+systemctl is-active firewalld
+```
+
+```bash
 getenforce
 ```
 
-只修复第一个发现的问题不代表故障结束，必须验证完整服务路径。
+### 4.2 客户端基线
 
-### 任务六：故障报告模板
+在`ubuntu-client`执行：
 
-每个故障使用：
+```bash
+getent hosts rocky-server
+```
+
+```bash
+nc -vz -w 3 rocky-server 8080
+```
+
+```bash
+curl --fail http://rocky-server:8080/
+```
+
+```bash
+ssh rocky-server 'hostnamectl --static'
+```
+
+所有结果符合预期后，创建“模块二正常基线”快照。
+
+## 五、任务三：填写故障受理单
+
+每个故障开始前，排障者填写：
+
+| 项目 | 内容 |
+|---|---|
+| 故障编号 | |
+| 客户端 | |
+| 目标主机 | |
+| 名称或IP | |
+| 协议和端口 | |
+| 原始操作 | |
+| 原始错误 | |
+| 首次发生时间 | |
+| 影响范围 | |
+| 最近已知变更 | |
+
+## 六、任务四：按证据选择检查
+
+不要求机械执行全部命令。根据当前现象选择下一条。
+
+### 6.1 客户端
+
+名称：
+
+```bash
+getent hosts rocky-server
+```
+
+地址：
+
+```bash
+ip -brief address
+```
+
+路由：
+
+```bash
+ip route
+```
+
+端口：
+
+```bash
+nc -vz -w 3 rocky-server 8080
+```
+
+HTTP：
+
+```bash
+curl -v --connect-timeout 3 http://rocky-server:8080/
+```
+
+SSH：
+
+```bash
+ssh -v rocky-server
+```
+
+### 6.2 服务端
+
+服务：
+
+```bash
+systemctl status module2-web --no-pager
+```
+
+监听：
+
+```bash
+sudo ss -lntp | grep ':8080 '
+```
+
+本机访问：
+
+```bash
+curl -v http://127.0.0.1:8080/
+```
+
+活动zone：
+
+```bash
+firewall-cmd --get-active-zones
+```
+
+规则：
+
+```text
+firewall-cmd --zone=<实际活动区域> --list-all
+```
+
+服务日志：
+
+```bash
+sudo journalctl -u module2-web --since '20 minutes ago' --no-pager
+```
+
+SSH日志：
+
+```bash
+sudo journalctl -u sshd --since '20 minutes ago' --no-pager
+```
+
+SELinux：
+
+```bash
+getenforce
+```
+
+AVC：
+
+```bash
+sudo ausearch -m AVC,USER_AVC -ts recent
+```
+
+## 七、故障卡
+
+以下操作只由设置者执行。设置者先记录原值，排障者不得查看当前故障卡。
+
+### 故障卡A：服务停止
+
+设置：
+
+```bash
+sudo systemctl stop module2-web
+```
+
+恢复：
+
+```bash
+sudo systemctl start module2-web
+```
+
+关键证据：服务inactive、8080无监听、客户端通常立即拒绝。
+
+### 故障卡B：只监听回环地址
+
+设置者先备份Unit：
+
+```bash
+sudo ls -l /etc/systemd/system/module2-web.service.before-fault
+```
+
+文件不存在时才执行下一条；如果已经存在，不得覆盖：
+
+```bash
+sudo cp -a /etc/systemd/system/module2-web.service /etc/systemd/system/module2-web.service.before-fault
+```
+
+编辑Unit：
+
+```bash
+sudo vim /etc/systemd/system/module2-web.service
+```
+
+把`--bind 0.0.0.0`改为`--bind 127.0.0.1`，然后加载：
+
+```bash
+sudo systemctl daemon-reload
+```
+
+重启：
+
+```bash
+sudo systemctl restart module2-web
+```
+
+恢复Unit：
+
+```bash
+sudo cp -a /etc/systemd/system/module2-web.service.before-fault /etc/systemd/system/module2-web.service
+```
+
+恢复后再次执行`daemon-reload`和`restart`。
+
+关键证据：Rocky本机成功，`ss`显示`127.0.0.1:8080`，Ubuntu失败。
+
+### 故障卡C：firewalld缺少规则
+
+设置：
+
+```text
+sudo firewall-cmd --zone=<实际活动区域> --remove-port=8080/tcp
+```
+
+恢复：
+
+```text
+sudo firewall-cmd --zone=<实际活动区域> --add-port=8080/tcp
+```
+
+关键证据：服务active、`0.0.0.0:8080`监听、本机成功、Ubuntu超时或被拒绝。
+
+### 故障卡D：客户端hosts错误
+
+只在Ubuntu设置。先检查备份：
+
+```bash
+sudo ls -l /etc/hosts.before-lab13-fault
+```
+
+文件不存在时才执行下一条；如果已经存在，不得覆盖：
+
+```bash
+sudo cp -a /etc/hosts /etc/hosts.before-lab13-fault
+```
+
+编辑：
+
+```bash
+sudo vim /etc/hosts
+```
+
+把`rocky-server`对应地址临时改为`192.0.2.10`。
+
+恢复：
+
+```bash
+sudo cp -a /etc/hosts.before-lab13-fault /etc/hosts
+```
+
+关键证据：`getent`返回错误地址，通过正确IP访问仍可能成功。
+
+### 故障卡E：SSH授权目录权限错误
+
+只在`rocky-server`设置，并保持VMware控制台和密码认证可用。
+
+设置：
+
+```bash
+chmod 777 ~/.ssh
+```
+
+```bash
+chmod 666 ~/.ssh/authorized_keys
+```
+
+恢复：
+
+```bash
+chmod 700 ~/.ssh
+```
+
+```bash
+chmod 600 ~/.ssh/authorized_keys
+```
+
+```bash
+restorecon -RFv ~/.ssh
+```
+
+关键证据：22端口成功，但强制公钥认证失败，sshd日志记录权限问题。
+
+## 八、任务五：修复后的端到端复测
+
+每张故障修复后，在Ubuntu重新执行原始操作：
+
+```bash
+getent hosts rocky-server
+```
+
+```bash
+curl --fail http://rocky-server:8080/
+```
+
+```bash
+ssh -o PasswordAuthentication=no rocky-server 'hostnamectl --static'
+```
+
+在Rocky检查：
+
+```bash
+systemctl is-active module2-web
+```
+
+```bash
+sudo ss -lntp | grep ':8080 '
+```
+
+```bash
+systemctl is-active firewalld
+```
+
+```bash
+getenforce
+```
+
+只修复第一个问题不代表故障结束，必须通过完整回归矩阵。
+
+## 九、故障报告模板
 
 ```markdown
 # 故障编号与标题
 
 ## 1. 故障现象与影响范围
-## 2. 正常基线和最近变更
+
+## 2. 正常基线与最近变更
+
 ## 3. 检查过程与关键证据
+
 ## 4. 判断与根因
+
 ## 5. 修复操作
-## 6. 客户端和服务端复测
+
+## 6. 原客户端复测与回归检查
+
 ## 7. 回退方法
+
 ## 8. 预防措施
 ```
 
-## 七、独立实践
+## 十、模块二最终验收
 
-由两名同学互相设置一个不破坏唯一管理入口的故障。设置者记录原值和恢复方法，但不告诉排障者根因。排障者完成报告后，双方核对是否恢复到正确状态。
+| 项目 | 验证命令 | 结果 |
+|---|---|---|
+| 三机名称 | `getent hosts rocky-server rocky-web ubuntu-client` | |
+| rocky-server SSH | `ssh rocky-server hostname` | |
+| rocky-web SSH | `ssh rocky-web hostname` | |
+| Web服务 | `curl --fail http://rocky-server:8080/` | |
+| firewalld | `systemctl is-active firewalld` | |
+| SELinux | `getenforce` | |
+| rsync备份 | `diff -qr ~/m1-project/web ~/backup-lab/web-current` | |
+| cron频率 | `crontab -l` | |
 
-禁止设置：
+## 十一、验收标准
 
-- 删除虚拟磁盘或系统关键目录；
-- 删除`rocky-server`主账号和唯一管理员；
-- 修改后无法通过VMware控制台恢复的故障；
-- 清空防火墙全部规则；
-- 禁用SELinux作为最终状态。
+- [ ] 故障前存在可重复验证的正常基线。
+- [ ] 每张故障先填写受理单。
+- [ ] 完成至少3个不同层次故障。
+- [ ] 每次根据证据选择下一条检查，而不是粘贴全部命令。
+- [ ] 每次只修改一个因素。
+- [ ] 每次从Ubuntu按原路径复测。
+- [ ] SSH、firewalld和SELinux最终状态正确。
+- [ ] 每张报告包含证据、根因、修复、回退和预防措施。
 
-## 八、验收标准
+## 十二、环境清理
 
-- [ ] 故障前存在完整、可复测的正常基线。
-- [ ] 每个故障先明确客户端、目标、协议、端口和错误。
-- [ ] 完成不少于3个不同层次故障。
-- [ ] 每个报告均包含现象、证据、判断、根因、修复和验证。
-- [ ] 没有同时无依据修改多个配置。
-- [ ] 修复后从Ubuntu按原方式复测。
-- [ ] SSH、HTTP、firewalld和SELinux回到课程要求状态。
-- [ ] 完成一次同伴独立故障任务。
-
-## 九、成果提交
-
-1. `lab13-baseline.txt`。
-2. Ubuntu客户端正常基线结果。
-3. 不少于3份故障报告。
-4. 同伴故障报告。
-5. 最终服务、端口、规则和SELinux状态。
-6. 一张模块二分层排障流程图。
-
-## 十、常见问题
-
-### Q1：不知道先查什么
-
-先问清“谁通过什么名称、协议和端口访问谁”，再判断是全部访问失败还是只有某一种方式失败。
-
-### Q2：修好服务后客户端仍然失败
-
-继续检查监听地址、防火墙、名称解析和客户端缓存。一个事件可能包含多个故障。
-
-### Q3：重启虚拟机后恢复了，报告怎么写
-
-如果没有找到根因，不能把重启写成完成。应查阅启动前后的journal、服务状态和配置变化，说明证据不足并继续缩小范围。
-
-### Q4：为什么不能关闭firewalld和SELinux
-
-关闭防护只会绕开控制层，不能说明原业务规则正确，也会扩大暴露范围。
-
-## 十一、课后思考与拓展
-
-1. 如何通过影响范围快速区分客户端问题和服务器问题？
-2. 为什么排障时需要记录最近变更？
-3. 什么样的验证才能证明故障真正恢复？
-
-## 十二、环境清理与保留
-
-```bash
-if test -f ~/m1-project/module2-check/http.pid; then
-  MODULE2_HTTP_PID=$(cat ~/m1-project/module2-check/http.pid)
-  ps -p "$MODULE2_HTTP_PID" -o args= 2>/dev/null | grep -Fq 'http.server 8080' && kill "$MODULE2_HTTP_PID" || true
-fi
-ZONE=$(cat ~/m1-project/module2-check/zone.txt 2>/dev/null || firewall-cmd --get-default-zone)
-sudo firewall-cmd --zone="$ZONE" --remove-port=8080/tcp 2>/dev/null || true
-```
-
-保留SSH、静态网络、正确的firewalld和SELinux配置，供模块三服务部署使用。建议创建快照：
+删除8080运行时规则：
 
 ```text
-01-Linux网络与安全基础完成
+sudo firewall-cmd --zone=<实际活动区域> --remove-port=8080/tcp
 ```
+
+停止服务：
+
+```bash
+sudo systemctl disable --now module2-web
+```
+
+删除Unit：
+
+```bash
+sudo rm /etc/systemd/system/module2-web.service
+```
+
+故障卡B已经恢复且确认备份不再需要时，删除实验Unit备份：
+
+```bash
+sudo rm -f /etc/systemd/system/module2-web.service.before-fault
+```
+
+重新加载：
+
+```bash
+sudo systemctl daemon-reload
+```
+
+检查测试目录：
+
+```bash
+sudo find /srv/module2-web -maxdepth 2 -ls
+```
+
+确认只有本实验文件后删除：
+
+```bash
+sudo rm -rf /srv/module2-web
+```
+
+保留实验8网络、实验10 SSH密钥与客户端配置、正确的firewalld和SELinux基线，供模块三服务部署继续使用。

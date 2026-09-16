@@ -1,166 +1,143 @@
 # 实验15：MySQL数据库服务部署与备份恢复
 
-> 所属模块：模块三 企业服务部署与综合运维  
-> 建议学时：4学时  
-> 实验方式：个人，远程访问可两人互测  
-> 对应教材：《模块三 企业服务部署与综合运维》第26章  
-> 知识前置：模块二服务运维方法和教材第26章；不要求先掌握Nginx配置\
-> 状态依赖：`Linux-L2`中的`rocky-server`，无冲突数据库软件和可用课程软件源；不依赖实验14的Nginx文件\
-> 建议起点：`Linux-L2`或完成实验14后的当前环境\
-> 项目成果：MySQL服务、业务数据库、最小权限账号、受限远程测试、逻辑备份和恢复验证
+> 所属模块：模块三 企业服务器部署与综合运维
+> 建议学时：4学时
+> 实验方式：个人，远程访问由小组互查
+> 对应教材：3.2 MySQL数据库服务
+> 知识前置：MySQL数据库原理、systemd、firewalld和3.2教材
+> 状态依赖：`rocky-server`无冲突数据库软件且课程软件源可用；不依赖实验14文件
+> 建议起点：`Linux-L2`
+> 项目成果：company_db、最小权限账号、远程访问边界、逻辑备份和恢复证据
 
 ## 一、项目情境
 
-TechCorp应用需要使用MySQL保存员工数据。你负责安装MySQL Community Server，完成初始管理员密码处理，创建业务账号，控制监听和网络访问，并通过`mysqldump`完成一次误删后的恢复验证。
+TechCorp需要在`rocky-server`运行MySQL保存员工数据。管理员需要完成安装、账号授权、一次受限远程访问以及误删后的恢复验证。验收后数据库恢复为仅本机监听。
 
-## 二、实验目标
+## 二、实验规则
 
-### 1. 知识目标
+1. 仓库RPM使用本学期验证版本，不照抄旧下载链接。
+2. 密码只在交互提示符输入，不写入脚本和报告。
+3. 远程访问同时限制监听、MySQL账号来源和firewalld来源。
+4. 不使用`'user'@'%'`。
+5. 逻辑备份必须检查退出状态、文件内容和隔离恢复。
+6. 误删前必须确认最新备份可用。
 
-1. 说明MySQL服务进程、客户端、配置、数据目录、日志、监听地址和账号来源。
-2. 说明`用户@来源`、管理员账号和业务最小权限。
-3. 说明逻辑备份、RPO/RTO基础概念和恢复验证。
+## 三、任务一：安装前检查
 
-### 2. 能力目标
+确认身份：
 
-1. 使用官方MySQL Yum仓库或教师离线包安装MySQL 8.4 LTS。
-2. 管理mysqld，处理初始临时密码并检查日志。
-3. 创建数据库、测试表和最小权限业务账号。
-4. 临时完成受限远程连接并恢复本地监听。
-5. 使用`mysqldump`备份、恢复到测试库并比较数据。
+```bash
+whoami
+```
 
-### 3. 素质目标
+```bash
+hostnamectl --static
+```
 
-1. 不把root账号用于业务程序或远程开放。
-2. 不把数据库密码写入Git、截图或公开命令记录。
-3. 备份文件必须检查、校验并实际恢复。
+检查冲突软件：
 
-## 三、知识准备
+```bash
+rpm -qa | grep -Ei '^(mysql|mariadb)'
+```
+
+创建目录：
+
+```bash
+mkdir -p ~/course-packages
+```
+
+```bash
+mkdir -p ~/m1-project/backup/mysql
+```
+
+```bash
+mkdir -p ~/m1-project/evidence
+```
+
+把教师提供的EL9仓库RPM放入`~/course-packages`，确认文件：
+
+```bash
+find ~/course-packages -maxdepth 1 -name 'mysql*-community-release-el9-*.noarch.rpm' -print
+```
+
+只应选择本学期明确验证的一个文件。
+
+## 四、任务二：安装与首次启动
+
+使用实际文件名安装仓库：
 
 ```text
-MySQL客户端
-→ 连接主机、3306端口或本地Socket
-→ mysqld验证用户、来源和密码
-→ 授权系统检查数据库操作权限
-→ 存储引擎读写数据文件
-→ 错误日志和审计证据记录运行问题
+sudo dnf install -y ~/course-packages/<实际仓库RPM文件名>
 ```
 
-MySQL账号不是单独的用户名，而是`'用户名'@'来源'`。`app_user@localhost`、`app_user@127.0.0.1`与`app_user@192.168.200.%`是不同账号。不同系统的名称解析设置可能使本机TCP连接匹配`localhost`或`127.0.0.1`，本实验分别建立Socket和本机TCP账号，避免把账号匹配问题误判为密码错误。
-
-实验开始前打开[MySQL连接、访问边界与备份恢复动画](../../animations/13-mysql-access-backup/index.html)。先完成“对象与连接”和“远程访问边界”，在创建账号前完成“账号与授权”，进入任务七前完成“备份与恢复”。每一步先预测将经过的入口、匹配账号和允许操作，再用`ss`、`USER()`、`CURRENT_USER()`、`SHOW GRANTS`及恢复数据验证。
-
-本实验使用MySQL 8.4 LTS官方Community包。仓库配置RPM的具体小版本文件名会更新，由教师每学期提供验证过的EL9版本和离线包，不在手册中固定过期下载链接。
-
-## 四、实验环境
-
-- `rocky-server`运行Rocky Linux 9 x86_64，建议4GB内存；MySQL只安装在该机。
-- `ubuntu-client`已在实验8配置稳定静态地址，承担远程MySQL客户端验证。
-- 使用干净环境，不得在已有MariaDB数据的系统上直接替换。
-- 教师提供MySQL 8.4 EL9仓库配置RPM或完整离线包。
-- 数据库：`company_db`；表：`employees`。
-- 服务名：`mysqld`；默认TCP端口：3306。
-
-## 五、项目任务
-
-1. 检查MySQL/MariaDB冲突并建立安装前基线。
-2. 安装MySQL 8.4 LTS并处理临时管理员密码。
-3. 创建业务数据库、测试表和最小权限账号。
-4. 检查配置、监听、日志和本地TCP连接。
-5. 配置一次限定来源的远程访问并回收。
-6. 完成逻辑备份、误删、测试恢复和数据验证。
-
-## 六、实验步骤
-
-### 任务一：安装前检查
-
-先确认当前没有停留在`rocky-web`：
+检查仓库：
 
 ```bash
-test "$(whoami)" = 'rocky-server' && echo USER_PASS || echo USER_FAIL
-test "$(hostnamectl --static)" = 'rocky-server' && echo HOST_PASS || echo HOST_FAIL
+sudo dnf repolist --enabled | grep -i mysql
 ```
 
-```bash
-mkdir -p ~/m1-project/evidence ~/m1-project/backup/mysql ~/course-packages
-{
-    cat /etc/os-release
-    uname -m
-    free -h
-    rpm -qa | grep -Ei '^(mysql|mariadb)' || true
-    sudo ss -lntp | grep ':3306' || true
-} | tee ~/m1-project/evidence/lab15-mysql-before.txt
-```
-
-如果已经存在MariaDB或其他MySQL来源，停止安装并由教师决定恢复干净快照或迁移数据。不能让两个来源的软件包直接覆盖唯一数据库。
-
-> **验收点**：确认架构为x86_64、内存满足要求、3306无冲突且没有旧数据库需要保护。
-
-### 任务二：配置官方仓库并安装
-
-#### 步骤1：安装教师提供的仓库RPM
-
-把教师提供的`mysql84-community-release-el9-*.noarch.rpm`放入`~/course-packages`，确认目录中只有一个目标文件：
-
-```bash
-find ~/course-packages -maxdepth 1 -name 'mysql84-community-release-el9-*.noarch.rpm' -print
-```
-
-安装：
-
-```bash
-sudo dnf install -y ~/course-packages/mysql84-community-release-el9-*.noarch.rpm
-sudo dnf repolist --enabled | grep -E 'mysql.*community'
-```
-
-预期启用MySQL 8.4 LTS Community子仓库。不要同时启用LTS和Innovation两个服务器系列。
-
-#### 步骤2：安装服务器
+安装服务端：
 
 ```bash
 sudo dnf install -y mysql-community-server
-rpm -q mysql-community-server mysql-community-client
-mysqld --version
-mysql --version
 ```
 
-无法联网时，使用教师准备的同版本完整RPM依赖包，不从第三方网盘混合安装。
+检查软件包：
 
-> **验收点**：服务器和客户端均来自统一MySQL Community 8.4系列。
+```bash
+rpm -q mysql-community-server mysql-community-client
+```
 
-### 任务三：首次启动和管理员密码
-
-#### 步骤3：启动并检查
+启动：
 
 ```bash
 sudo systemctl enable --now mysqld
+```
+
+检查：
+
+```bash
 systemctl is-active mysqld
+```
+
+```bash
 systemctl is-enabled mysqld
-sudo ss -lntp | grep ':3306'
+```
+
+```bash
+sudo ss -lntp | grep ':3306 '
+```
+
+查看日志：
+
+```bash
 sudo journalctl -u mysqld -n 30 --no-pager
 ```
 
-首次启动会初始化空数据目录并生成`root@localhost`临时密码。
+## 五、任务三：设置管理员密码
 
-#### 步骤4：读取临时密码
-
-在本人屏幕查看，不复制到实验报告：
+只在本人屏幕读取临时密码：
 
 ```bash
-sudo grep 'temporary password' /var/log/mysqld.log | tail -1
+sudo grep 'temporary password' /var/log/mysqld.log
 ```
 
-使用临时密码登录：
+登录：
 
 ```bash
 mysql -u root -p
 ```
 
-在MySQL提示符中更改为教师指定的强实验密码：
+在`mysql>`提示符执行，替换密码占位符：
 
 ```sql
 ALTER USER 'root'@'localhost' IDENTIFIED BY '<教师指定的强实验密码>';
-SELECT USER(), CURRENT_USER(), VERSION();
+```
+
+检查版本：
+
+```sql
+SELECT VERSION();
 ```
 
 退出：
@@ -169,347 +146,398 @@ SELECT USER(), CURRENT_USER(), VERSION();
 EXIT;
 ```
 
-不要把实际密码保留在Markdown、截图或Git历史中。
+## 六、任务四：创建业务数据和账号
 
-> **验收点**：能够使用新密码登录，记录MySQL版本和当前账号，但不记录密码。
-
-### 任务四：创建业务数据和最小权限账号
-
-#### 步骤5：创建数据库和表
+重新登录：
 
 ```bash
 mysql -u root -p
 ```
 
+逐条执行：
+
 ```sql
-CREATE DATABASE company_db CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+CREATE DATABASE company_db CHARACTER SET utf8mb4;
+```
+
+```sql
 USE company_db;
+```
 
-CREATE TABLE employees (
-    id INT PRIMARY KEY AUTO_INCREMENT,
-    name VARCHAR(50) NOT NULL,
-    department VARCHAR(50) NOT NULL,
-    email VARCHAR(100) UNIQUE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+```sql
+CREATE TABLE employees (id INT PRIMARY KEY AUTO_INCREMENT, name VARCHAR(50) NOT NULL, department VARCHAR(50) NOT NULL);
+```
 
-INSERT INTO employees(name, department, email) VALUES
-('Zhang San', 'IT', 'zhangsan@techcorp.local'),
-('Li Si', 'OPS', 'lisi@techcorp.local'),
-('Wang Wu', 'IT', 'wangwu@techcorp.local');
+```sql
+INSERT INTO employees(name,department) VALUES ('Alice','Cloud'),('Bob','Network'),('Carol','Security');
+```
 
+```sql
 SELECT * FROM employees;
 ```
 
-#### 步骤6：创建业务账号
-
-把密码替换为教师指定的实验密码：
+创建Socket连接账号：
 
 ```sql
 CREATE USER 'app_user'@'localhost' IDENTIFIED BY '<业务实验密码>';
-CREATE USER 'app_user'@'127.0.0.1' IDENTIFIED BY '<业务实验密码>';
-GRANT SELECT, INSERT, UPDATE, DELETE ON company_db.* TO 'app_user'@'localhost';
-GRANT SELECT, INSERT, UPDATE, DELETE ON company_db.* TO 'app_user'@'127.0.0.1';
-SHOW GRANTS FOR 'app_user'@'localhost';
-SHOW GRANTS FOR 'app_user'@'127.0.0.1';
-EXIT;
 ```
 
-以业务账号测试：
+授权：
+
+```sql
+GRANT SELECT, INSERT, UPDATE, DELETE ON company_db.* TO 'app_user'@'localhost';
+```
+
+查看：
+
+```sql
+SHOW GRANTS FOR 'app_user'@'localhost';
+```
+
+退出后测试：
 
 ```bash
 mysql -u app_user -p company_db
 ```
 
+执行查询：
+
 ```sql
 SELECT COUNT(*) FROM employees;
-INSERT INTO employees(name, department, email)
-VALUES('Zhao Liu', 'QA', 'zhaoliu@techcorp.local');
-DROP DATABASE company_db;
-EXIT;
 ```
 
-前两项应成功，`DROP DATABASE`应被拒绝。
+## 七、任务五：检查本机运行边界
 
-> **验收点**：Socket业务账号能够进行获批操作，不能删除数据库；同时已为本机TCP创建同权限账号。
-
-### 任务五：监听和本地TCP验证
-
-#### 步骤7：检查有效变量和文件
+查看有效变量：
 
 ```bash
 mysql -u root -p -e "SHOW VARIABLES WHERE Variable_name IN ('port','bind_address','datadir','log_error');"
-sudo ss -lntp | grep ':3306'
+```
+
+查看监听：
+
+```bash
+sudo ss -lntp | grep ':3306 '
+```
+
+查看数据目录：
+
+```bash
 sudo ls -ld /var/lib/mysql
-sudo tail -n 30 /var/log/mysqld.log
 ```
 
-使用TCP而不是Unix Socket测试：
+不要直接编辑数据目录中的表文件。
+
+## 八、任务六：受限远程访问
+
+### 8.1 备份配置
+
+检查备份：
 
 ```bash
-mysql --protocol=TCP -h 127.0.0.1 -P 3306 -u app_user -p company_db -e 'SELECT COUNT(*) AS employee_count FROM employees;'
+ls -ld ~/m1-project/backup/mysql/my.cnf.d.before-lab15
 ```
 
-> **验收点**：能够指出端口、监听地址、数据目录和错误日志位置；本地TCP查询成功，并能说明它匹配`app_user@127.0.0.1`或经名称解析后的最具体账号。
-
-### 任务六：受限远程访问
-
-该任务使用实验1、8准备的Ubuntu客户端，并从`~/m1-project/course-env.sh`读取其固定IP。
-
-#### 步骤8：备份并调整监听
+不存在时创建：
 
 ```bash
-sudo cp -a /etc/my.cnf /etc/my.cnf.d ~/m1-project/backup/mysql/
-sudo tee /etc/my.cnf.d/course-network.cnf > /dev/null <<'MYSQLCNF'
+sudo cp -a /etc/my.cnf.d ~/m1-project/backup/mysql/my.cnf.d.before-lab15
+```
+
+### 8.2 临时扩大监听
+
+编辑独立片段：
+
+```bash
+sudo vim /etc/my.cnf.d/course-network.cnf
+```
+
+写入：
+
+```ini
 [mysqld]
 bind-address=0.0.0.0
-MYSQLCNF
+```
+
+重启：
+
+```bash
 sudo systemctl restart mysqld
+```
+
+确认：
+
+```bash
 systemctl is-active mysqld
-sudo ss -lntp | grep ':3306'
 ```
 
-`0.0.0.0`扩大了监听范围，因此必须同时限制MySQL账号来源和firewalld来源。
-
-#### 步骤9：创建限定来源账号
-
-登录MySQL：
-
 ```bash
-source ~/m1-project/course-env.sh
-REMOTE_SQL=~/m1-project/backup/mysql/lab15-remote-user.sql
-cat > "$REMOTE_SQL" <<SQL
-CREATE USER 'remote_app'@'$UBUNTU_CLIENT_IP' IDENTIFIED BY 'Lab15-Remote-Only!';
-GRANT SELECT ON company_db.* TO 'remote_app'@'$UBUNTU_CLIENT_IP';
-SHOW GRANTS FOR 'remote_app'@'$UBUNTU_CLIENT_IP';
-SQL
-chmod 600 "$REMOTE_SQL"
-mysql -u root -p < "$REMOTE_SQL"
-rm -f "$REMOTE_SQL"
+sudo ss -lntp | grep ':3306 '
 ```
 
-这里使用仅限隔离实验环境的固定口令，便于从客户端验证；生产环境必须改为独立随机凭据或密钥管理系统。账号host必须是Ubuntu准确地址，不使用`%`开放所有来源。
+### 8.3 记录Ubuntu地址
 
-#### 步骤10：配置来源防火墙
+在`ubuntu-client`执行：
 
 ```bash
-source ~/m1-project/course-env.sh
-IFACE=$(ip route show default | awk 'NR==1 {print $5}')
-ZONE=$(firewall-cmd --get-zone-of-interface="$IFACE" 2>/dev/null)
-if [[ -z "$ZONE" || "$ZONE" == 'no zone' ]]; then ZONE=$(firewall-cmd --get-default-zone); fi
-CLIENT_IP="$UBUNTU_CLIENT_IP"
-RULE="rule family=\"ipv4\" source address=\"$CLIENT_IP/32\" port port=\"3306\" protocol=\"tcp\" accept"
-printf '%s\n' "$ZONE" > ~/m1-project/backup/mysql/remote-zone.txt
-printf '%s\n' "$CLIENT_IP" > ~/m1-project/backup/mysql/remote-client-ip.txt
-printf '%s\n' "$RULE" > ~/m1-project/backup/mysql/remote-rule.txt
-sudo firewall-cmd --zone="$ZONE" --add-rich-rule="$RULE"
-sudo firewall-cmd --zone="$ZONE" --list-rich-rules
+ip -brief address
 ```
 
-不要使用普通`--add-port=3306/tcp`，否则会绕过来源限制。
+记录VMnet8网卡上的纯IPv4地址。
 
-#### 步骤11：客户端验证
+### 8.4 创建限定来源账号
 
-Ubuntu客户端安装MySQL命令行客户端：
+在Rocky登录MySQL：
 
 ```bash
-sudo apt update
-sudo apt install -y mysql-client
-mysql --version
+mysql -u root -p
 ```
 
-若机房离线，使用教师提供并验证过的客户端包。然后执行：
+替换真实地址和密码：
 
-```bash
-source ~/m1-project/course-env.sh
-mysql -h "$ROCKY_SERVER_IP" -P 3306 -u remote_app -p \
-  company_db -e 'SELECT id,name,department FROM employees;'
+```sql
+CREATE USER 'remote_app'@'<Ubuntu实际IPv4>' IDENTIFIED BY '<远程实验密码>';
 ```
 
-从另一非授权来源测试应失败。Ubuntu客户端只承担远程连接验证，不在客户端安装数据库服务端。
+```sql
+GRANT SELECT ON company_db.* TO 'remote_app'@'<Ubuntu实际IPv4>';
+```
 
-> **验收点**：Ubuntu客户端查询成功，账号权限只有SELECT，非授权来源不允许连接。
+```sql
+SHOW GRANTS FOR 'remote_app'@'<Ubuntu实际IPv4>';
+```
 
-#### 步骤12：回收临时远程开放
+### 8.5 添加来源受限防火墙规则
 
-服务器执行：
+查看活动zone：
 
 ```bash
-ZONE=$(cat ~/m1-project/backup/mysql/remote-zone.txt)
-RULE=$(cat ~/m1-project/backup/mysql/remote-rule.txt)
-sudo firewall-cmd --zone="$ZONE" --remove-rich-rule="$RULE"
-sudo rm -f /etc/my.cnf.d/course-network.cnf
-sudo tee /etc/my.cnf.d/course-local.cnf > /dev/null <<'MYSQLCNF'
+firewall-cmd --get-active-zones
+```
+
+使用实际zone和Ubuntu地址：
+
+```text
+sudo firewall-cmd --zone=<实际活动区域> --add-rich-rule='rule family="ipv4" source address="<Ubuntu实际IPv4>/32" port port="3306" protocol="tcp" accept'
+```
+
+### 8.6 Ubuntu远程验证
+
+安装客户端：
+
+```bash
+sudo apt install -y default-mysql-client
+```
+
+连接：
+
+```text
+mysql -h <rocky-server实际IPv4> -P 3306 -u remote_app -p company_db
+```
+
+查询：
+
+```sql
+SELECT USER(), CURRENT_USER();
+```
+
+```sql
+SELECT * FROM employees;
+```
+
+尝试建表应被最小权限拒绝：
+
+```sql
+CREATE TABLE should_fail(id INT);
+```
+
+### 8.7 回收远程入口
+
+在Rocky删除运行时规则：
+
+```text
+sudo firewall-cmd --zone=<实际活动区域> --remove-rich-rule='rule family="ipv4" source address="<Ubuntu实际IPv4>/32" port port="3306" protocol="tcp" accept'
+```
+
+登录MySQL删除远程账号：
+
+```sql
+DROP USER 'remote_app'@'<Ubuntu实际IPv4>';
+```
+
+把配置片段改为本机监听：
+
+```bash
+sudo vim /etc/my.cnf.d/course-network.cnf
+```
+
+内容：
+
+```ini
 [mysqld]
 bind-address=127.0.0.1
-MYSQLCNF
-sudo systemctl restart mysqld
-sudo ss -lntp | grep ':3306'
 ```
 
-登录MySQL删除临时远程账号：
+重启并检查：
 
 ```bash
-source ~/m1-project/course-env.sh
-CLEANUP_SQL=~/m1-project/backup/mysql/lab15-drop-remote-user.sql
-printf "DROP USER IF EXISTS 'remote_app'@'%s';\n" "$UBUNTU_CLIENT_IP" > "$CLEANUP_SQL"
-chmod 600 "$CLEANUP_SQL"
-mysql -u root -p < "$CLEANUP_SQL"
-rm -f "$CLEANUP_SQL"
+sudo systemctl restart mysqld
 ```
 
-最终应看到`127.0.0.1:3306`，证明已恢复仅本机使用的监听策略。
+```bash
+sudo ss -lntp | grep ':3306 '
+```
 
-### 任务七：逻辑备份和恢复
+## 九、任务七：逻辑备份
 
-#### 步骤13：创建备份
+创建目录：
 
 ```bash
 mkdir -p ~/backup-lab/mysql
-BACKUP=~/backup-lab/mysql/company_db-$(date +%Y%m%d-%H%M).sql
-mysqldump -u root -p --single-transaction --routines --triggers company_db > "$BACKUP"
-test -s "$BACKUP"
-printf '%s\n' "$(readlink -f "$BACKUP")" \
-  > ~/m1-project/backup/mysql/lab15-latest-backup.path
-grep -E 'CREATE TABLE|INSERT INTO' "$BACKUP" | sed -n '1,10p'
-sha256sum "$BACKUP" | tee "$BACKUP.sha256"
 ```
 
-不要把密码放在命令行参数中。备份非空和包含SQL结构只是初步检查，还需要恢复。
+检查是否已有同名备份：
 
-#### 步骤14：记录数据基线并模拟误删
+```bash
+ls -l ~/backup-lab/mysql/company_db.sql
+```
+
+已有文件时先核对并另行保存，不得无提示覆盖。
+
+执行备份：
+
+```bash
+mysqldump -u root -p --single-transaction --routines --events --triggers --no-tablespaces company_db > ~/backup-lab/mysql/company_db.sql
+```
+
+紧接着检查退出状态：
+
+```bash
+echo $?
+```
+
+检查非空：
+
+```bash
+test -s ~/backup-lab/mysql/company_db.sql
+```
+
+查找目标表：
+
+```bash
+grep -n 'CREATE TABLE.*employees' ~/backup-lab/mysql/company_db.sql
+```
+
+计算哈希：
+
+```bash
+sha256sum ~/backup-lab/mysql/company_db.sql
+```
+
+## 十、任务八：误删与隔离恢复
+
+记录原始行数：
 
 ```bash
 mysql -u root -p company_db -e 'SELECT COUNT(*) AS before_count FROM employees;'
+```
+
+确认备份通过检查后，模拟误删：
+
+```bash
 mysql -u root -p company_db -e 'DROP TABLE employees;'
-mysql -u root -p company_db -e 'SHOW TABLES;'
 ```
 
-#### 步骤15：恢复到测试数据库
+创建隔离数据库：
 
 ```bash
-BACKUP=$(cat ~/m1-project/backup/mysql/lab15-latest-backup.path)
-if [[ ! -s "$BACKUP" ]]; then
-  echo "备份不存在或为空：$BACKUP"
-else
-  mysql -u root -p -e 'DROP DATABASE IF EXISTS company_restore; CREATE DATABASE company_restore CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;'
-  sed 's/`company_db`/`company_restore`/g' "$BACKUP" > ~/backup-lab/mysql/company_restore.sql
-  mysql -u root -p company_restore < ~/backup-lab/mysql/company_restore.sql
-  mysql -u root -p company_restore -e 'SELECT COUNT(*) AS restored_count FROM employees; SELECT * FROM employees;'
-fi
+mysql -u root -p -e 'DROP DATABASE IF EXISTS company_restore; CREATE DATABASE company_restore CHARACTER SET utf8mb4;'
 ```
 
-如果备份中没有`USE company_db`或数据库名，直接导入指定测试库即可，不需要sed替换。先查看备份内容再选择方法。
-
-#### 步骤16：恢复正式实验库
-
-确认测试恢复正确后：
+恢复到隔离库：
 
 ```bash
-BACKUP=$(cat ~/m1-project/backup/mysql/lab15-latest-backup.path)
-if [[ -s "$BACKUP" ]]; then
-  mysql -u root -p company_db < "$BACKUP"
-  mysql -u root -p company_db -e 'SELECT COUNT(*) AS final_count FROM employees;'
-else
-  echo "备份不存在或为空：$BACKUP"
-fi
+mysql -u root -p company_restore < ~/backup-lab/mysql/company_db.sql
 ```
 
-> **验收点**：误删前、测试恢复和正式恢复的记录数一致，数据可查询。
-
-### 任务八：保存最终证据
+验证行数：
 
 ```bash
-{
-    mysqld --version
-    systemctl is-active mysqld
-    systemctl is-enabled mysqld
-    sudo ss -lntp | grep ':3306'
-    mysql -u root -p -e "SELECT user,host FROM mysql.user WHERE user IN ('root','app_user');"
-    mysql -u root -p company_db -e 'SELECT COUNT(*) AS employee_count FROM employees;'
-    ls -lh ~/backup-lab/mysql
-} > ~/m1-project/evidence/lab15-mysql-final.txt
+mysql -u root -p company_restore -e 'SELECT COUNT(*) AS restored_count FROM employees;'
 ```
 
-该命令组会交互询问密码，不要把密码改成命令行明文。
-
-## 七、独立实践
-
-1. 创建只读账号`report_user@localhost`。
-2. 证明它可以查询但不能插入和删除。
-3. 为`company_db`创建第二份备份。
-4. 恢复到`company_verify`并比较记录数。
-5. 删除测试恢复库前先确认正式库和备份均正常。
-
-## 八、验收标准
-
-- [ ] 安装前确认没有需要保护的MariaDB或旧MySQL。
-- [ ] MySQL Community Server来自统一8.4 LTS系列。
-- [ ] mysqld为active和enabled，版本与端口已记录。
-- [ ] root临时密码已更改且未出现在提交材料中。
-- [ ] company_db和employees数据完整。
-- [ ] app_user遵循最小权限，不能删除数据库。
-- [ ] 受限远程访问同时限制账号来源和防火墙来源。
-- [ ] 临时远程开放和账号已经回收。
-- [ ] 备份非空并生成SHA256。
-- [ ] 已完成误删、测试恢复、正式恢复和记录数比较。
-- [ ] report_user独立实践完成。
-
-## 九、成果提交
-
-1. `lab15-mysql-before.txt`和`lab15-mysql-final.txt`。
-2. 软件仓库和MySQL版本记录。
-3. 业务账号授权输出，不包含密码。
-4. 受限远程连接和回收记录。
-5. 备份文件名、大小、SHA256和恢复验证。
-6. 独立只读账号验证。
-
-## 十、常见问题
-
-### Q1：找不到临时密码
-
-确认数据目录是否首次初始化、服务是否成功启动，并检查：
+查看关键数据：
 
 ```bash
-sudo journalctl -u mysqld -n 80 --no-pager
+mysql -u root -p company_restore -e 'SELECT * FROM employees ORDER BY id;'
+```
+
+隔离恢复正确后，恢复正式库：
+
+```bash
+mysql -u root -p company_db < ~/backup-lab/mysql/company_db.sql
+```
+
+最终验证：
+
+```bash
+mysql -u root -p company_db -e 'SELECT COUNT(*) AS final_count FROM employees; SELECT * FROM employees ORDER BY id;'
+```
+
+## 十一、验收标准
+
+- [ ] mysqld为active和enabled。
+- [ ] company_db包含employees表和3条初始数据。
+- [ ] app_user只具有业务库数据权限。
+- [ ] 远程账号只匹配Ubuntu真实IPv4且只有SELECT。
+- [ ] firewalld只临时允许Ubuntu来源访问3306。
+- [ ] 远程验证后账号和防火墙规则已回收。
+- [ ] mysqld最终只监听127.0.0.1。
+- [ ] 备份退出状态为0、文件非空且包含employees。
+- [ ] 隔离恢复的行数和数据正确。
+- [ ] 正式库已经恢复。
+
+## 十二、成果提交
+
+1. 软件版本、服务状态和监听结果。
+2. app_user与remote_app的`SHOW GRANTS`。
+3. Ubuntu远程查询及越权失败结果。
+4. 远程入口回收结果。
+5. 备份文件大小、哈希和关键SQL。
+6. 误删前、隔离恢复和正式恢复的数据对照。
+
+## 十三、常见问题
+
+### 13.1 找不到临时密码
+
+检查错误日志：
+
+```bash
 sudo tail -n 80 /var/log/mysqld.log
 ```
 
-不要反复删除数据目录重新初始化。
+不要重复初始化已有数据目录。
 
-### Q2：新密码被策略拒绝
+### 13.2 密码被策略拒绝
 
-MySQL默认密码策略通常要求长度、大小写、数字和特殊字符。使用教师指定的强实验密码，不降低策略绕过要求。
+使用符合长度、大小写、数字和特殊字符要求的强实验密码，不降低策略。
 
-### Q3：本地Socket能连接，TCP连接失败
+### 13.3 TCP可达但Access denied
 
-检查`--protocol=TCP`、bind_address、3306监听和账号来源。Socket连接和TCP连接不是同一路径。
+检查`USER()`、`CURRENT_USER()`、账号host和授权，不要反复开放防火墙。
 
-### Q4：远程端口可达但Access denied
+### 13.4 备份文件存在但无法恢复
 
-网络路径已经到达MySQL，继续检查`用户@来源`、密码和授权，不要再扩大防火墙规则。
+检查mysqldump退出状态、文件是否非空以及是否包含目标建表语句。
 
-### Q5：恢复后提示表已存在
+## 十四、环境保留
 
-恢复前确认目标数据库状态。优先恢复到新的验证库，不要在不清楚现有数据时使用覆盖或删除选项。
+保留mysqld、company_db、app_user和`~/backup-lab/mysql/company_db.sql`供实验20使用。
 
-## 十一、课后思考与拓展
-
-1. 为什么数据库账号必须同时考虑用户名和来源？
-2. 有SQL备份文件为什么不能直接证明可恢复？
-3. RPO和RTO会怎样影响备份频率与恢复流程？
-
-## 十二、环境保留
-
-保留mysqld、company_db、两个本机app_user账号和有效备份供实验20使用。删除临时验证库前执行：
+删除隔离恢复库前先查看：
 
 ```bash
 mysql -u root -p -e 'SHOW DATABASES;'
 ```
 
-确认后可删除`company_restore`和`company_verify`，不要删除`company_db`。
-
-## 十三、官方参考
-
-- [MySQL 8.4：使用MySQL Yum仓库安装](https://dev.mysql.com/doc/refman/8.4/en/linux-installation-yum-repo.html)
-- [MySQL 8.4：RPM安装布局](https://dev.mysql.com/doc/refman/8.4/en/linux-installation-rpm.html)
+确认验收完成后可删除`company_restore`。数据库保持仅本机监听，不保留3306防火墙规则。

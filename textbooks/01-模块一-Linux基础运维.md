@@ -38,7 +38,7 @@ Linux是服务器、云计算平台、网络设备、容器平台和自动化运
 本教材保留12章完整知识结构，课堂按7个实验项目组织为20学时。教材用于讲解原理和补充练习，`labs/linux/`中的实验手册规定必做步骤、验证证据和成果提交要求。
 
 | 实验 | 对应教材章节 | 项目重点 | 应形成的成果 |
-|---|---|---|---|
+|:--|---|---|---|
 | 实验1（4学时） | 第1—2章 | Linux起源、发行版、VMware和三机安装 | 可运行、可登录、可联网、可回退的三机环境 |
 | 实验2（4学时） | 第3—5章相关内容 | 命令行、目录、文件、查看和基础重定向 | 规范的项目目录树和操作记录 |
 | 实验3（2学时） | 第5—6章 | 查找、链接、Vim、归档和恢复 | 配置修改、归档及恢复验证 |
@@ -283,7 +283,7 @@ Windows宿主机
 虚拟机网卡连接到VMware提供的虚拟交换网络。三种模式解决的问题不同：
 
 | 模式 | VMware常用网络 | 虚拟机能访问宿主机 | 虚拟机能访问外部网络 | 局域网其他主机能否直接访问虚拟机 | 适用场景 |
-|---|---|---:|---:|---:|---|
+|:-:|:-:|:--:|:--:|:--:|:-:|
 | 桥接 | VMnet0 | 能 | 能 | 通常能 | 虚拟机直接加入真实局域网 |
 | NAT | VMnet8 | 能 | 能，由宿主机转换地址 | 默认不能主动进入 | 稳定的课程实验网络 |
 | 仅主机 | VMnet1 | 能 | 默认不能 | 默认不能 | 完全隔离或只与宿主机通信 |
@@ -404,18 +404,18 @@ ping -c 3 "$NAT_GATEWAY"
 机房不能稳定访问默认国外仓库，因此在安装其他工具前先切换到已验证的国内镜像。以下以阿里云Rocky镜像为例：
 
 ```bash
-ROCKY_REPO_BACKUP="/root/yum-repos-before-course-$(date +%F-%H%M%S)"
-sudo mkdir -p "$ROCKY_REPO_BACKUP"
-sudo cp -a /etc/yum.repos.d/. "$ROCKY_REPO_BACKUP/"
-printf '%s\n' "$ROCKY_REPO_BACKUP" | \
-  sudo tee /var/tmp/course-rocky-repo-backup.path
-sudo find /etc/yum.repos.d -maxdepth 1 -type f -iname 'rocky*.repo' \
-  -exec sed -e 's|^mirrorlist=|#mirrorlist=|g' \
-  -e 's|^#baseurl=http://dl.rockylinux.org/$contentdir|baseurl=https://mirrors.aliyun.com/rockylinux|g' \
-  -i.bak '{}' +
+# 1. 备份原有源配置文件（防止误操作）
+sudo cp -r /etc/yum.repos.d /etc/yum.repos.d.backup
+
+# 2. 使用 sed 命令替换仓库地址为阿里云
+sudo sed -e 's|^mirrorlist=|#mirrorlist=|g' \
+         -e 's|^#baseurl=http://dl.rockylinux.org/$contentdir|baseurl=https://mirrors.aliyun.com/rockylinux|g' \
+         -i.bak \
+         /etc/yum.repos.d/rocky*.repo
+
+# 3. 清理旧缓存并生成新缓存
 sudo dnf clean all
 sudo dnf makecache
-dnf repolist
 ```
 
 `makecache`失败时不要继续安装。先查看错误并检查IP、默认路由、DNS和系统时间；若确认镜像配置不适用，读取刚才保存的路径并恢复：
@@ -521,7 +521,7 @@ $RockyServerIp = Read-Host '请输入rocky-server当前IPv4地址'
 $RockyWebIp = Read-Host '请输入rocky-web当前IPv4地址'
 $UbuntuClientIp = Read-Host '请输入ubuntu-client当前IPv4地址'
 
-ping $RockyServerIp
+ping rocky-server当前IPv4地址
 ping $RockyWebIp
 ping $UbuntuClientIp
 ```
@@ -673,6 +673,7 @@ name=Rocky
 echo "$name Linux"       # 双引号：变量会展开
 echo '$name Linux'       # 单引号：原样输出
 echo file{1..3}.txt      # 花括号展开
+touch file{1..3}.txt     # 创建file1.txt file2.txt file3.txt
 echo *.txt               # 通配符展开
 ```
 
@@ -806,13 +807,29 @@ Windows常用`C:\`、`D:\`区分不同驱动器。Linux从一个根目录`/`开�
 
 早期Unix和Linux把系统启动所需的基本命令放在`/bin`，把其他命令放在`/usr/bin`。现代发行版普遍采用usr-merge，把程序和库集中到`/usr`，同时保留旧路径作为符号链接，兼容仍然使用`/bin/ls`等路径的脚本。
 
-在Rocky和Ubuntu分别验证：
+在Rocky和Ubuntu分别验证。先观察这些路径本身：
 
 ```bash
-ls -ld /bin /sbin /lib /lib64 2>/dev/null
+ls -ld /bin /sbin /lib /lib64
+```
+
+如果Ubuntu提示`/lib64`不存在，只记录现象，不需要创建它。再逐条查看链接最终指向哪里：
+
+```bash
 readlink -f /bin
+```
+
+```bash
 readlink -f /sbin
+```
+
+```bash
 readlink -f /bin/ls
+```
+
+最后确认直接输入`ls`时会执行哪个程序：
+
+```bash
 command -v ls
 ```
 
@@ -840,11 +857,47 @@ command -v ls
 | `~` | 当前用户家目录 |
 | `-` | `cd`中代表上一次目录 |
 
+先显示当前目录：
+
 ```bash
 pwd
+```
+
+使用绝对路径进入日志目录：
+
+```bash
 cd /var/log
+```
+
+确认当前位置：
+
+```bash
+pwd
+```
+
+使用相对路径回到上一级：
+
+```bash
 cd ..
+```
+
+再次确认当前位置，然后返回家目录：
+
+```bash
+pwd
+```
+
+```bash
 cd ~
+```
+
+```bash
+pwd
+```
+
+`cd -`会返回上一次所在目录。执行前先预测结果：
+
+```bash
 cd -
 ```
 
@@ -864,64 +917,125 @@ cd -
 
 ### 本章短练习：准备交付文件
 
-练习目录固定为`~/course-practice/m1/ch04`。先创建目录：
+练习目录固定为`~/course-practice/m1/ch04`。本节按照“执行一条、观察一次”的顺序准备对象。
+
+第一步，创建多级练习目录：
 
 ```bash
-mkdir -p ~/course-practice/m1/ch04/{incoming,config,data,logs,scripts,backup,docs}
-touch ~/course-practice/m1/ch04/docs/directory-plan.md
+mkdir -p ~/course-practice/m1/ch04
 ```
 
-`mkdir -p`可以创建多级目录，已存在时不会因目录本身已经存在而报错。花括号会被Shell展开成多个路径。`touch`可以创建空文件，也可以更新已有文件的时间戳。
+`-p`表示缺少的父目录也一并创建；目录已经存在时，不会仅因这一点报错。
 
-现在模拟业务部门交来的原始文件。后续复制、移动和删除都以这些真实文件为对象：
+第二步，进入练习目录：
 
 ```bash
-cat > ~/course-practice/m1/ch04/README.md <<'EOF'
-# 新业务服务器基础交付
-
-- 服务器：rocky-server
-- 负责人：rocky-server
-- 状态：初始化中
-EOF
-
-cat > ~/course-practice/m1/ch04/incoming/app.conf.sample <<'EOF'
-app_name=internal-demo
-listen_port=8080
-data_dir=/srv/internal-demo/data
-log_level=info
-EOF
-
-cat > ~/course-practice/m1/ch04/incoming/server-list.csv <<'EOF'
-hostname,role,ip
-rocky-server,data-and-ops,待实验8确定
-rocky-web,web,待实验8确定
-ubuntu-client,client,待实验8确定
-EOF
-
-printf '该文件为过期临时说明，确认后删除。\n' \
-  > ~/course-practice/m1/ch04/incoming/obsolete-note.tmp
-
-cat > ~/course-practice/m1/ch04/logs/app.log <<'EOF'
-2026-07-05 09:00:01 INFO service preparation started
-2026-07-05 09:00:03 WARN configuration not deployed
-2026-07-05 09:00:05 ERROR sample connection failed
-2026-07-05 09:00:08 INFO waiting for dev01
-EOF
-
-cat > ~/course-practice/m1/ch04/scripts/precheck.sh <<'EOF'
-#!/bin/bash
-echo "host=$(hostname) time=$(date -Iseconds)"
-EOF
-chmod 750 ~/course-practice/m1/ch04/scripts/precheck.sh
+cd ~/course-practice/m1/ch04
 ```
 
-检查所有输入对象已经存在：
+立即确认当前位置。后续命令使用相对路径，避免反复输入很长的绝对路径：
 
 ```bash
-find ~/course-practice/m1/ch04 -maxdepth 2 -printf '%y %p\n' | sort
+pwd
 ```
 
-其中`d`表示目录、`f`表示普通文件。只有这一步结果完整，才继续4.4节。
+第三步，逐个创建业务目录。每执行一条命令，就观察一次：
+
+```bash
+mkdir incoming
+```
+
+```bash
+ls -ld incoming
+```
+
+```bash
+mkdir config
+```
+
+```bash
+mkdir data
+```
+
+```bash
+mkdir logs
+```
+
+```bash
+mkdir scripts
+```
+
+```bash
+mkdir backup
+```
+
+```bash
+mkdir docs
+```
+
+熟悉`mkdir`后，可以用一条`ls`同时检查这些目录：
+
+```bash
+ls -ld incoming config data logs scripts backup docs
+```
+
+第四步，创建一份空的目录规划文档：
+
+```bash
+touch docs/directory-plan.md
+```
+
+用`ls -l`确认对象类型和文件名：
+
+```bash
+ls -l docs/directory-plan.md
+```
+
+第五步，模拟业务部门交来的原始文件。这里暂时使用`echo 内容 > 文件`生成简短素材；`>`表示把输出写入文件，后续章节会专门学习重定向。
+
+```bash
+echo 'app_name=internal-demo' > incoming/app.conf.sample
+```
+
+```bash
+echo 'rocky-server,data-and-ops,待实验8确定' > incoming/server-list.csv
+```
+
+```bash
+echo '该文件为过期临时说明，确认后删除。' > incoming/obsolete-note.tmp
+```
+
+```bash
+echo 'INFO service preparation started' > logs/app.log
+```
+
+`scripts`目录目前保持为空。第3.6章“Shell服务器巡检”才会正式编写脚本。
+
+第六步，逐个确认后续任务需要的对象确实存在：
+
+```bash
+ls -l incoming/app.conf.sample
+```
+
+```bash
+ls -l incoming/server-list.csv
+```
+
+```bash
+ls -l incoming/obsolete-note.tmp
+```
+
+```bash
+ls -l logs/app.log
+```
+
+最后查看两层目录结构：
+
+```bash
+find . -maxdepth 2 -print
+```
+
+只有`incoming`中的三个输入文件和`logs/app.log`都存在，才继续4.4节。
 
 ## 4.4 复制、移动和删除
 
@@ -966,44 +1080,118 @@ find 待删除路径 -maxdepth 2 -print
 5. 查看`obsolete-note.tmp`内容，确认确实过期后再删除。
 6. 操作完成后，不能出现误删除的目录或额外副本。
 
-先根据需求判断每一步使用`cp`、`mv`还是`rm`。完成后再展开参考实现核对。
+先根据需求判断每一步使用`cp`、`mv`还是`rm`，再按下面的顺序逐条完成。
 
-<details>
-<summary>参考实现：完成任务后展开</summary>
+开始前确认仍位于本章练习目录：
 
 ```bash
-cp -a ~/course-practice/m1/ch04/incoming/app.conf.sample \
-  ~/course-practice/m1/ch04/config/app.conf
-
-cp -a ~/course-practice/m1/ch04/config/app.conf \
-  ~/course-practice/m1/ch04/backup/app.conf.initial
-
-mv ~/course-practice/m1/ch04/incoming/server-list.csv \
-  ~/course-practice/m1/ch04/docs/server-list.csv
-
-cat ~/course-practice/m1/ch04/incoming/obsolete-note.tmp
-rm -i ~/course-practice/m1/ch04/incoming/obsolete-note.tmp
+pwd
 ```
 
-</details>
+预期路径以`/course-practice/m1/ch04`结尾。
 
-逐项验证：
+第一步，复制配置样例，保留原文件：
 
 ```bash
-test -f ~/course-practice/m1/ch04/incoming/app.conf.sample && echo 'OK original sample'
-test -f ~/course-practice/m1/ch04/config/app.conf && echo 'OK active config'
-test -f ~/course-practice/m1/ch04/backup/app.conf.initial && echo 'OK initial backup'
-test -f ~/course-practice/m1/ch04/docs/server-list.csv && echo 'OK server list'
-test ! -e ~/course-practice/m1/ch04/incoming/obsolete-note.tmp && echo 'OK obsolete file removed'
+cp incoming/app.conf.sample config/app.conf
+```
+
+观察源文件和副本是否同时存在：
+
+```bash
+ls -l incoming/app.conf.sample config/app.conf
+```
+
+第二步，备份正式配置：
+
+```bash
+cp config/app.conf backup/app.conf.initial
+```
+
+确认备份已经产生：
+
+```bash
+ls -l backup/app.conf.initial
+```
+
+第三步，把服务器清单移动到交付文档目录：
+
+```bash
+mv incoming/server-list.csv docs/server-list.csv
+```
+
+先检查新位置：
+
+```bash
+ls -l docs/server-list.csv
+```
+
+再检查原位置。下面这条命令应提示文件不存在，这正是移动成功的证据：
+
+```bash
+ls -l incoming/server-list.csv
+```
+
+第四步，删除前先查看临时说明：
+
+```bash
+cat incoming/obsolete-note.tmp
+```
+
+确认内容确实过期后，使用交互确认方式删除：
+
+```bash
+rm -i incoming/obsolete-note.tmp
+```
+
+输入`y`确认，再检查它已经不存在：
+
+```bash
+ls -l incoming/obsolete-note.tmp
+```
+
+这里出现`No such file or directory`是预期结果，因为目标已经被删除。
+
+第五步，逐项查看最终对象：
+
+```bash
+ls -l incoming/app.conf.sample
+```
+
+```bash
+ls -l config/app.conf
+```
+
+```bash
+ls -l backup/app.conf.initial
+```
+
+```bash
+ls -l docs/server-list.csv
 ```
 
 ## 4.5 隐藏文件和通配符
 
-以`.`开头的名称通常不会被普通`ls`显示：
+以`.`开头的名称通常不会被普通`ls`显示。回到练习目录并创建隐藏文件：
 
 ```bash
-printf 'practice_id=M1-CH04\n' > ~/course-practice/m1/ch04/.practice-meta
-ls -la ~/course-practice/m1/ch04
+cd ~/course-practice/m1/ch04
+```
+
+```bash
+touch .practice-meta
+```
+
+普通`ls`不会显示它：
+
+```bash
+ls
+```
+
+加入`-a`后可以看到：
+
+```bash
+ls -la
 ```
 
 常用通配符：
@@ -1017,30 +1205,72 @@ ls -la ~/course-practice/m1/ch04
 
 通配符由Shell展开后再交给命令。先用`printf '%s\n' pattern`或`ls`确认匹配结果，再执行批量复制或删除。
 
-在项目中创建三份文件，只复制扩展名为`.log`的日志：
+在`logs`目录创建三份空白练习文件：
 
 ```bash
-printf 'INFO day1\n' > ~/course-practice/m1/ch04/logs/app-1.log
-printf 'INFO day2\n' > ~/course-practice/m1/ch04/logs/app-2.log
-printf 'not a log file\n' > ~/course-practice/m1/ch04/logs/readme.txt
-mkdir -p ~/course-practice/m1/ch04/backup/logs
+touch logs/app-1.log
+```
 
-printf '%s\n' ~/course-practice/m1/ch04/logs/*.log
-cp -a ~/course-practice/m1/ch04/logs/*.log ~/course-practice/m1/ch04/backup/logs/
-find ~/course-practice/m1/ch04/backup/logs -maxdepth 1 -type f -print
+```bash
+touch logs/app-2.log
+```
+
+```bash
+touch logs/readme.txt
+```
+
+创建日志备份目录：
+
+```bash
+mkdir -p backup/logs
+```
+
+复制前先显示`*.log`实际匹配的对象：
+
+```bash
+ls -l logs/*.log
+```
+
+确认结果中没有`readme.txt`，再执行复制：
+
+```bash
+cp logs/*.log backup/logs/
+```
+
+检查目标目录：
+
+```bash
+ls -l backup/logs
 ```
 
 `readme.txt`不匹配`*.log`，因此不会被复制。
 
 ## 4.6 文件类型
 
+`ls -l`的第一个字符可以初步表示对象类型：
+
 ```bash
-ls -l ~/course-practice/m1/ch04/config/app.conf
+ls -l config/app.conf
+```
+
+`file`根据文件内容和特征判断类型：
+
+```bash
 file /bin/ls
-file ~/course-practice/m1/ch04/config/app.conf
-file ~/course-practice/m1/ch04/scripts/precheck.sh
+```
+
+```bash
+file config/app.conf
+```
+
+`stat`显示inode、大小、权限和时间等详细元数据：
+
+```bash
 stat /etc/passwd
-stat ~/course-practice/m1/ch04/config/app.conf
+```
+
+```bash
+stat config/app.conf
 ```
 
 `ls -l`首字符常见含义：
@@ -1062,7 +1292,6 @@ stat ~/course-practice/m1/ch04/config/app.conf
 ```text
 ch04
 ├── .practice-meta
-├── README.md
 ├── backup/app.conf.initial
 ├── backup/logs/
 ├── config/app.conf
@@ -1073,14 +1302,29 @@ ch04
 ├── logs/app-1.log
 ├── logs/app-2.log
 ├── logs/readme.txt
-└── scripts/precheck.sh
+└── scripts/
 ```
 
-执行验收：
+执行验收前先回到练习目录：
 
 ```bash
-find ~/course-practice/m1/ch04 -maxdepth 3 -printf '%M %u:%g %p\n' | sort
-~/course-practice/m1/ch04/scripts/precheck.sh
+cd ~/course-practice/m1/ch04
+```
+
+查看目录和文件：
+
+```bash
+find . -maxdepth 3 -print
+```
+
+分别核对配置副本和备份内容：
+
+```bash
+cat config/app.conf
+```
+
+```bash
+cat backup/app.conf.initial
 ```
 
 `docs/directory-plan.md`已经作为待编写练习文档创建。用自己的语言补充各目录用途，并解释为什么原始配置、正式配置和备份配置不能只保留一份。

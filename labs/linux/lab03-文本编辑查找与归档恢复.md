@@ -4,9 +4,9 @@
 > 建议学时：2学时  
 > 实验方式：个人  
 > 对应教材：《模块一 Linux基础运维》第5—6章  
-> 知识前置：实验2中的路径、文件和目录操作\
-> 状态依赖：实验2创建的`~/m1-project/config/app.conf`及项目目录树\
-> 建议起点：`Linux-L0`并保留实验2成果\
+> 知识前置：实验2中的路径、文件和目录操作
+> 状态依赖：实验2创建的`~/m1-project/config/app.conf`及项目目录树
+> 建议起点：`Linux-L0`并保留实验2成果
 > 项目成果：修改后的配置文件、文件查找记录、归档文件和恢复验证记录
 
 ## 一、项目情境
@@ -70,10 +70,9 @@
 
 ```bash
 test -f "$HOME/m1-project/config/app.conf"
-echo "app_conf_check=$?"
 ```
 
-`app_conf_check=0`才表示文件存在。若结果不是0，停止实验并恢复实验2成果，不要创建同名空文件代替。检查通过后再查看项目文件：
+上一条命令没有报错才表示文件存在。若检查失败，停止实验并恢复实验2成果，不要创建同名空文件代替。检查通过后再查看项目文件：
 
 ```bash
 find "$HOME/m1-project" -maxdepth 2 -type f -printf '%P\n' | sort
@@ -97,11 +96,19 @@ find "$HOME/m1-project" -maxdepth 2 -type f -printf '%P\n' | sort
 
 ```bash
 cp -p ~/m1-project/config/app.conf ~/m1-project/backup/app.conf.before-vim
-cmp ~/m1-project/config/app.conf ~/m1-project/backup/app.conf.before-vim
-echo $?
 ```
 
-> **验收点**：备份存在，`cmp`返回0。
+```bash
+cmp ~/m1-project/config/app.conf ~/m1-project/backup/app.conf.before-vim
+```
+
+`cmp`没有输出表示两个文件一致。再确认备份非空：
+
+```bash
+test -s ~/m1-project/backup/app.conf.before-vim
+```
+
+> **验收点**：备份存在且非空，`cmp`没有报告差异。
 
 #### 步骤2：使用Vim编辑
 
@@ -121,6 +128,9 @@ vim ~/m1-project/config/app.conf
 
 ```bash
 cat -n ~/m1-project/config/app.conf
+```
+
+```bash
 diff -u ~/m1-project/backup/app.conf.before-vim ~/m1-project/config/app.conf
 ```
 
@@ -148,7 +158,13 @@ grep '^log_level=' ~/m1-project/config/app.conf
 
 ```bash
 find ~/m1-project -type f -name '*.conf' -print
+```
+
+```bash
 find ~/m1-project -type f -name '*.log' -print
+```
+
+```bash
 find ~/m1-project -type d -maxdepth 2 -print | sort
 ```
 
@@ -156,7 +172,13 @@ find ~/m1-project -type d -maxdepth 2 -print | sort
 
 ```bash
 command -v tar
+```
+
+```bash
 which vim
+```
+
+```bash
 type cd
 ```
 
@@ -168,6 +190,9 @@ type cd
 
 ```bash
 find ~/m1-project -type f -size +0c -printf '%s %p\n' | sort -n
+```
+
+```bash
 find ~/m1-project -type f -mmin -30 -printf '%TY-%Tm-%Td %TH:%TM %p\n'
 ```
 
@@ -181,9 +206,21 @@ find ~/m1-project -type f -mmin -30 -printf '%TY-%Tm-%Td %TH:%TM %p\n'
 
 ```bash
 mkdir -p ~/m1-project/links
+```
+
+```bash
 ln ~/m1-project/config/app.conf ~/m1-project/links/app.conf.hard
+```
+
+```bash
 ln -s ../config/app.conf ~/m1-project/links/app.conf.soft
+```
+
+```bash
 ls -li ~/m1-project/config/app.conf ~/m1-project/links/app.conf.*
+```
+
+```bash
 readlink ~/m1-project/links/app.conf.soft
 ```
 
@@ -193,7 +230,13 @@ readlink ~/m1-project/links/app.conf.soft
 
 ```bash
 printf 'link_test=ok\n' >> ~/m1-project/links/app.conf.hard
+```
+
+```bash
 tail -n 2 ~/m1-project/config/app.conf
+```
+
+```bash
 cat ~/m1-project/links/app.conf.soft
 ```
 
@@ -205,15 +248,40 @@ cat ~/m1-project/links/app.conf.soft
 
 #### 步骤8：创建归档
 
+本实验使用固定归档名，避免后续步骤依赖只存在于旧终端中的变量。先创建归档目录：
+
 ```bash
 mkdir -p ~/m1-project/backup/archives
-ARCHIVE=~/m1-project/backup/archives/m1-project-$(date +%Y%m%d-%H%M%S).tar.gz
-tar --exclude='m1-project/backup/archives' -czf "$ARCHIVE" -C ~ m1-project
-printf '%s\n' "$(readlink -f "$ARCHIVE")" \
-  > ~/m1-project/evidence/lab03-latest-archive.path
-printf 'archive=%s\n' "$ARCHIVE"
-ls -lh "$ARCHIVE"
-tar -tzf "$ARCHIVE" | sed -n '1,30p'
+```
+
+创建归档：
+
+```bash
+tar --exclude='m1-project/backup/archives' -czf ~/m1-project/backup/archives/lab03-m1-project.tar.gz -C ~ m1-project
+```
+
+把归档的绝对路径保存到证据文件，保证更换终端后仍能找到同一份归档：
+
+```bash
+readlink -f ~/m1-project/backup/archives/lab03-m1-project.tar.gz > ~/m1-project/evidence/lab03-latest-archive.path
+```
+
+确认文件非空：
+
+```bash
+test -s "$(cat ~/m1-project/evidence/lab03-latest-archive.path)"
+```
+
+查看大小：
+
+```bash
+ls -lh ~/m1-project/backup/archives/lab03-m1-project.tar.gz
+```
+
+查看前30项内容：
+
+```bash
+tar -tzf ~/m1-project/backup/archives/lab03-m1-project.tar.gz | sed -n '1,30p'
 ```
 
 排除归档目录是为了避免把正在创建的归档再次打包进去。
@@ -223,29 +291,37 @@ tar -tzf "$ARCHIVE" | sed -n '1,30p'
 #### 步骤9：恢复到新目录
 
 ```bash
-ARCHIVE=$(cat ~/m1-project/evidence/lab03-latest-archive.path)
-RESTORE_DIR=/tmp/lab03-restore
-test -s "$ARCHIVE"
-test ! -e "$RESTORE_DIR"
-echo "restore_name_available=$?"
+test -s ~/m1-project/backup/archives/lab03-m1-project.tar.gz
 ```
 
-只有`restore_name_available=0`时才继续。若目录已存在，不要在当前登录Shell中使用`exit`；先确认它是上次本实验的残留，再按文末清理步骤删除，或者改用一个新的、已确认不存在的恢复目录。确认后执行：
+检查恢复目录是否已经存在：
 
 ```bash
-ARCHIVE=$(cat ~/m1-project/evidence/lab03-latest-archive.path)
-RESTORE_DIR=/tmp/lab03-restore
-if [[ ! -s "$ARCHIVE" ]]; then
-  echo "归档不存在或为空：$ARCHIVE"
-elif [[ -e "$RESTORE_DIR" ]]; then
-  echo "恢复目录已存在，未覆盖：$RESTORE_DIR"
-else
-  mkdir -p "$RESTORE_DIR"
-  tar -xzf "$ARCHIVE" -C "$RESTORE_DIR"
-  find "$RESTORE_DIR/m1-project" -maxdepth 2 -type f -printf '%P\n' | sort
-  cmp ~/m1-project/config/app.conf "$RESTORE_DIR/m1-project/config/app.conf"
-  echo $?
-fi
+ls -ld /tmp/lab03-restore
+```
+
+首次实验预期提示目录不存在。若目录存在，先确认它确实是上次本实验的恢复目录，再按文末清理步骤删除。确认名称可用后创建目录：
+
+```bash
+mkdir /tmp/lab03-restore
+```
+
+解包到新目录：
+
+```bash
+tar -xzf "$(cat ~/m1-project/evidence/lab03-latest-archive.path)" -C /tmp/lab03-restore
+```
+
+查看恢复结果：
+
+```bash
+find /tmp/lab03-restore/m1-project -maxdepth 2 -type f -printf '%P\n' | sort
+```
+
+比较关键配置：
+
+```bash
+cmp ~/m1-project/config/app.conf /tmp/lab03-restore/m1-project/config/app.conf
 ```
 
 恢复到新目录可以避免覆盖正在使用的数据。
@@ -255,12 +331,7 @@ fi
 #### 步骤10：生成校验值
 
 ```bash
-ARCHIVE=$(cat ~/m1-project/evidence/lab03-latest-archive.path)
-if [[ -s "$ARCHIVE" ]]; then
-  sha256sum "$ARCHIVE" | tee ~/m1-project/evidence/lab03-archive.sha256
-else
-  echo "归档不存在或为空：$ARCHIVE"
-fi
+sha256sum "$(cat ~/m1-project/evidence/lab03-latest-archive.path)" | tee ~/m1-project/evidence/lab03-archive.sha256
 ```
 
 校验值可以帮助判断归档文件在复制或保存后是否发生变化，但不能证明业务数据一定满足需求，因此仍需要实际恢复。
@@ -329,6 +400,11 @@ Vim启动后处于普通模式。按`i`进入插入模式，输入完成后按`E
 
 ```bash
 find /tmp/lab03-restore -maxdepth 2 -print
+```
+
+确认输出只属于本实验后再删除：
+
+```bash
 rm -r /tmp/lab03-restore
 ```
 

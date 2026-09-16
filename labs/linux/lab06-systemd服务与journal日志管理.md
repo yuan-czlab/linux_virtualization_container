@@ -4,9 +4,9 @@
 > 建议学时：2学时  
 > 实验方式：个人  
 > 对应教材：《模块一 Linux基础运维》第11章  
-> 知识前置：实验5中的软件安装与文件来源；教材第11章的服务和日志\
-> 状态依赖：用户名和主机名均为`rocky-server`；实验服务、脚本和Unit由本实验创建\
-> 建议起点：`Linux-L0`或当前连续实验环境\
+> 知识前置：实验5中的软件安装与文件来源；教材第11章的服务和日志
+> 状态依赖：用户名和主机名均为`rocky-server`；实验目录和Unit由本实验创建
+> 建议起点：`Linux-L0`或当前连续实验环境
 > 项目成果：服务生命周期管理记录和一次启动故障的日志证据链
 
 ## 一、项目情境
@@ -59,13 +59,19 @@ enabled不代表当前一定运行，active也不代表一定开机自启。
 
 - Rocky Linux 9，rocky-server具备sudo权限。
 - 使用本实验自建的`course-demo.service`，避免破坏关键系统服务。
-- 工作文件位于`~/m1-project/systemd`和`/etc/systemd/system/course-demo.service`。
+- 工作文件位于`~/m1-project/systemd/site`和`/etc/systemd/system/course-demo.service`。
 
 Unit中的`ExecStart`使用课程固定路径，开始前必须确认身份：
 
 ```bash
 whoami
+```
+
+```bash
 hostnamectl --static
+```
+
+```bash
 sudo -v
 ```
 
@@ -75,16 +81,22 @@ sudo -v
 
 ```bash
 systemctl status course-demo.service --no-pager
-ls -l /etc/systemd/system/course-demo.service \
-  "$HOME/m1-project/systemd/course-demo.sh"
 ```
 
-新实验环境中应提示这些对象不存在。若存在，先确认它们是否为已经验收的实验6成果；需要从头重做时执行文末清理并恢复适当起点，不覆盖来源不明的同名Unit或脚本。
+```bash
+ls -l /etc/systemd/system/course-demo.service
+```
+
+```bash
+ls -ld "$HOME/m1-project/systemd/site"
+```
+
+新实验环境中应提示这些对象不存在。若存在，先确认它们是否为已经验收的实验6成果；需要从头重做时执行文末清理并恢复适当起点，不覆盖来源不明的同名Unit或目录。
 
 ## 五、项目任务
 
 1. 检查systemd和现有服务状态。
-2. 创建能够持续运行的实验脚本和Unit。
+2. 创建测试页面和能够持续运行的Unit。
 3. 管理运行状态和开机自启。
 4. 制造ExecStart路径错误。
 5. 使用状态和日志定位、修复并验证。
@@ -95,8 +107,17 @@ ls -l /etc/systemd/system/course-demo.service \
 
 ```bash
 ps -p 1 -o pid,comm,args
+```
+
+```bash
 systemctl is-system-running
+```
+
+```bash
 systemctl --failed
+```
+
+```bash
 systemctl list-unit-files --type=service | sed -n '1,30p'
 ```
 
@@ -104,27 +125,39 @@ systemctl list-unit-files --type=service | sed -n '1,30p'
 
 ### 任务二：创建实验服务
 
-#### 步骤1：创建脚本
+#### 步骤1：准备服务内容
+
+本实验尚未进入Shell脚本章节，因此使用Python自带的简单HTTP服务器作为systemd管理对象，不要求编写循环脚本。先创建站点目录：
 
 ```bash
-mkdir -p ~/m1-project/systemd ~/m1-project/logs ~/m1-project/evidence
-cat > ~/m1-project/systemd/course-demo.sh <<'SCRIPT'
-#!/bin/bash
-while true; do
-    printf 'course-demo time=%s host=%s\n' "$(date '+%F %T')" "$(hostname)"
-    sleep 10
-done
-SCRIPT
-chmod 750 ~/m1-project/systemd/course-demo.sh
-bash -n ~/m1-project/systemd/course-demo.sh
+mkdir -p ~/m1-project/systemd/site ~/m1-project/evidence
 ```
 
-> **验收点**：脚本语法检查通过并具有执行权限。
+创建测试页面：
+
+```bash
+printf 'course-demo service is running\n' > ~/m1-project/systemd/site/index.html
+```
+
+确认Python解释器路径：
+
+```bash
+command -v python3
+```
+
+> **验收点**：页面文件存在，`command -v python3`输出`/usr/bin/python3`。
 
 #### 步骤2：创建Unit
 
+使用Vim创建Unit：
+
 ```bash
-sudo tee /etc/systemd/system/course-demo.service > /dev/null <<'UNIT'
+sudo vim /etc/systemd/system/course-demo.service
+```
+
+输入以下Unit正文：
+
+```systemd
 [Unit]
 Description=Linux course demonstration service
 After=network.target
@@ -132,14 +165,22 @@ After=network.target
 [Service]
 Type=simple
 User=rocky-server
-ExecStart=/home/rocky-server/m1-project/systemd/course-demo.sh
+ExecStart=/usr/bin/python3 -m http.server 8088 --bind 127.0.0.1 --directory /home/rocky-server/m1-project/systemd/site
 Restart=on-failure
 
 [Install]
 WantedBy=multi-user.target
-UNIT
+```
 
+保存后检查Unit：
+
+```bash
 sudo systemd-analyze verify /etc/systemd/system/course-demo.service
+```
+
+检查通过后通知systemd重新读取Unit：
+
+```bash
 sudo systemctl daemon-reload
 ```
 
@@ -149,9 +190,27 @@ sudo systemctl daemon-reload
 
 ```bash
 sudo systemctl enable --now course-demo.service
+```
+
+```bash
 systemctl is-active course-demo.service
+```
+
+```bash
 systemctl is-enabled course-demo.service
+```
+
+```bash
 systemctl status course-demo.service --no-pager
+```
+
+访问服务以产生一条访问日志：
+
+```bash
+curl --fail http://127.0.0.1:8088/
+```
+
+```bash
 journalctl -u course-demo.service -n 10 --no-pager
 ```
 
@@ -159,8 +218,17 @@ journalctl -u course-demo.service -n 10 --no-pager
 
 ```bash
 sudo systemctl stop course-demo.service
+```
+
+```bash
 systemctl is-active course-demo.service
+```
+
+```bash
 systemctl is-enabled course-demo.service
+```
+
+```bash
 sudo systemctl start course-demo.service
 ```
 
@@ -172,8 +240,19 @@ sudo systemctl start course-demo.service
 
 ```bash
 sudo cp -p /etc/systemd/system/course-demo.service /etc/systemd/system/course-demo.service.bak
-sudo sed -i 's#course-demo.sh#course-demo-missing.sh#' /etc/systemd/system/course-demo.service
+```
+
+把正确的Python路径改成一个不存在的路径：
+
+```bash
+sudo sed -i 's#/usr/bin/python3#/usr/bin/python3-missing#' /etc/systemd/system/course-demo.service
+```
+
+```bash
 sudo systemctl daemon-reload
+```
+
+```bash
 sudo systemctl restart course-demo.service
 ```
 
@@ -181,23 +260,51 @@ sudo systemctl restart course-demo.service
 
 ```bash
 systemctl status course-demo.service --no-pager
+```
+
+```bash
 systemctl show course-demo.service -p ActiveState -p SubState -p Result -p ExecMainStatus
+```
+
+```bash
 journalctl -u course-demo.service -n 30 --no-pager
 ```
 
 不要立即恢复文件，先在记录中写明现象、关键日志、判断和根因。
 
-> **验收点**：能够从ExecStart相关错误判断启动路径不存在。
+> **验收点**：能够从ExecStart相关错误判断Python程序路径不存在。
 
 #### 步骤4：恢复并复测
 
 ```bash
 sudo cp -p /etc/systemd/system/course-demo.service.bak /etc/systemd/system/course-demo.service
+```
+
+```bash
 sudo systemd-analyze verify /etc/systemd/system/course-demo.service
+```
+
+```bash
 sudo systemctl daemon-reload
+```
+
+```bash
 sudo systemctl reset-failed course-demo.service
+```
+
+```bash
 sudo systemctl restart course-demo.service
+```
+
+```bash
 systemctl is-active course-demo.service
+```
+
+```bash
+curl --fail http://127.0.0.1:8088/
+```
+
+```bash
 journalctl -u course-demo.service -n 5 --no-pager
 ```
 
@@ -206,21 +313,28 @@ journalctl -u course-demo.service -n 5 --no-pager
 ### 任务五：保存证据
 
 ```bash
-{
-    systemctl is-active course-demo.service
-    systemctl is-enabled course-demo.service
-    systemctl show course-demo.service -p ActiveState -p SubState -p Result
-    journalctl -u course-demo.service -n 10 --no-pager
-} > ~/m1-project/evidence/lab06-systemd.txt
+systemctl is-active course-demo.service > ~/m1-project/evidence/lab06-systemd.txt
+```
+
+```bash
+systemctl is-enabled course-demo.service >> ~/m1-project/evidence/lab06-systemd.txt
+```
+
+```bash
+systemctl show course-demo.service -p ActiveState -p SubState -p Result >> ~/m1-project/evidence/lab06-systemd.txt
+```
+
+```bash
+journalctl -u course-demo.service -n 10 --no-pager >> ~/m1-project/evidence/lab06-systemd.txt
 ```
 
 ## 七、独立实践
 
-1. 将脚本输出间隔改为20秒。
-2. 使用`bash -n`检查脚本。
-3. 不重启服务时观察旧进程是否立即使用新间隔。
-4. 重启并用日志证明新间隔生效。
-5. 解释为什么修改脚本不需要`daemon-reload`，修改Unit通常需要。
+1. 把Unit中的端口由8088改为8089。
+2. 使用`systemd-analyze verify`检查Unit。
+3. 只执行`daemon-reload`但不重启服务，观察旧端口是否变化。
+4. 重启后分别检查8088和8089，并用日志证明新端口生效。
+5. 解释为什么修改Unit后需要`daemon-reload`和服务重启两个动作。
 
 ## 八、验收标准
 
@@ -234,7 +348,7 @@ journalctl -u course-demo.service -n 5 --no-pager
 
 ## 九、成果提交
 
-1. `course-demo.sh`和`course-demo.service`。
+1. `site/index.html`和`course-demo.service`。
 2. 故障报告：现象、证据、判断、根因、修复和验证。
 3. `lab06-systemd.txt`。
 4. 独立实践记录。
@@ -245,7 +359,7 @@ journalctl -u course-demo.service -n 5 --no-pager
 
 执行`sudo systemctl daemon-reload`，再重新启动服务。`daemon-reload`让systemd重新读取Unit，不等于重启服务。
 
-### Q2：脚本手动能运行，服务中提示找不到文件
+### Q2：命令手动能运行，服务中提示找不到文件
 
 检查绝对路径、执行权限、Unit中的用户和家目录。systemd服务环境与交互式Shell不同。
 
@@ -269,8 +383,17 @@ journalctl -u course-demo.service --since '-10 min' --no-pager
 
 ```bash
 sudo systemctl disable --now course-demo.service
+```
+
+```bash
 sudo rm -f /etc/systemd/system/course-demo.service /etc/systemd/system/course-demo.service.bak
+```
+
+```bash
 sudo systemctl daemon-reload
+```
+
+```bash
 sudo systemctl reset-failed
 ```
 

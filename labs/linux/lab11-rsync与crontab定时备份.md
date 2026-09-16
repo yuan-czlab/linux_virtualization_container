@@ -1,308 +1,541 @@
 # 实验11：rsync数据同步与crontab定时备份
 
-> 所属模块：模块二 网络、远程管理与基础防护  
-> 建议学时：2学时  
-> 实验方式：个人  
-> 对应教材：《模块二 网络、远程管理与基础防护》第20章  
-> 知识前置：教材第20章的同步、定时任务、日志和恢复概念\
-> 状态依赖：`rocky-server`和`~/m1-project`；源文件、脚本和备份目录由本实验创建，不依赖实验10的SSH密钥\
-> 建议起点：`Linux-L1`或当前连续实验环境\
-> 项目成果：网站增量备份脚本、定时任务、运行日志和一次恢复验证
+> 所属模块：模块二 网络远程管理与基础防护
+> 建议学时：2学时
+> 实验方式：个人，远程拓展可由小组互查
+> 对应教材：2.8 rsync增量备份与定时任务
+> 知识前置：文件目录管理、vim、权限、systemd和2.8教材
+> 状态依赖：`rocky-server`和`~/m1-project`可用；核心任务不依赖实验10密钥
+> 建议起点：`Linux-L1`或当前连续实验环境
+> 项目成果：网站备份、备份脚本、cron日志、隔离恢复和误删恢复证据
 
 ## 一、项目情境
 
-项目网站和配置每天都在变化。你需要使用rsync建立增量备份，通过cron自动执行并保存日志，然后模拟文件误删，从备份恢复并验证内容。仅看到备份目录存在不算完成。
+网站文件每天都会变化。管理员需要建立一套能够重复执行的增量备份任务，并证明文件误删后可以恢复。
 
-## 二、实验目标
-
-### 1. 知识目标
-
-1. 说明rsync源目录末尾斜杠的语义。
-2. 说明首次同步、增量同步、镜像删除和`--dry-run`。
-3. 说明cron时间字段、非交互环境和日志重定向。
-
-### 2. 能力目标
-
-1. 使用rsync完成首次和增量同步。
-2. 编写具有日志和退出码的备份脚本。
-3. 配置并验证用户crontab。
-4. 从备份恢复误删文件并比较内容。
-
-### 3. 素质目标
-
-1. 使用`--delete`前必须先执行`--dry-run`。
-2. 备份任务必须有日志，备份必须做恢复验证。
-3. 脚本使用绝对路径，避免依赖交互式Shell环境。
-
-## 三、知识准备
+本实验不是“把文件复制一次”，而是完成：
 
 ```text
-rsync比较源和目标
-→ 只传输新增或变化内容
-→ cron按时间启动脚本
-→ 脚本记录开始、结束和退出码
-→ 运维人员定期执行恢复演练
+首次同步
+→ 增量变化
+→ 删除预览
+→ 手工验证脚本
+→ cron自动执行
+→ 日志证明
+→ 隔离恢复
+→ 业务目录复原
 ```
 
-源目录末尾斜杠：
+## 二、实验规则
 
-```text
-rsync source/ backup/   同步source里面的内容
-rsync source  backup/   在backup中形成source目录
-```
+1. rsync源目录是否带末尾斜杠必须明确。
+2. 使用`--delete`前必须先使用`--dry-run`。
+3. 没有手工运行成功的命令不能放入cron。
+4. cron脚本使用绝对路径并写入日志。
+5. 恢复时先写入隔离目录，不直接覆盖源目录。
+6. 每分钟任务只用于课堂验证，验收前必须改为合理频率。
 
-cron五个时间字段依次为分钟、小时、日、月、星期。
+## 三、任务一：准备工具和源数据
 
-实验开始前打开[rsync增量同步、cron与恢复闭环动画](../../animations/08-rsync-cron-backup-restore/index.html)。完成“路径语义”和“增量与删除”后再执行任务二；完成“定时执行”和“恢复验证”后再编写脚本与crontab。每一步先预测目录树、变化清单或证据结果，再使用本实验创建的文件验证。
-
-## 四、实验环境
-
-- Rocky Linux 9，rocky-server登录。
-- 需要`rsync`和`cronie`。
-- 源目录：`~/m1-project/web`。
-- 备份目录：`~/backup-lab/web-current`。
-
-## 五、项目任务
-
-1. 检查工具和crond服务。
-2. 完成首次同步并比较源和目标。
-3. 修改源数据后完成增量同步。
-4. 编写可记录退出码的备份脚本。
-5. 配置每分钟测试任务并验证日志。
-6. 模拟误删并完成恢复。
-
-## 六、实验步骤
-
-### 任务一：准备环境
+### 3.1 确认身份
 
 ```bash
-command -v rsync || sudo dnf install -y rsync
-rpm -q cronie || sudo dnf install -y cronie
-sudo systemctl enable --now crond
-systemctl is-active crond
-mkdir -p ~/backup-lab/web-current ~/backup-lab/logs ~/backup-lab/restore-test
+whoami
 ```
 
-创建测试数据：
+```bash
+hostnamectl --static
+```
+
+预期当前用户和主机名均为`rocky-server`。
+
+### 3.2 安装rsync
+
+```bash
+command -v rsync
+```
+
+没有输出时安装：
+
+```bash
+sudo dnf install -y rsync
+```
+
+### 3.3 安装并启动crond
+
+```bash
+rpm -q cronie
+```
+
+未安装时执行：
+
+```bash
+sudo dnf install -y cronie
+```
+
+启动：
+
+```bash
+sudo systemctl enable --now crond
+```
+
+检查：
+
+```bash
+systemctl is-active crond
+```
+
+### 3.4 创建源目录
 
 ```bash
 mkdir -p ~/m1-project/web/assets
-printf '<h1>Version 1</h1>\n' > ~/m1-project/web/index.html
-printf 'body { color: #333; }\n' > ~/m1-project/web/assets/site.css
 ```
 
-> **验收点**：rsync可用，crond为active，源目录包含两个文件。
-
-### 任务二：首次和增量同步
-
-#### 步骤1：首次同步
+创建首页：
 
 ```bash
-rsync -av ~/m1-project/web/ ~/backup-lab/web-current/
-find ~/backup-lab/web-current -type f -printf '%P %s bytes\n' | sort
+vim ~/m1-project/web/index.html
+```
+
+写入：
+
+```html
+<h1>Backup Lab Version 1</h1>
+```
+
+创建样式文件：
+
+```bash
+vim ~/m1-project/web/assets/site.css
+```
+
+写入：
+
+```css
+body { color: #333; }
+```
+
+检查源数据：
+
+```bash
+find ~/m1-project/web -maxdepth 2 -type f -printf '%P\n'
+```
+
+预期至少包含`index.html`和`assets/site.css`。
+
+## 四、任务二：首次同步与增量同步
+
+### 4.1 创建备份目录
+
+```bash
+mkdir -p ~/backup-lab/web-current
+```
+
+### 4.2 预览首次同步
+
+```bash
+rsync -aivn ~/m1-project/web/ ~/backup-lab/web-current/
+```
+
+检查源路径末尾的`/`，确认目标将直接包含网站内容。
+
+### 4.3 执行首次同步
+
+```bash
+rsync -aiv ~/m1-project/web/ ~/backup-lab/web-current/
+```
+
+比较：
+
+```bash
 diff -qr ~/m1-project/web ~/backup-lab/web-current
-echo $?
 ```
 
-`diff -qr`没有输出且退出码为0，说明当前内容一致。
+没有输出表示当前内容一致。
 
-#### 步骤2：增量变化
+### 4.4 制造正常业务变化
+
+用vim修改首页，把Version 1改成Version 2：
 
 ```bash
-printf '<p>backup lab</p>\n' >> ~/m1-project/web/index.html
-printf 'console.log("v2");\n' > ~/m1-project/web/assets/app.js
-rsync -av --itemize-changes ~/m1-project/web/ ~/backup-lab/web-current/
+vim ~/m1-project/web/index.html
+```
+
+创建脚本文件：
+
+```bash
+vim ~/m1-project/web/assets/app.js
+```
+
+写入：
+
+```javascript
+console.log("backup lab v2");
+```
+
+### 4.5 预览增量
+
+```bash
+rsync -aivn ~/m1-project/web/ ~/backup-lab/web-current/
+```
+
+预期只出现修改的`index.html`和新增的`assets/app.js`。
+
+### 4.6 执行增量同步
+
+```bash
+rsync -aiv ~/m1-project/web/ ~/backup-lab/web-current/
+```
+
+再次比较：
+
+```bash
 diff -qr ~/m1-project/web ~/backup-lab/web-current
 ```
 
-观察rsync只报告新增或变化对象。
+## 五、任务三：安全观察--delete
 
-> **验收点**：增量同步后源和备份再次一致。
-
-#### 步骤3：认识安全删除预览
-
-在备份中创建一个多余文件：
+在目标目录创建源端不存在的文件：
 
 ```bash
-printf 'old data\n' > ~/backup-lab/web-current/obsolete.txt
-rsync -av --delete --dry-run ~/m1-project/web/ ~/backup-lab/web-current/
+touch ~/backup-lab/web-current/obsolete.txt
 ```
 
-预览应显示将删除`obsolete.txt`。本实验不执行真实`--delete`，保留文件说明普通备份与严格镜像的差异。
+预览删除：
 
-### 任务三：编写备份脚本
+```bash
+rsync -aivn --delete ~/m1-project/web/ ~/backup-lab/web-current/
+```
+
+输出应指出`obsolete.txt`将被删除。
+
+确认预览没有真正删除：
+
+```bash
+ls -l ~/backup-lab/web-current/obsolete.txt
+```
+
+本实验不执行真实`--delete`。删除该测试文件：
+
+```bash
+rm ~/backup-lab/web-current/obsolete.txt
+```
+
+## 六、任务四：编写可定时执行的备份脚本
+
+### 6.1 创建脚本目录
 
 ```bash
 mkdir -p ~/m1-project/scripts
-cat > ~/m1-project/scripts/backup-web.sh <<'SCRIPT'
-#!/bin/bash
-set -u
+```
 
+### 6.2 使用vim编写
+
+```bash
+vim ~/m1-project/scripts/backup-web.sh
+```
+
+逐行输入：
+
+```text
+#!/bin/bash
 SOURCE=/home/rocky-server/m1-project/web/
 TARGET=/home/rocky-server/backup-lab/web-current/
 LOG=/home/rocky-server/backup-lab/logs/backup-web.log
-
-printf 'START time=%s source=%s target=%s\n' "$(date '+%F %T')" "$SOURCE" "$TARGET" >> "$LOG"
+mkdir -p "$TARGET" "$(dirname "$LOG")"
+printf 'START %s\n' "$(date -Iseconds)" >> "$LOG"
 /usr/bin/rsync -a --itemize-changes "$SOURCE" "$TARGET" >> "$LOG" 2>&1
 rc=$?
-printf 'END time=%s exit_code=%s\n' "$(date '+%F %T')" "$rc" >> "$LOG"
+printf 'END %s code=%s\n' "$(date -Iseconds)" "$rc" >> "$LOG"
 exit "$rc"
-SCRIPT
+```
 
+本实验固定账号是`rocky-server`，因此脚本使用`/home/rocky-server`。如果身份检查不符合，不得照抄路径。
+
+### 6.3 设置权限
+
+```bash
 chmod 750 ~/m1-project/scripts/backup-web.sh
+```
+
+### 6.4 检查语法
+
+```bash
 bash -n ~/m1-project/scripts/backup-web.sh
+```
+
+没有输出通常表示语法通过。
+
+### 6.5 手工执行
+
+```bash
 ~/m1-project/scripts/backup-web.sh
+```
+
+紧接着查看退出状态：
+
+```bash
 echo $?
+```
+
+预期为0。
+
+### 6.6 检查日志
+
+```bash
 tail -n 20 ~/backup-lab/logs/backup-web.log
 ```
 
-如果rocky-server家目录不同，应修改三个绝对路径。cron环境中的PATH和工作目录可能不同，因此脚本不使用`~`和相对命令路径。
+日志应同时包含`START`和`END ... code=0`。
 
-> **验收点**：脚本语法正确，日志包含START、END和`exit_code=0`。
+## 七、任务五：配置并验证cron
 
-### 任务四：配置定时任务
-
-先保存现有任务：
-
-```bash
-crontab -l > ~/backup-lab/crontab.before 2>/dev/null || true
-```
-
-编辑：
-
-```bash
-crontab -e
-```
-
-加入每分钟测试任务：
-
-```text
-* * * * * /home/rocky-server/m1-project/scripts/backup-web.sh
-```
-
-等待一个执行周期后检查：
+### 7.1 保存当前任务
 
 ```bash
 crontab -l
-tail -n 30 ~/backup-lab/logs/backup-web.log
-sudo journalctl -u crond --since '-5 min' --no-pager | tail -30
 ```
 
-不要只观察文件时间；日志应出现新的START和END记录。
+如果已有任务，先把内容保存到实验记录，不要覆盖或删除不认识的任务。
 
-> **验收点**：至少存在一次由cron触发的成功记录。
-
-### 任务五：恢复验证
-
-先确认备份：
-
-```bash
-test -s ~/backup-lab/web-current/index.html
-sha256sum ~/backup-lab/web-current/index.html
-```
-
-模拟误删源文件：
-
-```bash
-cp -p ~/m1-project/web/index.html ~/m1-project/evidence/index.before-delete
-rm ~/m1-project/web/index.html
-test ! -e ~/m1-project/web/index.html
-```
-
-从备份恢复到测试目录：
-
-```bash
-rm -rf ~/backup-lab/restore-test/web
-mkdir -p ~/backup-lab/restore-test/web
-rsync -av ~/backup-lab/web-current/ ~/backup-lab/restore-test/web/
-cmp ~/m1-project/evidence/index.before-delete ~/backup-lab/restore-test/web/index.html
-echo $?
-```
-
-验证通过后恢复生产实验目录：
-
-```bash
-cp -p ~/backup-lab/restore-test/web/index.html ~/m1-project/web/index.html
-cmp ~/m1-project/evidence/index.before-delete ~/m1-project/web/index.html
-```
-
-> **验收点**：先在测试目录恢复，再恢复源目录，关键文件内容一致。
-
-### 任务六：恢复合理的cron频率
-
-每分钟任务只用于课堂测试。验证后执行：
+### 7.2 添加每分钟测试任务
 
 ```bash
 crontab -e
 ```
 
-删除每分钟测试行，或按教师要求改为每日任务，例如：
+加入：
 
-```text
-30 18 * * * /home/rocky-server/m1-project/scripts/backup-web.sh
+```cron
+* * * * * /usr/bin/flock -n /tmp/backup-web.lock /home/rocky-server/m1-project/scripts/backup-web.sh
 ```
 
-再次执行`crontab -l`确认。
-
-## 七、独立实践
-
-1. 为`~/m1-project/config`编写第二个备份任务。
-2. 备份目标不能与web备份混用。
-3. 记录运行日志和退出码。
-4. 修改一个配置文件后证明只同步了变化内容。
-5. 恢复到新目录并使用`diff -qr`验证。
-
-## 八、验收标准
-
-- [ ] 能解释源目录末尾斜杠。
-- [ ] 首次和增量同步均已完成。
-- [ ] 使用`--delete`前执行了`--dry-run`，没有误删数据。
-- [ ] 备份脚本使用绝对路径并返回rsync退出码。
-- [ ] crond运行，日志证明cron至少成功触发一次。
-- [ ] 每分钟测试任务已经删除或改为合理频率。
-- [ ] 已完成误删、测试恢复、内容比较和正式恢复。
-- [ ] 独立实践完整。
-
-## 九、成果提交
-
-1. `backup-web.sh`。
-2. crontab最终内容。
-3. `backup-web.log`。
-4. 首次和增量同步结果。
-5. `--delete --dry-run`预览。
-6. 误删和恢复验证记录。
-7. 独立实践脚本和结果。
-
-## 十、常见问题
-
-### Q1：cron中执行失败，手工执行成功
-
-检查绝对路径、脚本权限、环境变量和日志重定向。cron不一定加载交互式Shell配置。
-
-### Q2：备份目录中多了一层web
-
-检查源目录末尾斜杠。`web/`表示同步目录内容，`web`表示同步目录本身。
-
-### Q3：日志存在但没有END
-
-脚本可能在rsync前后异常退出。手工运行并查看退出码，再检查目录权限和磁盘空间。
-
-### Q4：为什么不直接从备份覆盖源目录
-
-先恢复到测试目录可以确认备份结构和内容，降低把错误备份覆盖现有数据的风险。
-
-## 十一、课后思考与拓展
-
-1. 同步镜像和历史版本备份有什么区别？
-2. 如果源文件损坏后cron立即同步，备份会发生什么？
-3. 为什么备份策略还需要保留多个时间点和异地副本？
-
-## 十二、环境保留
-
-保留备份脚本、日志、web备份和最终cron任务，供实验20综合项目使用。清理恢复测试目录前先检查：
+保存后确认：
 
 ```bash
-find ~/backup-lab/restore-test -maxdepth 3 -print
-rm -rf ~/backup-lab/restore-test/web
+crontab -l
 ```
 
+### 7.3 等待并检查
+
+等待跨过下一个整分钟，再查看日志：
+
+```bash
+tail -n 20 ~/backup-lab/logs/backup-web.log
+```
+
+至少应出现一组新的`START`和`END ... code=0`。
+
+查看服务日志：
+
+```bash
+sudo journalctl -u crond --since '5 minutes ago' --no-pager
+```
+
+## 八、任务六：模拟误删并隔离恢复
+
+### 8.1 确保最新内容已备份
+
+手工再执行一次：
+
+```bash
+~/m1-project/scripts/backup-web.sh
+```
+
+比较：
+
+```bash
+diff -qr ~/m1-project/web ~/backup-lab/web-current
+```
+
+### 8.2 保存误删前证据
+
+```bash
+mkdir -p ~/m1-project/evidence
+```
+
+```bash
+cp -p ~/m1-project/web/index.html ~/m1-project/evidence/index.before-delete
+```
+
+计算哈希：
+
+```bash
+sha256sum ~/m1-project/evidence/index.before-delete
+```
+
+### 8.3 模拟误删
+
+```bash
+rm ~/m1-project/web/index.html
+```
+
+确认：
+
+```bash
+ls -l ~/m1-project/web/index.html
+```
+
+提示文件不存在是预期故障现象。
+
+### 8.4 恢复到隔离目录
+
+```bash
+mkdir -p ~/backup-lab/restore-test/web
+```
+
+```bash
+rsync -av ~/backup-lab/web-current/ ~/backup-lab/restore-test/web/
+```
+
+检查恢复文件：
+
+```bash
+ls -l ~/backup-lab/restore-test/web/index.html
+```
+
+与误删前证据比较：
+
+```bash
+cmp ~/m1-project/evidence/index.before-delete ~/backup-lab/restore-test/web/index.html
+```
+
+`cmp`没有输出且退出状态为0，才能继续。
+
+### 8.5 恢复业务文件
+
+```bash
+cp -p ~/backup-lab/restore-test/web/index.html ~/m1-project/web/index.html
+```
+
+再次比较：
+
+```bash
+cmp ~/m1-project/evidence/index.before-delete ~/m1-project/web/index.html
+```
+
+## 九、任务七：恢复合理的cron频率
+
+再次编辑：
+
+```bash
+crontab -e
+```
+
+把每分钟任务改为每天18:30：
+
+```cron
+30 18 * * * /usr/bin/flock -n /tmp/backup-web.lock /home/rocky-server/m1-project/scripts/backup-web.sh
+```
+
+确认最终结果：
+
+```bash
+crontab -l
+```
+
+验收时不得保留`* * * * *`测试频率。
+
+## 十、拓展任务：通过SSH远程备份
+
+本任务需要实验10的SSH密钥，只作为完成核心实验后的拓展。
+
+在`ubuntu-client`安装rsync：
+
+```bash
+sudo apt install -y rsync
+```
+
+确认SSH配置：
+
+```bash
+ssh -G rocky-server | grep -E '^(hostname|user|identityfile) '
+```
+
+创建本地备份目录：
+
+```bash
+mkdir -p ~/course-backup/rocky-server-web
+```
+
+先预览：
+
+```bash
+rsync -aivn rocky-server:~/m1-project/web/ ~/course-backup/rocky-server-web/
+```
+
+确认方向后同步：
+
+```bash
+rsync -aiv rocky-server:~/m1-project/web/ ~/course-backup/rocky-server-web/
+```
+
+远程自动备份还要处理私钥口令、主机指纹和非交互认证，本实验不把它直接加入cron。
+
+## 十一、验收标准
+
+- [ ] rsync和crond可用。
+- [ ] 能解释源目录末尾斜杠的含义。
+- [ ] 首次同步和增量同步均通过`diff`检查。
+- [ ] `--delete --dry-run`只进行了预览。
+- [ ] 备份脚本使用绝对路径、日志和rsync退出状态。
+- [ ] 手工运行脚本成功后才配置cron。
+- [ ] 日志证明cron至少触发一次且退出状态为0。
+- [ ] 误删文件先恢复到隔离目录并通过`cmp`验证。
+- [ ] 业务文件已经恢复。
+- [ ] 每分钟测试任务已经改为合理频率。
+
+## 十二、成果提交
+
+1. 首次同步和增量同步输出。
+2. `--delete --dry-run`结果。
+3. `backup-web.sh`及逐行说明。
+4. cron触发日志。
+5. 误删前哈希、隔离恢复`cmp`结果和业务恢复结果。
+6. 最终`crontab -l`。
+
+## 十三、常见问题
+
+### 13.1 目标多了一层web目录
+
+检查源路径是否写成`~/m1-project/web`而不是`~/m1-project/web/`。
+
+### 13.2 手工成功但cron失败
+
+检查绝对路径、脚本权限和日志：
+
+```bash
+ls -l ~/m1-project/scripts/backup-web.sh
+```
+
+```bash
+tail -n 50 ~/backup-lab/logs/backup-web.log
+```
+
+### 13.3 日志只有START没有END
+
+检查脚本是否完整保存，再手工执行并查看退出状态。
+
+### 13.4 flock找不到
+
+Rocky中的`flock`通常由`util-linux`提供：
+
+```bash
+command -v flock
+```
+
+### 13.5 恢复文件仍然错误
+
+停止覆盖业务目录，检查备份时间、备份文件内容和误删前哈希。备份存在不等于备份正确。
+
+## 十四、环境保留
+
+保留：
+
+- `~/m1-project/web`
+- `~/backup-lab/web-current`
+- `~/m1-project/scripts/backup-web.sh`
+- `~/backup-lab/logs/backup-web.log`
+- 最终每天18:30的cron任务
+
+这些成果将在模块三服务部署和实验20综合项目中复用。隔离恢复目录在验收后可以删除，但不得删除当前备份。

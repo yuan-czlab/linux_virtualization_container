@@ -1,129 +1,239 @@
 # 实验19：Shell服务器巡检脚本
 
-> 所属模块：模块三 企业服务部署与综合运维  
-> 建议学时：2学时  
-> 实验方式：个人  
-> 对应教材：《模块三 企业服务部署与综合运维》第30章  
-> 知识前置：教材第30章、实验14—18中的服务验收与Git操作\
-> 状态依赖：实验14的Nginx健康页、实验15—17的三个数据服务、实验18的Git仓库及三机网络\
-> 建议起点：保留实验14—18成果的当前环境\
-> 项目成果：可执行的服务器巡检脚本、正常与异常测试记录、版本提交
+> 所属模块：模块三 企业服务器部署与综合运维
+> 建议学时：2学时
+> 实验方式：个人
+> 对应教材：3.6 Shell服务器巡检
+> 知识前置：已学习教材3.6，并完成实验14—18中的服务验收和Git操作
+> 状态依赖：实验14的Nginx健康页、实验15—17的数据服务、实验18的`git-lab`仓库和三机网络
+> 建议起点：保留实验14—18成果的连续环境
+> 项目成果：逐段构建的巡检脚本、正常/故障/恢复记录、退出码证据和Git提交
 
 ## 一、项目情境
 
-TechCorp的`rocky-server`上已经运行MySQL、MongoDB和Redis，`rocky-web`提供Nginx健康页。每天逐条输入命令容易遗漏，管理员希望在`rocky-server`用一个Shell脚本检查本机资源、服务和监听端口，同时验证外部Web入口，并通过退出码让其他程序判断巡检结果。
+TechCorp的`rocky-server`运行MySQL、MongoDB、Redis和SSH，`rocky-web`提供Nginx健康页。管理员每天手工执行多条命令容易漏项，也无法让定时任务根据屏幕文字判断结果。
 
-本实验强调“把已经会做的检查固化为脚本”，不追求复杂Shell语法。脚本只采集和判断，不自动重启服务，不修改防火墙，也不保存数据库密码。
+本实验将已经学会的只读命令逐步固化为`server-health.sh`。最终脚本需要：
+
+- 输出检查时间、主机名、内核和负载；
+- 判断根分区和可用内存是否达到阈值；
+- 检查`mysqld`、`mongod`、`redis`和`sshd`；
+- 检查22、3306、27017和6379端口；
+- 从`rocky-server`访问`rocky-web`健康页；
+- 使用0、1、2表达OK、WARN和CRITICAL；
+- 只采集和报告，不自动重启或修改系统。
+
+脚本不会一次性粘贴完成。每次只增加一个检查模块，随后立即进行语法检查和实际运行。
 
 ## 二、实验目标
 
 ### 1. 知识目标
 
-1. 说明Shebang、变量、条件判断、函数和循环的作用。
-2. 说明标准输出、标准错误和退出码的区别。
-3. 理解巡检、监控和自动修复不是同一件事。
+1. 说明Shebang、变量、引用、命令替换和退出码。
+2. 说明`if`、函数、数组和循环如何组织检查。
+3. 区分标准输出、标准错误和脚本退出码。
+4. 说明巡检、监控和自动修复的边界。
 
 ### 2. 能力目标
 
-1. 编写并执行Bash巡检脚本。
-2. 检查根分区、可用内存、系统负载、systemd服务和TCP端口。
-3. 使用0、1、2退出码表示正常、警告和严重异常。
-4. 通过主动制造一个受控故障验证脚本。
-5. 将脚本和说明提交到Git仓库。
+1. 先验证单条命令，再把它加入脚本。
+2. 分7次迭代构建可执行巡检脚本。
+3. 检查磁盘、内存、系统信息、服务、端口和Web入口。
+4. 停止Redis制造受控故障，并在恢复后重新验证。
+5. 把脚本和使用说明提交到实验18建立的Git仓库。
 
-### 3. 素质目标
+### 3. 安全与规范目标
 
-1. 脚本默认只读，自动化操作遵循最小影响原则。
-2. 输出包含时间、主机和检查对象，便于追溯。
-3. 测试故障后恢复环境并再次验证。
+1. 脚本不包含数据库或Redis密码。
+2. 脚本不自动重启服务、开放端口或删除文件。
+3. 异常测试前明确影响范围，测试后立即恢复。
+4. 每次修改后先执行`bash -n`，再实际运行。
+5. 日志和退出码证据保存在Git仓库外部。
 
-## 三、知识准备
+## 三、巡检对象与判断标准
 
-```text
-采集系统状态
-      ↓
-与阈值或期望状态比较
-      ↓
-输出 [OK] / [WARN] / [CRIT]
-      ↓
-返回 0 / 1 / 2
-      ↓
-人工或上层系统决定是否处理
-```
+| 检查对象 | 采集方式 | 判断 | 异常级别 |
+|---|---|---|---|
+| 主机、内核、负载 | `hostnamectl`、`uname`、`/proc/loadavg` | 记录，不直接告警 | 信息 |
+| 根分区 | `df -P /` | 使用率达到90% | WARN |
+| 可用内存 | `/proc/meminfo` | 可用比例不高于10% | WARN |
+| 本机服务 | `systemctl is-active` | 非active | CRITICAL |
+| 本机端口 | `ss -lntH` | 未监听 | CRITICAL |
+| Web健康页 | `curl --fail` | HTTP失败或超时 | CRITICAL |
 
-| 退出码 | 含义 | 本实验处理方式 |
-|---:|---|---|
-| 0 | 全部正常 | 保存巡检记录 |
-| 1 | 存在警告 | 分析容量或负载趋势 |
-| 2 | 存在严重异常 | 检查服务、端口和日志 |
+阈值用于课程练习，不是所有生产系统的统一标准。服务和端口只检查`rocky-server`角色；Nginx运行在`rocky-web`，因此通过HTTP请求检查，而不是错误地检查本机`nginx`单元。
 
-在Shell中，退出码0表示命令成功，非0表示不同类型的失败。脚本自己的退出码应当有明确约定。
+## 四、任务一：确认连续实验环境
 
-## 四、实验环境
-
-- 在`rocky-server`完成巡检脚本编写与异常验证。
-- 脚本应能把主机名写入报告，避免把`rocky-web`结果误作数据库服务器结果。
-
-- 已完成实验14—17，相关服务已安装。
-- Bash、`systemctl`、`ss`、`df`、`awk`和`curl`可用。
-- 项目目录：`~/m1-project/git-lab`。
-- 如果某服务未安装，应先在对应实验中完成安装，不在本实验中跳过验收。
-
-## 五、项目任务
-
-1. 设计巡检对象、阈值和退出码。
-2. 编写`server-health.sh`。
-3. 检查语法、权限和正常输出。
-4. 停止Redis制造受控故障，验证严重异常退出码。
-5. 恢复Redis并再次验证。
-6. 将脚本和使用说明提交Git。
-
-## 六、实验步骤
-
-### 任务一：确认巡检基线
+### 步骤1：确认主机身份
 
 ```bash
-test "$(hostnamectl --static)" = 'rocky-server' && echo HOST_PASS || echo HOST_FAIL
+hostnamectl --static
+```
+
+预期为`rocky-server`。
+
+### 步骤2：确认Git工作仓库
+
+```bash
+git -C ~/m1-project/git-lab status --short --branch
+```
+
+应看到`main`分支，且没有未处理的已跟踪文件变化。如果目录不是Git仓库，应先完成实验18。
+
+### 步骤3：确认脚本目录
+
+```bash
+mkdir -p ~/m1-project/git-lab/scripts
+```
+
+实验18已经规划该目录；由于空目录不会被Git跟踪，本步骤确保它实际存在。
+
+### 步骤4：创建日志目录
+
+```bash
+mkdir -p ~/m1-project/logs
+```
+
+### 步骤5：创建证据目录
+
+```bash
+mkdir -p ~/m1-project/evidence
+```
+
+### 步骤6：确认服务名称
+
+```bash
+systemctl is-active mysqld
 ```
 
 ```bash
-mkdir -p ~/m1-project/git-lab/scripts ~/m1-project/logs ~/m1-project/evidence
-for service in mysqld mongod redis sshd; do
-    printf '%-10s %s\n' "$service" "$(systemctl is-active "$service" 2>/dev/null || true)"
-done
-sudo ss -lntp | grep -E ':(22|3306|27017|6379)\b' || true
-curl --fail -H 'Host: techcorp.test' http://rocky-web/health
-df -h /
-free -h
+systemctl is-active mongod
 ```
 
-> **验收点**：记录当前服务和端口基线。若服务名与课程环境不同，应在脚本数组中使用实际服务名。
+```bash
+systemctl is-active redis
+```
 
-### 任务二：编写巡检脚本
+```bash
+systemctl is-active sshd
+```
+
+四项预期均为`active`。如果某项不存在或不正常，应回到对应实验修复，不能为了让脚本返回0而删除检查项。
+
+### 步骤7：确认本机监听端口
+
+```bash
+sudo ss -lntp | grep -E ':(22|3306|27017|6379)\b'
+```
+
+3306、27017和6379可能只监听本机或指定地址，这是安全设计，不要求全部监听`0.0.0.0`。
+
+### 步骤8：确认跨机名称解析
+
+```bash
+getent hosts rocky-web
+```
+
+### 步骤9：确认健康页
+
+```bash
+curl --fail --max-time 3 -H 'Host: techcorp.test' http://rocky-web/health
+```
+
+如果手工请求失败，先排查实验14和三机网络，不要立即编写脚本掩盖基线问题。
+
+### 步骤10：确认资源采集命令
+
+```bash
+df -P /
+```
+
+```bash
+grep -E '^(MemTotal|MemAvailable):' /proc/meminfo
+```
+
+```bash
+cat /proc/loadavg
+```
+
+## 五、任务二：第1次迭代——创建最小脚本
+
+### 步骤1：进入仓库
 
 ```bash
 cd ~/m1-project/git-lab
+```
+
+### 步骤2：创建脚本
+
+```bash
 vim scripts/server-health.sh
 ```
 
-输入以下完整内容：
+输入以下最小内容：
 
-```bash
+```bash-script
 #!/usr/bin/env bash
-
-# TechCorp Linux服务器巡检脚本
-# 退出码：0=正常，1=警告，2=严重异常
 
 set -u
 
-DISK_WARN=80
-MEM_AVAILABLE_WARN=15
-LOAD_WARN_FACTOR=2
+DISK_WARN=90
+MEM_AVAILABLE_WARN=10
 STATUS=0
 
 SERVICES=(mysqld mongod redis sshd)
 PORTS=(22 3306 27017 6379)
+WEB_URL='http://rocky-web/health'
+WEB_HOST='techcorp.test'
 
+printf '=== TechCorp Server Health Check ===\n'
+printf 'host=%s\n' "$(hostnamectl --static)"
+printf 'result_code=%d\n' "$STATUS"
+exit "$STATUS"
+```
+
+这一步只建立配置和最小输出，不做复杂判断。
+
+### 步骤3：检查语法
+
+```bash
+bash -n scripts/server-health.sh
+```
+
+没有输出表示未发现语法错误。
+
+### 步骤4：赋予执行权限
+
+```bash
+chmod 750 scripts/server-health.sh
+```
+
+### 步骤5：执行最小脚本
+
+```bash
+./scripts/server-health.sh
+```
+
+### 步骤6：立即查看退出码
+
+```bash
+printf 'exit=%s\n' "$?"
+```
+
+预期返回0。此时只证明最小脚本可执行，不代表巡检功能已经完成。
+
+## 六、任务三：第2次迭代——增加统一输出函数
+
+重新打开脚本：
+
+```bash
+vim scripts/server-health.sh
+```
+
+在`WEB_HOST`配置之后、第一条`printf`之前加入三个函数：
+
+```bash-script
 ok() {
     printf '[OK]   %s\n' "$1"
 }
@@ -139,6 +249,42 @@ crit() {
     printf '[CRIT] %s\n' "$1" >&2
     STATUS=2
 }
+```
+
+三个函数统一输出格式。`warn`只在当前状态低于1时升级，`crit`直接升级到2。后续正常项不会把严重状态改回0。
+
+保存后检查语法：
+
+```bash
+bash -n scripts/server-health.sh
+```
+
+执行当前版本：
+
+```bash
+./scripts/server-health.sh
+```
+
+这一版输出暂时与上一版相近，因为函数已经定义但尚未调用。
+
+## 七、任务四：第3次迭代——增加系统与磁盘检查
+
+重新编辑：
+
+```bash
+vim scripts/server-health.sh
+```
+
+在`crit`函数之后、底部执行区域之前加入：
+
+```bash-script
+check_system() {
+    local load1 cpu_count
+    load1=$(awk '{print $1}' /proc/loadavg)
+    cpu_count=$(getconf _NPROCESSORS_ONLN)
+    ok "内核版本为$(uname -r)"
+    ok "1分钟负载为${load1}，CPU逻辑核数为${cpu_count}"
+}
 
 check_disk() {
     local used
@@ -151,14 +297,47 @@ check_disk() {
         ok "根分区使用率为${used}%"
     fi
 }
+```
 
+在底部`result_code`输出之前加入两次调用：
+
+```bash-script
+check_system
+check_disk
+```
+
+保存后检查语法：
+
+```bash
+bash -n scripts/server-health.sh
+```
+
+执行并观察：
+
+```bash
+./scripts/server-health.sh
+```
+
+将脚本输出与手工`df -P /`结果对照。使用率未达到90%时应显示`[OK]`。
+
+## 八、任务五：第4次迭代——增加内存检查
+
+重新编辑：
+
+```bash
+vim scripts/server-health.sh
+```
+
+在`check_disk`之后加入：
+
+```bash-script
 check_memory() {
     local total_kb available_kb available_pct
     total_kb=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo)
     available_kb=$(awk '/^MemAvailable:/ {print $2}' /proc/meminfo)
 
-    if [[ -z "$total_kb" || -z "$available_kb" || "$total_kb" -eq 0 ]]; then
-        crit '无法读取内存信息'
+    if [[ ! "$total_kb" =~ ^[0-9]+$ || ! "$available_kb" =~ ^[0-9]+$ || "$total_kb" -eq 0 ]]; then
+        crit '无法读取有效内存数据'
         return
     fi
 
@@ -169,306 +348,764 @@ check_memory() {
         ok "可用内存为${available_pct}%"
     fi
 }
+```
 
-check_load() {
-    local load1 cpu_count limit
-    load1=$(awk '{print $1}' /proc/loadavg)
-    cpu_count=$(getconf _NPROCESSORS_ONLN)
-    limit=$(( cpu_count * LOAD_WARN_FACTOR ))
+在底部`check_disk`之后加入调用：
 
-    if awk -v load="$load1" -v max="$limit" 'BEGIN {exit !(load >= max)}'; then
-        warn "1分钟负载为${load1}，参考阈值为${limit}"
-    else
-        ok "1分钟负载为${load1}，CPU逻辑核数为${cpu_count}"
-    fi
-}
+```bash-script
+check_memory
+```
 
+保存后检查语法：
+
+```bash
+bash -n scripts/server-health.sh
+```
+
+执行当前版本：
+
+```bash
+./scripts/server-health.sh
+```
+
+使用`free -h`和`/proc/meminfo`对照结果。脚本判断的是可用比例，不是`free`列中的字面空闲内存。
+
+## 九、任务六：第5次迭代——增加服务循环
+
+重新编辑：
+
+```bash
+vim scripts/server-health.sh
+```
+
+在`check_memory`之后加入：
+
+```bash-script
 check_services() {
-    local service state
+    local service
     for service in "${SERVICES[@]}"; do
-        state=$(systemctl is-active "$service" 2>/dev/null || true)
-        if [[ "$state" == 'active' ]]; then
+        if systemctl is-active --quiet "$service"; then
             ok "服务${service}处于active"
         else
-            crit "服务${service}状态为${state:-unknown}"
+            crit "服务${service}未处于active"
         fi
     done
 }
+```
 
+在底部`check_memory`之后加入调用：
+
+```bash-script
+check_services
+```
+
+保存后检查语法：
+
+```bash
+bash -n scripts/server-health.sh
+```
+
+执行当前版本：
+
+```bash
+./scripts/server-health.sh
+```
+
+应看到4条服务结果。不要加入只存在于`rocky-web`的`nginx`服务。
+
+## 十、任务七：第6次迭代——增加端口循环
+
+重新编辑：
+
+```bash
+vim scripts/server-health.sh
+```
+
+在`check_services`之后加入：
+
+```bash-script
 check_ports() {
     local port
     for port in "${PORTS[@]}"; do
-        if ss -lntH | awk '{print $4}' | grep -Eq "(^|:|\\])${port}$"; then
+        if ss -lntH | awk '{print $4}' | grep -Eq ":${port}$"; then
             ok "TCP端口${port}正在监听"
         else
             crit "TCP端口${port}未监听"
         fi
     done
 }
+```
 
+在底部`check_services`之后加入调用：
+
+```bash-script
+check_ports
+```
+
+保存后检查语法：
+
+```bash
+bash -n scripts/server-health.sh
+```
+
+执行当前版本：
+
+```bash
+./scripts/server-health.sh
+```
+
+将结果与`ss -lntH`对照。端口监听在`127.0.0.1`、业务IP或IPv6回环地址时，结尾都仍是`:端口号`。
+
+## 十一、任务八：第7次迭代——增加Web检查和最终结果
+
+重新编辑：
+
+```bash
+vim scripts/server-health.sh
+```
+
+在`check_ports`之后加入：
+
+```bash-script
 check_web() {
-    if curl --silent --show-error --fail --max-time 3 \
-        -H 'Host: techcorp.test' http://rocky-web/health >/dev/null; then
-        ok 'rocky-web的Nginx健康检查返回成功'
+    if curl --silent --show-error --fail --max-time 3 -H "Host: ${WEB_HOST}" "$WEB_URL" >/dev/null; then
+        ok 'rocky-web健康页返回成功'
     else
-        crit 'rocky-web的Nginx健康检查失败'
+        crit 'rocky-web健康页访问失败'
     fi
 }
-
-main() {
-    printf '=== TechCorp Server Health Check ===\n'
-    printf 'time=%s\n' "$(date '+%F %T %z')"
-    printf 'host=%s\n' "$(hostname -f 2>/dev/null || hostname)"
-    printf 'kernel=%s\n' "$(uname -r)"
-    printf '\n'
-
-    check_disk
-    check_memory
-    check_load
-    check_services
-    check_ports
-    check_web
-
-    printf '\nresult_code=%d\n' "$STATUS"
-    case "$STATUS" in
-        0) printf 'result=OK\n' ;;
-        1) printf 'result=WARN\n' ;;
-        2) printf 'result=CRITICAL\n' ;;
-    esac
-    return "$STATUS"
-}
-
-main "$@"
 ```
 
-保存退出后检查脚本：
+在底部`check_ports`之后加入调用：
+
+```bash-script
+check_web
+```
+
+删除原来的单行`printf 'result_code...`，在所有检查调用之后加入最终汇总：
+
+```bash-script
+printf '\nresult_code=%d\n' "$STATUS"
+case "$STATUS" in
+    0) printf 'result=OK\n' ;;
+    1) printf 'result=WARN\n' ;;
+    2) printf 'result=CRITICAL\n' ;;
+esac
+exit "$STATUS"
+```
+
+同时在标题下补充检查时间：
+
+```bash-script
+printf 'time=%s\n' "$(date '+%F %T %z')"
+```
+
+确保文件末尾只保留一条`exit "$STATUS"`，不要重复退出。
+
+保存后进行语法检查：
 
 ```bash
-chmod 750 scripts/server-health.sh
 bash -n scripts/server-health.sh
-head -n 5 scripts/server-health.sh
-ls -l scripts/server-health.sh
 ```
 
-`bash -n`没有输出且退出码为0，表示未发现Shell语法错误：
+立即读取语法检查退出码：
 
 ```bash
-echo $?
+printf 'syntax_exit=%s\n' "$?"
 ```
 
-> **验收点**：脚本语法检查通过，只有所有者和同组用户能够执行。
+预期为0。
 
-### 任务三：执行正常巡检
-
-实验14已在`rocky-web`配置`/health`。先从`rocky-server`手工验证该地址，再执行巡检：
+执行最终版本：
 
 ```bash
-getent hosts rocky-web
-curl --fail -H 'Host: techcorp.test' http://rocky-web/health
+./scripts/server-health.sh
 ```
 
+立即读取脚本退出码：
+
 ```bash
-cd ~/m1-project/git-lab
+printf 'health_exit=%s\n' "$?"
+```
+
+## 十二、最终脚本结构核对
+
+不需要重新复制完整脚本。使用以下命令核对逐段构建的结果。
+
+### 步骤1：查看前40行
+
+```bash
+nl -ba scripts/server-health.sh | sed -n '1,40p'
+```
+
+### 步骤2：查看中间部分
+
+```bash
+nl -ba scripts/server-health.sh | sed -n '41,100p'
+```
+
+### 步骤3：查看剩余部分
+
+```bash
+nl -ba scripts/server-health.sh | sed -n '101,180p'
+```
+
+最终结构应按顺序包含：
+
+1. Shebang和`set -u`；
+2. 阈值、服务、端口和Web参数；
+3. `ok`、`warn`、`crit`；
+4. `check_system`、`check_disk`、`check_memory`；
+5. `check_services`、`check_ports`、`check_web`；
+6. 标题、时间和主机输出；
+7. 六个检查函数调用；
+8. 结果文字和`exit "$STATUS"`。
+
+再次确认语法：
+
+```bash
+bash -n scripts/server-health.sh
+```
+
+## 十三、任务九：保存正常巡检结果
+
+### 步骤1：执行并合并保存输出
+
+```bash
 ./scripts/server-health.sh > ~/m1-project/logs/health-normal.log 2>&1
-RESULT=$?
-cat ~/m1-project/logs/health-normal.log
-printf 'exit_code=%s\n' "$RESULT"
 ```
 
-如果所有服务和端口正常，预期退出码为0。如果出现1或2，不要为了得到0而删掉检查项，应根据输出排查实际问题。
-
-查看标准输出和标准错误的区别：
+### 步骤2：立即保存退出码
 
 ```bash
-./scripts/server-health.sh \
-    > ~/m1-project/logs/health.stdout.log \
-    2> ~/m1-project/logs/health.stderr.log
-printf 'exit_code=%s\n' "$?"
+printf '%s\n' "$?" > ~/m1-project/evidence/lab19-normal-exit.txt
+```
+
+### 步骤3：查看日志
+
+```bash
+cat ~/m1-project/logs/health-normal.log
+```
+
+### 步骤4：查看退出码证据
+
+```bash
+cat ~/m1-project/evidence/lab19-normal-exit.txt
+```
+
+资源都低于警告阈值且服务正常时，预期为0。如果为1，查看`[WARN]`并确认实际资源状态；不能只为得到0而删除检查或随意提高阈值。
+
+### 步骤5：分开保存stdout和stderr
+
+```bash
+./scripts/server-health.sh > ~/m1-project/logs/health.stdout.log 2> ~/m1-project/logs/health.stderr.log
+```
+
+### 步骤6：立即查看退出码
+
+```bash
+printf 'split_output_exit=%s\n' "$?"
+```
+
+### 步骤7：比较文件行数
+
+```bash
 wc -l ~/m1-project/logs/health.stdout.log ~/m1-project/logs/health.stderr.log
 ```
 
-脚本把`[CRIT]`写入标准错误，普通信息写入标准输出。
+正常环境中stderr通常为空；有`[CRIT]`时，错误文件应出现内容。
 
-### 任务四：制造并验证受控故障
+## 十四、任务十：停止Redis验证CRITICAL
 
-本任务只在`rocky-server`停止Redis，完成后必须立即恢复。先保存原状态：
+本任务只停止Redis，不修改配置和数据。实验17已经完成RDB验证，正常停止服务不会清空业务键。
+
+### 步骤1：记录故障前状态
 
 ```bash
-REDIS_BEFORE=$(systemctl is-active redis 2>/dev/null || true)
-printf 'redis_before=%s\n' "$REDIS_BEFORE"
-sudo systemctl stop redis
-systemctl is-active redis || true
+systemctl is-active redis
 ```
 
-执行脚本并单独保存退出码：
+预期为`active`。如果实验开始时就不正常，先恢复基线。
+
+### 步骤2：停止Redis
+
+```bash
+sudo systemctl stop redis
+```
+
+### 步骤3：确认服务停止
+
+```bash
+systemctl is-active redis
+```
+
+预期返回`inactive`，该命令本身返回非0是正常故障证据。
+
+### 步骤4：确认6379消失
+
+```bash
+ss -lntH | grep ':6379$'
+```
+
+没有输出是预期故障现象。
+
+### 步骤5：运行巡检并保存故障日志
 
 ```bash
 ./scripts/server-health.sh > ~/m1-project/logs/health-fault.log 2>&1
-FAULT_CODE=$?
-printf '%s\n' "$FAULT_CODE" > ~/m1-project/evidence/lab19-fault-exit.txt
-cat ~/m1-project/logs/health-fault.log
-printf 'fault_exit_code=%s\n' "$FAULT_CODE"
 ```
 
-预期至少出现：
+### 步骤6：立即保存故障退出码
 
-- Redis服务状态为严重异常；
-- 6379端口未监听；
-- `rocky-web`健康检查仍成功，证明故障影响范围不是全部服务；
-- 最终退出码为2。
+```bash
+printf '%s\n' "$?" > ~/m1-project/evidence/lab19-fault-exit.txt
+```
 
-立即恢复并再次验证：
+### 步骤7：查看故障日志
+
+```bash
+cat ~/m1-project/logs/health-fault.log
+```
+
+应至少看到Redis服务和6379端口两项`[CRIT]`。其他检查仍应继续执行。
+
+### 步骤8：查看故障退出码
+
+```bash
+cat ~/m1-project/evidence/lab19-fault-exit.txt
+```
+
+预期为2。
+
+## 十五、任务十一：恢复Redis并回归验证
+
+### 步骤1：启动Redis
 
 ```bash
 sudo systemctl start redis
-systemctl is-active redis
-sudo ss -lntp | grep ':6379'
-curl --fail -H 'Host: techcorp.test' http://rocky-web/health
-./scripts/server-health.sh > ~/m1-project/logs/health-recovered.log 2>&1
-RECOVERED_CODE=$?
-printf '%s\n' "$RECOVERED_CODE" > ~/m1-project/evidence/lab19-recovered-exit.txt
-cat ~/m1-project/logs/health-recovered.log
-printf 'recovered_exit_code=%s\n' "$RECOVERED_CODE"
 ```
 
-> **验收点**：异常时退出码为2；恢复后Redis、6379端口和远程Web健康检查均正常。
+### 步骤2：确认服务恢复
 
-### 任务五：为脚本编写说明并提交Git
+```bash
+systemctl is-active redis
+```
 
-````bash
-cd ~/m1-project/git-lab
-cat > docs/server-health.md <<'EOF'
+预期为`active`。
+
+### 步骤3：确认端口恢复
+
+```bash
+ss -lntH | grep ':6379$'
+```
+
+### 步骤4：运行恢复后巡检
+
+```bash
+./scripts/server-health.sh > ~/m1-project/logs/health-recovered.log 2>&1
+```
+
+### 步骤5：立即保存恢复后退出码
+
+```bash
+printf '%s\n' "$?" > ~/m1-project/evidence/lab19-recovered-exit.txt
+```
+
+### 步骤6：查看恢复日志
+
+```bash
+cat ~/m1-project/logs/health-recovered.log
+```
+
+### 步骤7：查看恢复退出码
+
+```bash
+cat ~/m1-project/evidence/lab19-recovered-exit.txt
+```
+
+资源低于警告阈值时预期恢复为0；如果为1，应只剩资源WARN，不能再出现Redis或6379的CRITICAL。
+
+### 步骤8：检查实验17的Redis数据仍存在
+
+```bash
+redis-cli
+```
+
+在Redis客户端中交互认证：
+
+```text
+AUTH <实验17设置的密码>
+```
+
+读取持久化测试键：
+
+```text
+GET persistence:check
+```
+
+预期返回`course-data`。退出客户端：
+
+```text
+EXIT
+```
+
+## 十六、任务十二：编写使用说明
+
+### 步骤1：创建说明文件
+
+```bash
+vim docs/server-health.md
+```
+
+输入：
+
+```markdown
 # 服务器巡检脚本说明
 
 ## 用途
 
-检查`rocky-server`的根分区、可用内存、系统负载、MySQL/MongoDB/Redis/SSH服务及常用端口，并访问`rocky-web`健康页。
+脚本运行在rocky-server，检查系统资源、MySQL、MongoDB、Redis、SSH、本机监听端口和rocky-web健康页。
 
 ## 使用
 
-```bash
-./scripts/server-health.sh
-echo $?
+执行：`./scripts/server-health.sh`
+
+退出码：0表示正常，1表示资源警告，2表示严重异常。
+
+## 安全边界
+
+脚本只检查，不自动重启服务，不修改网络或防火墙，不保存数据库密码。
+
+## 验证
+
+先使用`bash -n`检查语法，再分别完成正常、Redis停止和Redis恢复测试。
 ```
 
-退出码：0表示正常，1表示警告，2表示严重异常。
+### 步骤2：查看说明
 
-## 边界
+```bash
+sed -n '1,100p' docs/server-health.md
+```
 
-脚本只检查，不自动重启服务，不修改配置，不保存数据库密码。
-EOF
+## 十七、任务十三：审查并提交Git
 
-git status --short
-git diff -- scripts/server-health.sh docs/server-health.md
-git add scripts/server-health.sh docs/server-health.md
+### 步骤1：查看仓库状态
+
+```bash
+git status --short --ignored
+```
+
+应看到脚本和说明文档待提交，不应看到`~/m1-project/logs`中的日志进入仓库。
+
+### 步骤2：查看脚本差异
+
+```bash
+git diff -- scripts/server-health.sh
+```
+
+新文件尚未跟踪时，普通`git diff`可能不显示其内容，应结合`git status`，暂存后使用`git diff --cached`审查。
+
+### 步骤3：精确暂存脚本
+
+```bash
+git add scripts/server-health.sh
+```
+
+### 步骤4：精确暂存说明
+
+```bash
+git add docs/server-health.md
+```
+
+### 步骤5：审查即将提交的内容
+
+```bash
 git diff --cached
+```
+
+确认没有密码、日志、私钥或数据库转储。
+
+### 步骤6：提交脚本
+
+```bash
 git commit -m "feat: add server health check script"
+```
+
+### 步骤7：推送到实验裸仓库
+
+```bash
 git push origin main
-git log --oneline --decorate -n 5
-````
-
-日志目录已在实验18的`.gitignore`中排除，不应被提交。
-
-### 任务六：保存实验结果
-
-```bash
-FAULT_CODE=$(cat ~/m1-project/evidence/lab19-fault-exit.txt)
-RECOVERED_CODE=$(cat ~/m1-project/evidence/lab19-recovered-exit.txt)
-{
-    printf '=== syntax ===\n'
-    bash -n ~/m1-project/git-lab/scripts/server-health.sh
-    printf 'syntax_exit=%s\n' "$?"
-    printf '\n=== script ===\n'
-    ls -l ~/m1-project/git-lab/scripts/server-health.sh
-    printf '\n=== git ===\n'
-    git -C ~/m1-project/git-lab status --short --branch
-    git -C ~/m1-project/git-lab log --oneline -n 5
-    printf '\n=== test exit codes ===\n'
-    printf 'fault=%s recovered=%s\n' "$FAULT_CODE" "$RECOVERED_CODE"
-} | tee ~/m1-project/evidence/lab19-shell-final.txt
 ```
 
-## 七、脚本阅读提示
-
-### 1. 为什么使用函数
-
-函数把磁盘、内存、服务、端口等检查分开。某项规则变化时，只需修改对应函数，也便于定位错误。
-
-### 2. 为什么变量名使用大写
-
-本脚本用大写表示全局阈值和状态，用小写表示函数内的局部变量。这是可读性约定，不是Shell强制语法。
-
-### 3. 为什么命令后有`|| true`
-
-`systemctl is-active`在服务不正常时本来就返回非0。这里需要读取它的文本状态并继续完成全部检查，因此在明确位置容纳非0结果，而不是让脚本提前退出。
-
-### 4. 为什么不启用`set -e`
-
-巡检脚本的目的正是收集失败项。若任意检查失败就立即退出，后续故障可能无法被发现。本脚本使用自己的状态累计逻辑。
-
-### 5. 为什么端口正常仍不能证明业务正常
-
-端口监听只能说明进程正在接收连接。`curl /health`进一步检查HTTP请求是否能够得到成功响应；数据库还需使用对应客户端进行认证和读写验证。
-
-## 八、常见故障
-
-### 故障1：`Permission denied`
+### 步骤8：查看提交历史
 
 ```bash
-ls -l scripts/server-health.sh
-chmod 750 scripts/server-health.sh
+git log --oneline --decorate -n 6
 ```
 
-### 故障2：`bad interpreter`或出现`^M`
-
-文件可能使用Windows换行。检查并转换：
+### 步骤9：确认仓库干净
 
 ```bash
-file scripts/server-health.sh
-sed -i 's/\r$//' scripts/server-health.sh
+git status --short
+```
+
+## 十八、任务十四：形成最终证据
+
+### 步骤1：保存语法检查结果
+
+```bash
 bash -n scripts/server-health.sh
 ```
 
-### 故障3：某服务显示unknown
+### 步骤2：立即保存语法退出码
+
+```bash
+printf '%s\n' "$?" > ~/m1-project/evidence/lab19-syntax-exit.txt
+```
+
+### 步骤3：保存脚本权限
+
+```bash
+ls -l scripts/server-health.sh > ~/m1-project/evidence/lab19-script-mode.txt
+```
+
+### 步骤4：保存Git状态
+
+```bash
+git status --short --branch > ~/m1-project/evidence/lab19-git-status.txt
+```
+
+### 步骤5：保存最近提交
+
+```bash
+git log --oneline -n 6 > ~/m1-project/evidence/lab19-git-history.txt
+```
+
+### 步骤6：检查所有退出码证据
+
+```bash
+ls -l ~/m1-project/evidence/lab19-*-exit.txt
+```
+
+### 步骤7：并排查看正常、故障和恢复退出码
+
+```bash
+paste ~/m1-project/evidence/lab19-normal-exit.txt ~/m1-project/evidence/lab19-fault-exit.txt ~/m1-project/evidence/lab19-recovered-exit.txt
+```
+
+典型结果为`0  2  0`。如果恢复结果为1，应能从日志指出具体WARN；不得仍包含Redis故障。
+
+## 十九、项目验收
+
+### 1. 构建过程
+
+- [ ] 单条巡检命令在写脚本前已经验证。
+- [ ] 脚本经过7次小迭代，不是一次粘贴后直接运行。
+- [ ] 每个迭代完成后都执行了`bash -n`和实际运行。
+- [ ] 能指出函数定义区、配置区和执行区。
+
+### 2. 脚本功能
+
+- [ ] 输出时间、主机、内核和负载信息。
+- [ ] 检查根分区和可用内存阈值。
+- [ ] 检查4项本机服务和4个TCP端口。
+- [ ] 访问`rocky-web`健康页。
+- [ ] 不检查本机不存在的Nginx服务。
+- [ ] 正确累计最高严重程度。
+
+### 3. 异常与恢复
+
+- [ ] Redis停止后仍完成其他检查。
+- [ ] 故障日志包含Redis服务和6379端口CRITICAL。
+- [ ] `lab19-fault-exit.txt`为2。
+- [ ] Redis恢复后不再出现对应CRITICAL。
+- [ ] `persistence:check`数据仍可读取。
+
+### 4. 安全与版本
+
+- [ ] 脚本只读，不自动修改系统。
+- [ ] 脚本、日志和Git中没有密码。
+- [ ] 日志与退出码证据位于仓库外。
+- [ ] 脚本和说明已经形成目的明确的Git提交。
+
+## 二十、提交材料
+
+1. `scripts/server-health.sh`；
+2. `docs/server-health.md`；
+3. `health-normal.log`、`health-fault.log`和`health-recovered.log`；
+4. `lab19-normal-exit.txt`；
+5. `lab19-fault-exit.txt`；
+6. `lab19-recovered-exit.txt`；
+7. 语法、权限和Git证据文件；
+8. 一份脚本结构说明，能够解释每个函数的输入、判断和输出。
+
+## 二十一、常见问题与排查
+
+### 1. Permission denied
+
+查看权限：
+
+```bash
+ls -l scripts/server-health.sh
+```
+
+重新设置：
+
+```bash
+chmod 750 scripts/server-health.sh
+```
+
+### 2. bad interpreter或出现^M
+
+查看文件类型：
+
+```bash
+file scripts/server-health.sh
+```
+
+如果由Windows换行导致，转换后重新检查：
+
+```bash
+sed -i 's/\r$//' scripts/server-health.sh
+```
+
+```bash
+bash -n scripts/server-health.sh
+```
+
+### 3. unbound variable
+
+`set -u`发现了未定义变量。检查变量名称是否拼错、是否在使用前赋值，以及可选位置参数是否使用了默认值。不要直接删除`set -u`掩盖错误。
+
+### 4. 某服务始终显示失败
+
+确认实际单元名：
 
 ```bash
 systemctl list-unit-files | grep -E 'mysql|mongo|redis|ssh'
 ```
 
-确认实际单元名，再修改`SERVICES`数组。不要仅为了通过检查而删除业务必需项。
+如果对应实验使用了不同服务名，应修改数组为真实名称；如果服务没有安装，应回到对应实验完成部署。
 
-### 故障4：端口在监听但脚本报告未监听
+### 5. 端口实际存在但脚本报告失败
+
+查看脚本实际解析的字段：
 
 ```bash
-ss -lntH
+ss -lntH | awk '{print $4}'
 ```
 
-检查当前系统输出格式和脚本正则。IPv4可能显示`127.0.0.1:3306`，IPv6可能显示`[::1]:6379`。
+确认监听地址最后是否为`:端口号`，并检查`PORTS`数组是否误写。
 
-### 故障5：正常环境仍返回1
+### 6. Web健康检查失败
 
-查看`[WARN]`行。资源使用率达到阈值并不等于命令失败，应结合持续时间和业务影响判断，而不是随意提高阈值。
+先检查名称解析：
 
-## 九、项目验收
+```bash
+getent hosts rocky-web
+```
 
-| 项目 | 分值 | 评价要点 |
-|---|---:|---|
-| 脚本结构 | 20 | Shebang、变量、函数、循环和主函数清楚 |
-| 系统检查 | 20 | 磁盘、内存和负载判断正确 |
-| 服务与端口 | 20 | 四项本机服务、四个端口及`rocky-web`健康页均被检查 |
-| 输出与退出码 | 15 | OK/WARN/CRIT清楚，0/1/2符合约定 |
-| 故障验证 | 15 | 有异常、恢复和退出码证据 |
-| 文档与版本 | 10 | 使用说明完整，Git提交合理，无日志和秘密 |
+再手工请求：
 
-## 十、独立练习
+```bash
+curl --verbose --max-time 3 -H 'Host: techcorp.test' http://rocky-web/health
+```
 
-1. 将磁盘阈值临时改为当前使用率以下，验证WARN和退出码1，然后恢复原值。
-2. 增加对`chronyd`服务的检查。
-3. 思考：如果脚本加入自动重启，可能带来哪些误操作和故障掩盖风险？
+根据结果检查网络、Nginx、虚拟主机和健康页，不要删除Web检查来换取退出码0。
 
-## 十一、实验总结
+### 7. 恢复Redis后仍返回2
 
-1. 巡检脚本为什么不应默认自动修复？
-2. 标准输出、标准错误和退出码分别服务于谁？
-3. 为什么既要检查服务，又要检查端口和应用健康页？
-4. 哪些值适合做阈值，阈值应如何根据环境调整？
+查看恢复日志中的每一条`[CRIT]`。可能还有其他服务、端口或Web故障。脚本的价值就是显示多个检查结果，不能只看最后一个数字。
+
+### 8. 正常环境返回1
+
+查看`[WARN]`。如果资源确实达到阈值，应记录现象并分析；如果阈值不适合当前教学环境，应在说明中给出调整依据，而不是任意修改数字。
+
+## 二十二、独立实践：验证WARN路径
+
+先确保脚本已经提交且工作区干净。
+
+### 步骤1：查看当前根分区使用率
+
+```bash
+df -P /
+```
+
+### 步骤2：临时把DISK_WARN改为1
+
+```bash
+vim scripts/server-health.sh
+```
+
+只把`DISK_WARN=90`改为`DISK_WARN=1`，其他内容保持不变。
+
+### 步骤3：检查差异
+
+```bash
+git diff -- scripts/server-health.sh
+```
+
+### 步骤4：检查语法
+
+```bash
+bash -n scripts/server-health.sh
+```
+
+### 步骤5：执行WARN测试
+
+```bash
+./scripts/server-health.sh > ~/m1-project/logs/health-warn.log 2>&1
+```
+
+### 步骤6：立即保存退出码
+
+```bash
+printf '%s\n' "$?" > ~/m1-project/evidence/lab19-warn-exit.txt
+```
+
+预期退出码为1，前提是没有其他CRITICAL故障。
+
+### 步骤7：恢复已提交版本
+
+```bash
+git restore scripts/server-health.sh
+```
+
+### 步骤8：确认阈值恢复
+
+```bash
+grep '^DISK_WARN=90$' scripts/server-health.sh
+```
+
+### 步骤9：再次检查语法和仓库状态
+
+```bash
+bash -n scripts/server-health.sh
+```
+
+```bash
+git status --short
+```
+
+## 二十三、环境保留
+
+保留以下成果供实验20使用：
+
+- `~/m1-project/git-lab/scripts/server-health.sh`；
+- `~/m1-project/git-lab/docs/server-health.md`；
+- 脚本的Git提交和`origin/main`；
+- 正常、故障、恢复日志；
+- `lab19-fault-exit.txt`和`lab19-recovered-exit.txt`等退出码证据；
+- MySQL、MongoDB、Redis、SSH和`rocky-web`恢复到正常状态。
+
+实验20会在`rocky-server`增加`techcorp-api`服务和5000端口。届时应修改`SERVICES`与`PORTS`数组、重新测试并形成新的Git提交，不能重新编写一套无关脚本。
+
+实验19验收完成后建立或更新`Linux-L3`快照。机房还原时从该快照继续实验20。
+
+## 二十四、官方参考
+
+- [GNU Bash参考手册](https://www.gnu.org/software/bash/manual/)
+- [Bash条件表达式](https://www.gnu.org/software/bash/manual/html_node/Bash-Conditional-Expressions.html)
+- [Bash数组](https://www.gnu.org/software/bash/manual/html_node/Arrays.html)
+- [GNU Coreutils：标准输出](https://www.gnu.org/software/coreutils/manual/html_node/Standard-output.html)
+- [ShellCheck](https://www.shellcheck.net/)

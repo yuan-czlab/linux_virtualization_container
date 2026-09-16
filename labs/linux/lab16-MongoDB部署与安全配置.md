@@ -1,488 +1,527 @@
 # 实验16：MongoDB数据库服务部署与安全配置
 
-> 所属模块：模块三 企业服务部署与综合运维  
-> 建议学时：4学时  
-> 实验方式：个人  
-> 对应教材：《模块三 企业服务部署与综合运维》第27章  
-> 知识前置：教材第27章以及软件包、systemd、端口、认证和日志基础\
-> 状态依赖：`rocky-server`可用课程软件源并满足MongoDB 8.0 CPU要求；不依赖MySQL数据\
-> 建议起点：`Linux-L2`或当前连续实验环境\
-> 项目成果：MongoDB 8.0服务、基础文档数据、管理员和业务用户、身份认证、受限监听及连接故障记录
+> 所属模块：模块三 企业服务器部署与综合运维
+> 建议学时：4学时
+> 实验方式：个人
+> 对应教材：3.3 MongoDB文档数据库
+> 知识前置：数据库基础、systemd、YAML、认证授权和备份恢复
+> 状态依赖：`rocky-server`软件源可用且CPU满足MongoDB要求；不依赖实验15数据
+> 建议起点：`Linux-L2`
+> 项目成果：company_db文档、认证与RBAC配置、BSON备份和隔离恢复证据
 
 ## 一、项目情境
 
-TechCorp需要使用MongoDB保存结构灵活的设备巡检记录。你需要从Linux运维角度完成MongoDB Community Edition安装、服务管理、基础数据验证、用户认证、监听范围和日志排障。课程不把MongoDB作为数据库开发课程，不深入复杂查询、复制集和分片。
+TechCorp需要使用MongoDB保存巡检文档。数据库只供本机应用使用，需要启用身份认证，为管理员和业务程序分配不同角色，并通过逻辑备份证明数据能够恢复。
 
-## 二、实验目标
+## 二、实验规则
 
-### 1. 知识目标
+1. MongoDB最终只监听`127.0.0.1`，不开放27017。
+2. 首个管理员创建完成后再启用认证。
+3. 密码通过`passwordPrompt()`或`-p`交互输入。
+4. 业务用户不授予用户管理权限。
+5. 修改`mongod.conf`前保存原文件。
+6. 备份必须恢复到`company_restore`验证。
+7. YAML使用空格缩进，不使用Tab。
 
-1. 说明数据库、集合、文档和字段的基本关系。
-2. 说明`mongod`、`mongosh`、配置文件、数据目录、日志和27017端口。
-3. 说明认证数据库、用户角色、`bindIp`和网络暴露风险。
+## 三、任务一：平台与安装前检查
 
-### 2. 能力目标
-
-1. 检查平台和CPU条件，配置官方MongoDB 8.0仓库。
-2. 安装并使用systemd管理mongod。
-3. 使用mongosh插入、查询和统计基础文档。
-4. 创建管理员与最小权限业务用户并启用authorization。
-5. 根据服务、配置、端口、认证数据库和日志排查连接失败。
-
-### 3. 素质目标
-
-1. 不长期保留无认证MongoDB服务。
-2. 不把27017直接开放给整个校园网或互联网。
-3. 创建首个管理员后再启用认证，避免把自己锁在服务外。
-4. 不在脚本、Git或截图中泄露数据库密码。
-
-## 三、知识准备
-
-### 1. 数据组织
-
-```text
-MongoDB服务
-└── 数据库 company_db
-    └── 集合 inspections
-        ├── 文档1 {host, status, cpu, time}
-        └── 文档2 {host, status, disk, tags, time}
-```
-
-文档类似JSON对象，不要求所有文档拥有完全相同字段。MongoDB实际使用BSON保存更多数据类型。
-
-### 2. 连接和认证
-
-```text
-mongosh连接主机与27017端口
-→ mongod根据bindIp接受或拒绝网络连接
-→ 开启authorization后验证用户和认证数据库
-→ 角色决定用户可以操作哪些数据库和集合
-→ 日志记录启动、连接和错误信息
-```
-
-MongoDB用户创建在哪个数据库，通常就需要把该数据库作为`authenticationDatabase`。用户可以在认证数据库中保存身份，同时获得对其他数据库的角色。
-
-开始操作前打开[MongoDB文档模型、认证、RBAC与备份动画](../../animations/14-mongodb-document-auth-rbac/index.html)，依次完成“文档模型”“认证数据库”和“RBAC与监听”。做到备份任务时再复用“备份与恢复”，先预测每个失败发生在连接、认证还是授权阶段。
-
-### 3. 平台边界
-
-MongoDB 8.0 Community支持RHEL/Rocky Linux 9的64位平台。x86_64上的现代MongoDB还要求CPU提供相应指令集；MongoDB 5.0及以后要求AVX。机房必须在开课前抽测，不能等学生安装后才发现CPU不兼容。
-
-## 四、实验环境
-
-- `rocky-server`运行Rocky Linux 9 x86_64，建议4GB内存；MongoDB只安装在该机。
-- `ubuntu-client`承担端口、认证和远程连接验证。
-- 处理器应支持AVX。
-- MongoDB Community Edition 8.0官方仓库或教师准备的同版本离线RPM。
-- 服务名：`mongod`；端口：27017。
-- 配置：`/etc/mongod.conf`；数据：`/var/lib/mongo`；日志通常为`/var/log/mongodb/mongod.log`。
-
-## 五、项目任务
-
-1. 检查系统、架构、CPU、内存和旧安装。
-2. 配置官方MongoDB 8.0仓库并安装。
-3. 启动mongod，检查配置、端口、数据和日志。
-4. 创建company_db和巡检文档。
-5. 创建课程管理员和业务账号。
-6. 启用认证并验证允许和拒绝。
-7. 保持仅本机监听，完成认证或配置故障排查。
-
-## 六、实验步骤
-
-### 任务一：平台和安装前检查
+确认身份：
 
 ```bash
-test "$(whoami)" = 'rocky-server' && echo USER_PASS || echo USER_FAIL
-test "$(hostnamectl --static)" = 'rocky-server' && echo HOST_PASS || echo HOST_FAIL
+whoami
 ```
 
 ```bash
-mkdir -p ~/m1-project/evidence ~/m1-project/backup/mongodb
-{
-    cat /etc/os-release
-    uname -m
-    free -h
-    grep -m1 -o 'avx' /proc/cpuinfo || true
-    rpm -qa | grep -E '^mongodb' || true
-    sudo ss -lntp | grep ':27017' || true
-} | tee ~/m1-project/evidence/lab16-mongodb-before.txt
+hostnamectl --static
 ```
 
-`uname -m`应为`x86_64`，CPU检查应输出`avx`。没有AVX时停止安装并使用教师验证过的替代机或演示环境，不通过换用未知旧版本绕过。
-
-> **验收点**：平台和CPU满足要求，27017没有未知占用，旧数据已确认。
-
-### 任务二：配置官方仓库并安装
-
-#### 步骤1：创建仓库文件
+检查架构：
 
 ```bash
-sudo tee /etc/yum.repos.d/mongodb-org-8.0.repo > /dev/null <<'REPO'
+uname -m
+```
+
+检查CPU：
+
+```bash
+lscpu
+```
+
+检查AVX标志：
+
+```bash
+lscpu | grep -i avx
+```
+
+检查已有MongoDB包：
+
+```bash
+rpm -qa | grep '^mongodb'
+```
+
+创建目录：
+
+```bash
+mkdir -p ~/m1-project/backup/mongodb
+```
+
+```bash
+mkdir -p ~/m1-project/evidence
+```
+
+## 四、任务二：配置仓库并安装
+
+使用官方仓库或教师提供的同版本镜像。编辑仓库文件：
+
+```bash
+sudo vim /etc/yum.repos.d/mongodb-org-8.0.repo
+```
+
+官方EL9 x86_64示例：
+
+```ini
 [mongodb-org-8.0]
 name=MongoDB Repository
 baseurl=https://repo.mongodb.org/yum/redhat/9/mongodb-org/8.0/x86_64/
 gpgcheck=1
 enabled=1
 gpgkey=https://pgp.mongodb.com/server-8.0.asc
-REPO
+```
+
+机房不能访问官方仓库时，把`baseurl`替换为教师提供的已验证镜像或使用完整离线RPM集合。
+
+检查仓库：
+
+```bash
+sudo dnf repolist --enabled | grep mongodb
+```
+
+安装：
+
+```bash
+sudo dnf install -y mongodb-org
+```
+
+检查组件：
+
+```bash
+rpm -q mongodb-org mongodb-org-server mongodb-mongosh mongodb-database-tools
+```
+
+查看版本：
+
+```bash
+mongod --version
+```
+
+```bash
+mongosh --version
+```
+
+```bash
+mongodump --version
+```
+
+## 五、任务三：启动并检查默认边界
+
+启动：
+
+```bash
+sudo systemctl enable --now mongod
 ```
 
 检查：
 
 ```bash
-sudo dnf repolist --enabled | grep mongodb
-grep -E '^(baseurl|gpgcheck|enabled|gpgkey)=' /etc/yum.repos.d/mongodb-org-8.0.repo
-```
-
-#### 步骤2：安装MongoDB
-
-```bash
-sudo dnf install -y mongodb-org
-rpm -q mongodb-org mongodb-org-server mongodb-mongosh mongodb-database-tools
-mongod --version | sed -n '1,10p'
-mongosh --version
-```
-
-离线环境由教师提供同一8.0系列完整RPM集合。不要混装其他仓库的mongosh或工具包。
-
-> **验收点**：mongod、mongosh和数据库工具均可用，版本来源一致。
-
-### 任务三：启动和检查服务
-
-```bash
-sudo systemctl enable --now mongod
 systemctl is-active mongod
+```
+
+```bash
 systemctl is-enabled mongod
-systemctl status mongod --no-pager
-sudo ss -lntp | grep ':27017'
-sudo journalctl -u mongod -n 30 --no-pager
-sudo grep -E '^(  port:|  bindIp:|security:|  authorization:)' /etc/mongod.conf || true
 ```
 
-默认通常只监听127.0.0.1且未启用authorization。当前无认证状态仅用于创建首个管理员，不应长期保留。
-
-检查目录：
+查看监听：
 
 ```bash
-sudo ls -ld /var/lib/mongo /var/log/mongodb
-sudo tail -n 30 /var/log/mongodb/mongod.log
+sudo ss -lntp | grep ':27017 '
 ```
 
-> **验收点**：mongod为active和enabled，27017仅监听本机地址，数据和日志目录存在。
+预期只监听`127.0.0.1:27017`。
 
-### 任务四：基础文档操作
-
-#### 步骤3：连接并创建数据
+查看配置关键行：
 
 ```bash
-mongosh
-```
-
-在mongosh中：
-
-```javascript
-show dbs
-use company_db
-
-db.inspections.insertMany([
-  {
-    host: "rocky-server",
-    status: "ok",
-    cpu_percent: 18,
-    disk_percent: 42,
-    checked_at: new Date()
-  },
-  {
-    host: "db-server",
-    status: "warning",
-    disk_percent: 81,
-    tags: ["database", "capacity"],
-    checked_at: new Date()
-  },
-  {
-    host: "web-server",
-    status: "ok",
-    services: { nginx: "active", api: "active" },
-    checked_at: new Date()
-  }
-])
-
-db.inspections.find()
-db.inspections.countDocuments({})
-db.inspections.find({status: "warning"})
-show collections
-db
-```
-
-应有3个文档。课程只要求理解运维验证所需的基础操作。
-
-> **验收点**：company_db中存在inspections集合，文档总数为3，能查询warning文档。
-
-### 任务五：创建用户
-
-#### 步骤4：创建课程管理员
-
-仍在认证尚未启用的mongosh中：
-
-```javascript
-use admin
-db.createUser({
-  user: "courseAdmin",
-  pwd: passwordPrompt(),
-  roles: [
-    {role: "userAdminAnyDatabase", db: "admin"},
-    {role: "dbAdminAnyDatabase", db: "admin"},
-    {role: "readWriteAnyDatabase", db: "admin"}
-  ]
-})
-```
-
-使用教师指定的强实验密码。`passwordPrompt()`避免密码直接出现在屏幕代码和历史中。
-
-#### 步骤5：创建业务用户
-
-```javascript
-use company_db
-db.createUser({
-  user: "inspectionApp",
-  pwd: passwordPrompt(),
-  roles: [
-    {role: "readWrite", db: "company_db"}
-  ]
-})
-db.getUser("inspectionApp")
-exit
-```
-
-> **验收点**：courseAdmin创建在admin，inspectionApp创建在company_db且只有readWrite角色。
-
-### 任务六：启用身份认证
-
-#### 步骤6：备份配置
-
-```bash
-test -f ~/m1-project/backup/mongodb/mongod.conf.before-auth || \
-  sudo cp -p /etc/mongod.conf ~/m1-project/backup/mongodb/mongod.conf.before-auth
 sudo grep -nE '^(net:|  port:|  bindIp:|security:|  authorization:)' /etc/mongod.conf
 ```
 
-#### 步骤7：编辑配置
+查看目录：
+
+```bash
+sudo ls -ld /var/lib/mongo /var/log/mongodb
+```
+
+查看日志：
+
+```bash
+sudo tail -n 30 /var/log/mongodb/mongod.log
+```
+
+## 六、任务四：创建首个管理员
+
+认证尚未启用，但服务只监听回环地址。在Rocky本机连接：
+
+```bash
+mongosh --host 127.0.0.1 --port 27017
+```
+
+切换到admin：
+
+```javascript
+use admin
+```
+
+创建课程管理员：
+
+```javascript
+db.createUser({user:"courseAdmin", pwd:passwordPrompt(), roles:[{role:"userAdminAnyDatabase",db:"admin"},{role:"readWriteAnyDatabase",db:"admin"},{role:"dbAdminAnyDatabase",db:"admin"}]})
+```
+
+查看用户：
+
+```javascript
+db.getUser("courseAdmin")
+```
+
+退出：
+
+```javascript
+exit
+```
+
+## 七、任务五：启用身份认证
+
+### 7.1 保存原配置
+
+检查备份：
+
+```bash
+ls -l ~/m1-project/backup/mongodb/mongod.conf.before-auth
+```
+
+不存在时创建：
+
+```bash
+sudo cp -a /etc/mongod.conf ~/m1-project/backup/mongodb/mongod.conf.before-auth
+```
+
+### 7.2 编辑配置
 
 ```bash
 sudo vim /etc/mongod.conf
 ```
 
-确认或调整为以下结构。YAML使用空格缩进，不能使用Tab；原文件已有`net:`时应修改现有块，不能重复创建第二个`net:`：
+确保`net`部分包含：
 
 ```yaml
 net:
   port: 27017
   bindIp: 127.0.0.1
+```
 
+在顶层增加：
+
+```yaml
 security:
   authorization: enabled
 ```
 
-检查关键行和Tab：
+检查是否存在Tab：
 
 ```bash
-sudo grep -nE '^(net:|  port:|  bindIp:|security:|  authorization:)' /etc/mongod.conf
-sudo grep -n $'\t' /etc/mongod.conf || true
+sudo grep -n $'\t' /etc/mongod.conf
 ```
 
-#### 步骤8：重启并检查
+没有输出是预期结果。
+
+### 7.3 重启并检查
 
 ```bash
 sudo systemctl restart mongod
+```
+
+```bash
 systemctl is-active mongod
-sudo ss -lntp | grep ':27017'
-sudo journalctl -u mongod -n 30 --no-pager
 ```
 
-如果启动失败，先看日志和配置缩进。可从备份恢复：
+失败时查看：
 
 ```bash
-sudo cp -p ~/m1-project/backup/mongodb/mongod.conf.before-auth /etc/mongod.conf
-sudo systemctl restart mongod
+sudo journalctl -u mongod -n 60 --no-pager
 ```
 
-恢复后仍需重新正确启用认证，不能以无认证状态结束实验。
-
-> **验收点**：认证已启用，服务运行，27017仍只监听127.0.0.1。
-
-### 任务七：验证认证和权限
-
-#### 步骤9：未认证访问
+需要回退配置时：
 
 ```bash
-mongosh --quiet --eval 'db.adminCommand({connectionStatus: 1})'
+sudo cp -a ~/m1-project/backup/mongodb/mongod.conf.before-auth /etc/mongod.conf
 ```
 
-未认证客户端可能建立网络连接并查看有限信息，但读取业务数据应被拒绝：
+回退仅用于修复配置，最终仍需正确启用认证。
+
+## 八、任务六：验证认证并创建业务用户
+
+### 8.1 未认证访问
 
 ```bash
-mongosh --quiet company_db --eval 'db.inspections.findOne()'
+mongosh --host 127.0.0.1 --quiet --eval 'db.adminCommand({listDatabases:1})'
 ```
 
-#### 步骤10：业务用户认证
+预期提示需要认证。
+
+### 8.2 管理员认证
 
 ```bash
-mongosh --authenticationDatabase company_db -u inspectionApp -p company_db
+mongosh --host 127.0.0.1 --authenticationDatabase admin -u courseAdmin -p
 ```
 
-按提示输入密码：
+确认身份：
+
+```javascript
+db.runCommand({connectionStatus:1})
+```
+
+切换业务库：
+
+```javascript
+use company_db
+```
+
+创建业务用户：
+
+```javascript
+db.createUser({user:"inspectionApp", pwd:passwordPrompt(), roles:[{role:"readWrite",db:"company_db"}]})
+```
+
+退出：
+
+```javascript
+exit
+```
+
+## 九、任务七：创建和查询文档
+
+使用业务用户连接：
+
+```bash
+mongosh --host 127.0.0.1 --authenticationDatabase company_db -u inspectionApp -p company_db
+```
+
+插入第一条：
+
+```javascript
+db.inspections.insertOne({host:"rocky-server",service:{name:"mongod",port:27017},status:"ok",tags:["database","course"]})
+```
+
+插入第二条：
+
+```javascript
+db.inspections.insertOne({host:"rocky-server",service:{name:"mysqld",port:3306},status:"ok",tags:["database","course"]})
+```
+
+查询：
 
 ```javascript
 db.inspections.find()
-db.inspections.insertOne({host: "client", status: "ok", checked_at: new Date()})
-db.inspections.countDocuments({})
-use admin
-db.getUsers()
-exit
 ```
 
-业务数据读写应成功，管理admin用户应被拒绝。
-
-#### 步骤11：管理员认证
-
-```bash
-mongosh --authenticationDatabase admin -u courseAdmin -p
-```
+统计：
 
 ```javascript
-use admin
-db.runCommand({connectionStatus: 1})
-use company_db
 db.inspections.countDocuments({})
-exit
 ```
 
-> **验收点**：未认证读取失败，业务用户只能处理company_db，管理员能够查看授权和业务状态。
+按嵌套字段查询：
 
-### 任务八：连接故障排查
+```javascript
+db.inspections.find({"service.port":27017})
+```
 
-#### 步骤12：使用错误认证数据库
+业务用户尝试创建其他用户应失败：
+
+```javascript
+db.createUser({user:"shouldFail",pwd:passwordPrompt(),roles:[]})
+```
+
+## 十、任务八：认证数据库故障
+
+故意使用错误认证数据库：
 
 ```bash
-mongosh --authenticationDatabase admin -u inspectionApp -p company_db
+mongosh --host 127.0.0.1 --authenticationDatabase admin -u inspectionApp -p company_db
 ```
 
-即使用户名和密码正确，也会因用户实际创建在company_db而认证失败。检查：
+预期认证失败。检查服务仍正常：
 
 ```bash
 systemctl is-active mongod
-sudo ss -lntp | grep ':27017'
+```
+
+查看日志：
+
+```bash
 sudo tail -n 50 /var/log/mongodb/mongod.log
 ```
 
-使用正确认证数据库重新连接：
+使用正确认证数据库复测：
 
 ```bash
-mongosh --authenticationDatabase company_db -u inspectionApp -p company_db
+mongosh --host 127.0.0.1 --authenticationDatabase company_db -u inspectionApp -p company_db
 ```
 
-> **验收点**：能根据错误和用户创建位置判断authenticationDatabase错误，而不是修改防火墙。
+## 十一、任务九：逻辑备份
 
-#### 步骤13：配置错误观察
-
-由教师在备份存在的情况下制造一处YAML缩进或字段错误。学生执行：
+创建父目录：
 
 ```bash
-systemctl status mongod --no-pager
-sudo journalctl -u mongod -n 60 --no-pager
-sudo tail -n 60 /var/log/mongodb/mongod.log
-sudo grep -nE '^(net:|  port:|  bindIp:|security:|  authorization:)' /etc/mongod.conf
+mkdir -p ~/backup-lab/mongodb
 ```
 
-修复后重启并完成认证查询复测。
-
-### 任务九：保存证据
+检查目标是否已经存在：
 
 ```bash
-{
-    mongod --version | sed -n '1,5p'
-    mongosh --version
-    systemctl is-active mongod
-    systemctl is-enabled mongod
-    sudo ss -lntp | grep ':27017'
-    sudo grep -nE '^(net:|  port:|  bindIp:|security:|  authorization:)' /etc/mongod.conf
-    getenforce
-} > ~/m1-project/evidence/lab16-mongodb-final.txt
+ls -ld ~/backup-lab/mongodb/company-dump
 ```
 
-业务数据统计使用交互认证执行并记录结果，不把密码放入URI。
+已存在时不得直接覆盖，应先核对、归档或从课程检查点重新开始。
 
-## 七、独立实践
-
-1. 创建只读用户`inspectionReader`，认证数据库为company_db。
-2. 证明它能够查询inspections但不能插入文档。
-3. 将一条status为warning的文档改为resolved，并记录修改前后。
-4. 使用错误密码、错误端口或错误认证数据库制造一次连接失败。
-5. 写出“服务—端口—监听—认证数据库—用户角色—日志”检查结果。
-
-## 八、验收标准
-
-- [ ] 平台为Rocky Linux 9 64位，CPU满足AVX要求。
-- [ ] MongoDB 8.0服务器、mongosh和数据库工具来自统一来源。
-- [ ] mongod为active和enabled，数据与日志目录已识别。
-- [ ] company_db包含inspections集合和不少于3个文档。
-- [ ] courseAdmin和inspectionApp创建在正确认证数据库。
-- [ ] authorization已启用，未认证业务读取被拒绝。
-- [ ] inspectionApp能读写company_db但不能管理admin用户。
-- [ ] 27017只监听127.0.0.1，未向整个网络开放。
-- [ ] 已完成认证数据库故障和配置故障排查。
-- [ ] inspectionReader只读验证完成。
-- [ ] 密码未出现在Git、截图、命令URI和提交材料中。
-
-## 九、成果提交
-
-1. `lab16-mongodb-before.txt`和`lab16-mongodb-final.txt`。
-2. MongoDB版本、服务、端口、配置和日志位置。
-3. 文档插入、查询和统计结果。
-4. 管理员、业务用户和只读用户的角色信息，不包含密码。
-5. 未认证、正确认证和越权操作验证。
-6. 两份故障记录。
-
-## 十、常见问题
-
-### Q1：mongod启动后立即失败
-
-检查YAML缩进、字段名称、数据目录和日志：
+执行备份：
 
 ```bash
-sudo journalctl -u mongod -n 80 --no-pager
-sudo tail -n 80 /var/log/mongodb/mongod.log
+mongodump --host 127.0.0.1 --port 27017 --authenticationDatabase company_db -u inspectionApp -p --db company_db --out ~/backup-lab/mongodb/company-dump
 ```
 
-### Q2：提示Illegal instruction
+紧接着查看退出状态：
 
-优先检查CPU是否支持AVX和虚拟机是否向客户机暴露该特性。这是平台兼容问题，不是账号或防火墙问题。
+```bash
+echo $?
+```
 
-### Q3：Authentication failed但服务和端口正常
+检查文件：
 
-检查用户名、密码和`--authenticationDatabase`。用户创建在company_db时不能默认用admin认证。
+```bash
+find ~/backup-lab/mongodb/company-dump -type f -ls
+```
 
-### Q4：启用认证后没有管理员可以登录
+## 十二、任务十：误删与隔离恢复
 
-说明启用顺序错误。实验必须先创建首个管理员再启用认证。使用配置备份恢复到受控状态，由教师指导创建管理员后重新启用，不能长期关闭认证。
+使用业务用户记录数量：
 
-### Q5：远程主机连接不到27017
+```bash
+mongosh --host 127.0.0.1 --authenticationDatabase company_db -u inspectionApp -p company_db --quiet --eval 'db.inspections.countDocuments({})'
+```
 
-本实验最终设计为只监听127.0.0.1，这是预期安全结果。需要远程访问时应同时规划bindIp、账号角色、认证、TLS和来源防火墙，不能只把端口开放给所有来源。
+确认备份成功后删除集合：
 
-## 十一、课后思考与拓展
+```bash
+mongosh --host 127.0.0.1 --authenticationDatabase company_db -u inspectionApp -p company_db --quiet --eval 'db.inspections.drop()'
+```
 
-1. MongoDB文档结构灵活，为什么仍需要数据规范？
-2. 认证和授权分别解决什么问题？
-3. `bindIp`和firewalld为什么需要同时考虑？
-4. 使用`mongodump`和`mongorestore`完成备份恢复时，为什么仍需验证文档数量和内容？
+恢复到独立数据库：
 
-## 十二、环境保留
+```bash
+mongorestore --host 127.0.0.1 --port 27017 --authenticationDatabase admin -u courseAdmin -p --nsFrom='company_db.*' --nsTo='company_restore.*' ~/backup-lab/mongodb/company-dump
+```
 
-保留mongod、认证、仅本机监听、company_db和用户，供实验20使用。不要删除管理员账号，不要把27017永久开放到实验网络。
+检查数量：
 
-## 十三、官方参考
+```bash
+mongosh --host 127.0.0.1 --authenticationDatabase admin -u courseAdmin -p company_restore --quiet --eval 'db.inspections.countDocuments({})'
+```
 
-- [MongoDB 8.0：在RHEL及Rocky Linux安装Community Edition](https://www.mongodb.com/docs/v8.0/tutorial/install-mongodb-on-red-hat/)
-- [MongoDB 8.0：基于角色的访问控制](https://www.mongodb.com/docs/v8.0/core/authorization/)
-- [MongoDB 8.0：创建数据库用户](https://www.mongodb.com/docs/v8.0/tutorial/create-users/)
+检查关键文档：
+
+```bash
+mongosh --host 127.0.0.1 --authenticationDatabase admin -u courseAdmin -p company_restore --quiet --eval 'db.inspections.find().forEach(printjson)'
+```
+
+隔离恢复正确后恢复正式库：
+
+```bash
+mongorestore --host 127.0.0.1 --port 27017 --authenticationDatabase admin -u courseAdmin -p --drop --nsInclude='company_db.*' ~/backup-lab/mongodb/company-dump
+```
+
+最终验证：
+
+```bash
+mongosh --host 127.0.0.1 --authenticationDatabase company_db -u inspectionApp -p company_db --quiet --eval 'db.inspections.find().forEach(printjson)'
+```
+
+## 十三、任务十一：验证网络边界
+
+在Rocky确认只监听回环地址：
+
+```bash
+sudo ss -lntp | grep ':27017 '
+```
+
+确认没有27017防火墙开放：
+
+```bash
+firewall-cmd --list-all
+```
+
+在Ubuntu测试：
+
+```bash
+nc -vz -w 3 rocky-server 27017
+```
+
+远程连接失败是本实验的安全验收结果。
+
+## 十四、验收标准
+
+- [ ] 体系结构和CPU检查完成。
+- [ ] MongoDB服务端、mongosh和Database Tools来自统一来源。
+- [ ] mongod为active和enabled。
+- [ ] 27017只监听127.0.0.1。
+- [ ] authorization已经启用。
+- [ ] courseAdmin能够管理用户，inspectionApp仅有company_db的readWrite。
+- [ ] 错误认证数据库故障已经验证。
+- [ ] 业务用户不能创建用户。
+- [ ] 备份退出状态为0且BSON文件存在。
+- [ ] company_restore文档数量和关键字段正确。
+- [ ] company_db已经恢复。
+- [ ] Ubuntu不能直接连接27017。
+
+## 十五、成果提交
+
+1. 平台、版本、服务和监听结果。
+2. `mongod.conf`的net与security关键部分。
+3. 两个用户的角色证据。
+4. 嵌套文档查询和越权失败结果。
+5. 错误认证数据库的故障记录。
+6. 备份文件、退出状态和隔离恢复结果。
+7. 本地监听与Ubuntu远程失败证据。
+
+## 十六、常见问题
+
+### 16.1 mongod启动失败
+
+查看systemd和MongoDB日志，重点检查YAML缩进和Tab。
+
+### 16.2 Illegal instruction
+
+检查宿主CPU和VMware是否向虚拟机暴露所需指令集，不能靠重复安装解决。
+
+### 16.3 Authentication failed
+
+确认用户创建在哪个数据库，并使用正确`--authenticationDatabase`。
+
+### 16.4 Unauthorized
+
+说明身份可能已经验证，但角色不允许当前操作。检查业务用户角色，不随意提升为管理员。
+
+## 十七、环境保留
+
+保留mongod、认证配置、company_db、courseAdmin、inspectionApp和`company-dump`供实验20使用。
+
+MongoDB保持只监听`127.0.0.1`，不添加27017防火墙规则。`company_restore`验收后可以删除。

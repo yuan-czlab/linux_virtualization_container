@@ -1,445 +1,667 @@
 # 实验10：SSH远程管理与密钥认证
 
-> 所属模块：模块二 网络、远程管理与基础防护  
-> 建议学时：4学时  
-> 实验方式：个人  
-> 对应教材：《模块二 网络、远程管理与基础防护》第17—19章  
-> 知识前置：实验9中的端口、名称解析和客户端—服务器验证方法\
-> 状态依赖：实验8交付的三机静态网络和hosts；不依赖实验9的临时HTTP/HTTPS进程\
-> 建议起点：`Linux-L1`并保留实验8网络成果\
-> 项目成果：`ubuntu-client`到两台Rocky服务器的SSH连接、Ed25519密钥认证、双别名、文件传输和认证故障记录
+> 所属模块：模块二 网络远程管理与基础防护
+> 建议学时：4学时
+> 实验方式：2～3人小组，每人完成自己的三机配置
+> 对应教材：2.5 SSH远程管理；2.6 SSH密钥认证；2.7 SSH客户端配置与文件传输
+> 知识前置：实验8三机网络、实验9端口证据链
+> 状态依赖：实验8的静态地址、`/etc/hosts`和`course-env.sh`可用；不依赖实验9临时服务
+> 建议起点：`Linux-L1`并保留实验8网络成果
+> 项目成果：双服务器SSH基线、课程密钥、客户端别名、传输校验和权限故障记录
 
 ## 一、项目情境
 
-运维人员通常不在服务器控制台前工作，而是从管理终端通过SSH连接服务器。你需要确认目标主机身份，完成密码和密钥认证，配置易识别的客户端别名，使用SCP/SFTP传输文件，并根据客户端调试信息和服务端日志处理一次认证失败。
+企业运维人员需要从`ubuntu-client`统一管理`rocky-server`和`rocky-web`。本实验要求建立可验证、可回退的SSH管理入口，并完成一次真实的密钥权限故障排查。
 
-## 二、实验目标
+## 二、实验规则
 
-### 1. 知识目标
+1. 修改SSH服务端时必须保留VMware控制台。
+2. 密钥验证前不关闭密码认证。
+3. 服务器主机指纹必须通过可信控制台核对。
+4. 私钥只保存在`ubuntu-client`，不得复制到Rocky。
+5. 每条命令单独执行，不把实验整体粘贴为脚本。
+6. 修改服务端后使用第二个新会话验证，不能只依赖原连接。
 
-1. 说明SSH客户端、sshd服务、主机密钥、用户密钥和加密通道的关系。
-2. 区分主机身份验证与用户身份验证。
-3. 说明私钥、公钥、`authorized_keys`和`known_hosts`的作用。
-4. 说明密码认证、密钥认证和最小开放的基本安全边界。
+## 三、任务一：检查两台Rocky的SSH服务
 
-### 2. 能力目标
+先在`rocky-server`的VMware控制台完成。
 
-1. 检查sshd状态、监听地址、有效配置和日志。
-2. 从Ubuntu客户端使用对应账号分别连接`rocky-server`和`rocky-web`。
-3. 创建Ed25519密钥并正确部署公钥。
-4. 使用SSH客户端配置、SCP和SFTP管理服务器。
-5. 使用`ssh -v`和journal日志排查密钥权限问题。
+### 3.1 核对身份
 
-### 3. 素质目标
-
-1. 不共享、上传或提交私钥。
-2. 不无条件删除`known_hosts`绕过主机密钥警告。
-3. 修改远程管理配置时保留VMware控制台和已登录会话。
-
-## 三、知识准备
-
-```text
-SSH客户端连接服务器22端口
-→ 客户端核对服务器主机密钥
-→ 双方建立加密通道
-→ 服务器验证用户密码或公钥签名
-→ 为用户创建远程Shell或文件传输会话
+```bash
+whoami
 ```
 
-实验开始前打开[SSH信任、认证与文件传输动画](../../animations/07-ssh-trust-auth-transfer/index.html)，依次完成“主机身份”和“用户认证”；进入任务四、任务五前再完成“配置与命令”和“文件传输”。每一步先回答右侧判断题，再用本实验的`ssh -vv`、服务端journal、`ssh -G`和SHA256结果验证。
-
-| 文件或对象 | 所在位置 | 作用 |
-|---|---|---|
-| 服务器主机私钥 | `/etc/ssh/ssh_host_*_key` | 证明服务器身份，不得复制给学生 |
-| 服务器主机公钥 | `/etc/ssh/ssh_host_*_key.pub` | 生成主机指纹供客户端核对 |
-| 客户端用户私钥 | Ubuntu用户`~/.ssh/`目录 | 证明客户端用户身份，必须保密 |
-| 客户端用户公钥 | 私钥对应的`.pub`文件 | 可以部署到服务器 |
-| `authorized_keys` | 服务器用户`~/.ssh/` | 列出允许登录该用户的公钥 |
-| `known_hosts` | 客户端用户`~/.ssh/` | 记录已经确认的服务器身份 |
-
-## 四、实验环境
-
-- `rocky-server`和`rocky-web`已配置稳定IP。
-- Ubuntu 22.04 Desktop `ubuntu-client`作为正式SSH客户端，已完成三机互通。
-- 保留VMware控制台登录，避免SSH配置错误后失去管理入口。
-- Ubuntu中应能执行`ssh`、`ssh-keygen`、`ssh-copy-id`、`scp`和`sftp`；Windows宿主机仅作可选辅助验证。
-
-记录：
-
-```text
-ROCKY_SERVER_IP=________________
-ROCKY_WEB_IP=___________________
-SERVER_USER=rocky-server
-WEB_USER=rocky-web
-SSH_PORT=22
+```bash
+hostnamectl --static
 ```
 
-## 五、项目任务
+预期当前用户和主机名均为`rocky-server`。
 
-1. 在两台Rocky检查和启动sshd。
-2. 核对主机指纹并完成首次密码连接。
-3. 创建独立实验密钥并部署公钥。
-4. 验证密钥认证和私钥保护。
-5. 配置SSH别名并完成SCP/SFTP传输。
-6. 制造`authorized_keys`权限错误，收集证据并修复。
+### 3.2 检查软件包
 
-## 六、实验步骤
+```bash
+rpm -q openssh-server
+```
 
-### 任务一：检查SSH服务端
+未安装时执行：
 
-#### 步骤1：检查服务和端口
+```bash
+sudo dnf install -y openssh-server
+```
 
-在两台Rocky控制台分别执行：
+### 3.3 启动服务
 
 ```bash
 sudo systemctl enable --now sshd
-systemctl is-active sshd
-systemctl is-enabled sshd
-sudo ss -lntp | grep ':22'
 ```
 
-> **验收点**：sshd为active和enabled，TCP 22处于监听状态。
+检查运行状态：
 
-#### 步骤2：检查有效配置
+```bash
+systemctl is-active sshd
+```
+
+检查开机启动：
+
+```bash
+systemctl is-enabled sshd
+```
+
+检查22端口：
+
+```bash
+sudo ss -lntp | grep ':22 '
+```
+
+### 3.4 检查配置
+
+语法检查：
 
 ```bash
 sudo sshd -t
-sudo sshd -T | grep -E '^(port|listenaddress|passwordauthentication|pubkeyauthentication|permitrootlogin|maxauthtries) '
 ```
 
-`sshd -t`检查语法，`sshd -T`显示合并后的有效配置，比只查看某一行配置更可靠。
+查看有效值：
 
-> **验收点**：配置语法无错误，能够指出端口和认证方式。
+```bash
+sudo sshd -T | grep -E '^(port|listenaddress|permitrootlogin|passwordauthentication|pubkeyauthentication|maxauthtries) '
+```
 
-#### 步骤3：生成主机指纹
+### 3.5 检查防火墙
+
+```bash
+sudo firewall-cmd --get-active-zones
+```
+
+根据输出记录实际活动区域。查询SSH服务的命令格式：
+
+```text
+sudo firewall-cmd --zone=<实际活动区域> --query-service=ssh
+```
+
+返回`no`时先添加运行时规则：
+
+```text
+sudo firewall-cmd --zone=<实际活动区域> --add-service=ssh
+```
+
+### 3.6 记录主机指纹
 
 ```bash
 sudo ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
 ```
 
-记录SHA256指纹，首次连接时与Ubuntu显示的指纹核对。
+把SHA256指纹填写到记录表：
 
-### 任务二：首次远程连接
+| 服务器 | Ed25519主机指纹 |
+|---|---|
+| rocky-server | |
+| rocky-web | |
 
-#### 步骤4：测试端口
+切换到`rocky-web`控制台，重复3.1～3.6。用户名和主机名应为`rocky-web`。
 
-在`ubuntu-client`执行。地址直接读取实验8生成的变量文件：
+## 四、任务二：从Ubuntu首次连接
 
-```bash
-source ~/m1-project/course-env.sh
-ip -brief address
-ip route get "$ROCKY_SERVER_IP"
-nc -vz -w 3 "$ROCKY_SERVER_IP" 22
-nc -vz -w 3 "$ROCKY_WEB_IP" 22
-```
+### 4.1 检查客户端身份与解析
 
-如果失败，依次检查虚拟机IP、sshd状态、22端口监听、VMware NAT和firewalld。
-
-#### 步骤5：密码连接并确认主机身份
+在`ubuntu-client`执行：
 
 ```bash
-ssh rocky-server@"$ROCKY_SERVER_IP"
-ssh rocky-web@"$ROCKY_WEB_IP"
+hostnamectl --static
 ```
 
-首次连接会显示主机指纹。分别与对应Rocky控制台记录的指纹核对，确认后输入`yes`，密码均为课堂口令`123456`。
+```bash
+getent hosts rocky-server
+```
 
-登录后执行：
+```bash
+getent hosts rocky-web
+```
+
+### 4.2 测试TCP 22
+
+```bash
+nc -vz -w 3 rocky-server 22
+```
+
+```bash
+nc -vz -w 3 rocky-web 22
+```
+
+只有两个端口都成功，才进入SSH认证。
+
+### 4.3 首次连接rocky-server
+
+```bash
+ssh rocky-server@rocky-server
+```
+
+出现主机真实性提示时：
+
+1. 找到提示中的SHA256指纹。
+2. 与任务一记录的`rocky-server`指纹比较。
+3. 完全一致后输入`yes`。
+4. 输入实验环境密码。
+
+登录后确认用户：
 
 ```bash
 whoami
-hostname
-printf 'client=%s\n' "$SSH_CLIENT"
+```
+
+确认主机：
+
+```bash
+hostnamectl --static
+```
+
+退出：
+
+```bash
 exit
 ```
 
-> **验收点**：两次远程登录的用户名与主机名分别为`rocky-server`和`rocky-web`，能够说明主机指纹核对的意义。
+### 4.4 首次连接rocky-web
 
-### 任务三：配置密钥认证
+```bash
+ssh rocky-web@rocky-web
+```
 
-#### 步骤6：在Ubuntu创建独立实验密钥
+重复指纹核对和身份检查。
 
-在Ubuntu客户端执行：
+### 4.5 检查known_hosts
+
+```bash
+ssh-keygen -F rocky-server
+```
+
+```bash
+ssh-keygen -F rocky-web
+```
+
+## 五、任务三：建立密钥认证
+
+### 5.1 准备客户端SSH目录
 
 ```bash
 mkdir -p ~/.ssh
+```
+
+```bash
 chmod 700 ~/.ssh
-ssh-keygen -t ed25519 -a 64 \
-  -f ~/.ssh/linux-course-ed25519 \
-  -C "ubuntu-client-linux-course"
 ```
 
-按课程要求设置私钥口令。生成：
+检查课程密钥：
 
-```text
-linux-course-ed25519       私钥，不得提交或发送
-linux-course-ed25519.pub   公钥，可以部署到服务器
+```bash
+ls -l ~/.ssh/linux-course-ed25519
 ```
 
-查看公钥指纹：
+如果文件不存在，生成：
+
+```bash
+ssh-keygen -t ed25519 -a 64 -f ~/.ssh/linux-course-ed25519 -C 'linux-course@ubuntu-client'
+```
+
+如果文件已经存在，不得覆盖。查看公钥指纹：
 
 ```bash
 ssh-keygen -lf ~/.ssh/linux-course-ed25519.pub
 ```
 
-> **验收点**：私钥和公钥均存在，能够指出哪一个绝不能提交。
-
-#### 步骤7：把公钥部署到服务器
-
-使用`ssh-copy-id`部署公钥：
+检查私钥权限：
 
 ```bash
-source ~/m1-project/course-env.sh
-ssh-copy-id -i ~/.ssh/linux-course-ed25519.pub rocky-server@"$ROCKY_SERVER_IP"
-ssh-copy-id -i ~/.ssh/linux-course-ed25519.pub rocky-web@"$ROCKY_WEB_IP"
+stat -c '%A %a %U:%G %n' ~/.ssh/linux-course-ed25519
 ```
 
-在两台Rocky控制台分别检查：
+### 5.2 分发公钥
+
+部署到`rocky-server`：
+
+```bash
+ssh-copy-id -i ~/.ssh/linux-course-ed25519.pub rocky-server@rocky-server
+```
+
+部署到`rocky-web`：
+
+```bash
+ssh-copy-id -i ~/.ssh/linux-course-ed25519.pub rocky-web@rocky-web
+```
+
+### 5.3 在服务器核对授权文件
+
+在`rocky-server`执行：
 
 ```bash
 stat -c '%A %a %U:%G %n' ~/.ssh ~/.ssh/authorized_keys
+```
+
+```bash
 tail -n 1 ~/.ssh/authorized_keys
 ```
 
-推荐权限为目录700、文件600，所有者应为当前机器的课程用户。
+在`rocky-web`重复检查。
+
+### 5.4 强制只使用课程密钥
+
+回到`ubuntu-client`测试`rocky-server`：
 
 ```bash
-chmod 700 ~/.ssh
-chmod 600 ~/.ssh/authorized_keys
-chown -R "$USER:$USER" ~/.ssh
+ssh -o PasswordAuthentication=no -o IdentitiesOnly=yes -i ~/.ssh/linux-course-ed25519 rocky-server@rocky-server
 ```
 
-> **验收点**：`authorized_keys`包含实验公钥，目录和文件权限正确。
-
-#### 步骤8：使用密钥登录
-
-在Ubuntu客户端执行：
+成功后退出：
 
 ```bash
-ssh -i ~/.ssh/linux-course-ed25519 rocky-server@"$ROCKY_SERVER_IP"
-ssh -i ~/.ssh/linux-course-ed25519 rocky-web@"$ROCKY_WEB_IP"
-```
-
-如果设置了私钥口令，客户端会要求输入私钥口令，而不是服务器账号密码。
-
-登录后执行：
-
-```bash
-whoami
-hostname
 exit
 ```
 
-> **验收点**：指定私钥后可登录两台服务器，不再输入服务器账号密码。
-
-### 任务四：配置客户端别名
-
-#### 步骤9：编辑Ubuntu SSH配置
-
-先备份已有配置，再根据实验8保存的地址生成课程配置。这里不使用待替换占位符：
+测试`rocky-web`：
 
 ```bash
-source ~/m1-project/course-env.sh
-test -f ~/.ssh/config && cp -a ~/.ssh/config ~/.ssh/config.before-lab10
-cat > ~/.ssh/config <<EOF
-Host rocky-server
-    HostName $ROCKY_SERVER_IP
+ssh -o PasswordAuthentication=no -o IdentitiesOnly=yes -i ~/.ssh/linux-course-ed25519 rocky-web@rocky-web
+```
+
+两次登录都不能回退到密码。成功才证明密钥部署正确。
+
+## 六、任务四：配置SSH客户端别名
+
+### 6.1 备份已有配置
+
+检查：
+
+```bash
+ls -l ~/.ssh/config
+```
+
+文件存在且没有备份时执行：
+
+```bash
+cp -a ~/.ssh/config ~/.ssh/config.before-lab10
+```
+
+不要覆盖已有`config.before-lab10`。
+
+### 6.2 编辑配置
+
+```bash
+vim ~/.ssh/config
+```
+
+写入或合并以下内容：
+
+```sshconfig
+Host rs rocky-server
+    HostName rocky-server
     User rocky-server
     Port 22
     IdentityFile ~/.ssh/linux-course-ed25519
     IdentitiesOnly yes
 
-Host rocky-web
-    HostName $ROCKY_WEB_IP
+Host rw rocky-web
+    HostName rocky-web
     User rocky-web
     Port 22
     IdentityFile ~/.ssh/linux-course-ed25519
     IdentitiesOnly yes
-EOF
+
+Host *
+    ServerAliveInterval 60
+    ServerAliveCountMax 3
 ```
 
-测试：
+设置权限：
 
 ```bash
 chmod 600 ~/.ssh/config
-ssh -G rocky-server | grep -E '^(hostname|user|port|identityfile) '
-ssh rocky-server hostname
-ssh rocky-web hostname
 ```
 
-> **验收点**：两个别名分别进入正确服务器，不出现角色串线。
+同一组配置保留短别名和完整主机名，因此后续实验中的`ssh rocky-server`、`rsync rocky-server:...`仍会使用课程密钥。
 
-### 任务五：文件传输
-
-#### 步骤10：使用SCP上传和下载
-
-在Ubuntu创建文件：
+检查`rs`最终参数：
 
 ```bash
-printf '%s\n' 'SSH transfer test' > /tmp/ssh-transfer.txt
-sha256sum /tmp/ssh-transfer.txt
-scp /tmp/ssh-transfer.txt rocky-server:~/m1-project/
+ssh -G rs | grep -E '^(hostname|user|port|identityfile|identitiesonly) '
 ```
 
-在Rocky Linux中：
+检查`rw`最终参数：
 
 ```bash
-sha256sum ~/m1-project/ssh-transfer.txt
+ssh -G rw | grep -E '^(hostname|user|port|identityfile|identitiesonly) '
 ```
 
-对比两端SHA256。下载服务器基线：
+验证远端身份：
 
 ```bash
-mkdir -p ~/course-downloads
-scp rocky-server:~/m1-project/evidence/lab08-network-after.txt ~/course-downloads/
+ssh rs 'whoami; hostnamectl --static'
 ```
-
-> **验收点**：上传文件哈希一致，能够完成一次下载。
-
-#### 步骤11：使用SFTP
 
 ```bash
-sftp rocky-server
+ssh rw 'whoami; hostnamectl --static'
 ```
 
-在SFTP提示符中执行：
+## 七、任务五：配置服务端安全基线
+
+分别在两台Rocky的VMware控制台完成。先从`rocky-server`开始。
+
+### 7.1 备份主配置
+
+检查备份是否存在：
+
+```bash
+sudo ls -l /etc/ssh/sshd_config.before-lab10
+```
+
+不存在时创建：
+
+```bash
+sudo cp -a /etc/ssh/sshd_config /etc/ssh/sshd_config.before-lab10
+```
+
+### 7.2 创建课程配置片段
+
+```bash
+sudo vim /etc/ssh/sshd_config.d/20-course-baseline.conf
+```
+
+写入：
+
+```sshdconfig
+PermitRootLogin no
+MaxAuthTries 3
+PubkeyAuthentication yes
+PasswordAuthentication yes
+```
+
+当前仍保留普通用户密码登录，避免密钥故障造成锁定。
+
+### 7.3 检查并加载
+
+语法检查：
+
+```bash
+sudo sshd -t
+```
+
+只有没有语法错误才能继续。
+
+重新加载：
+
+```bash
+sudo systemctl reload sshd
+```
+
+查看最终值：
+
+```bash
+sudo sshd -T | grep -E '^(permitrootlogin|maxauthtries|pubkeyauthentication|passwordauthentication) '
+```
+
+### 7.4 使用第二个新会话复测
+
+保留当前控制台，从Ubuntu新开终端执行：
+
+```bash
+ssh rs
+```
+
+新会话成功后退出：
+
+```bash
+exit
+```
+
+再对`rocky-web`重复7.1～7.4，并使用`ssh rw`复测。
+
+## 八、任务六：SCP上传、下载与校验
+
+在`ubuntu-client`创建目录：
+
+```bash
+mkdir -p ~/course-practice/m2/lab10
+```
+
+打开源文件：
+
+```bash
+vim ~/course-practice/m2/lab10/ssh-transfer.txt
+```
+
+写入姓名、日期和“SSH transfer test”，保存后计算哈希：
+
+```bash
+sha256sum ~/course-practice/m2/lab10/ssh-transfer.txt
+```
+
+上传：
+
+```bash
+scp ~/course-practice/m2/lab10/ssh-transfer.txt rs:/tmp/
+```
+
+远端计算哈希：
+
+```bash
+ssh rs 'sha256sum /tmp/ssh-transfer.txt'
+```
+
+远端检查文件：
+
+```bash
+ssh rs 'ls -l /tmp/ssh-transfer.txt'
+```
+
+下载为另一个文件名：
+
+```bash
+scp rs:/tmp/ssh-transfer.txt ~/course-practice/m2/lab10/ssh-transfer-return.txt
+```
+
+比较：
+
+```bash
+diff ~/course-practice/m2/lab10/ssh-transfer.txt ~/course-practice/m2/lab10/ssh-transfer-return.txt
+```
+
+`diff`无输出表示内容相同。
+
+## 九、任务七：SFTP交互传输
+
+从Ubuntu连接：
+
+```bash
+sftp rw
+```
+
+在`sftp>`提示符中逐条执行：
 
 ```text
 pwd
 lpwd
-ls
-lls
-put 本地文件路径
-get 远程文件名
+cd /tmp
+lcd ~/course-practice/m2/lab10
+put ssh-transfer.txt
+ls -l ssh-transfer.txt
+get ssh-transfer.txt sftp-return.txt
 exit
 ```
 
-`pwd/ls`作用于远程端，`lpwd/lls`作用于本地端。
+退出后比较：
 
-### 任务六：密钥权限故障排查
+```bash
+diff ~/course-practice/m2/lab10/ssh-transfer.txt ~/course-practice/m2/lab10/sftp-return.txt
+```
 
-#### 步骤12：制造错误权限
+## 十、任务八：制造密钥权限故障并恢复
 
-保持一个已经登录的SSH会话和VMware控制台。在Rocky Linux执行：
+只在`rocky-server`制造故障，并保持VMware控制台可用。
+
+### 10.1 记录正确权限
+
+```bash
+stat -c '%A %a %U:%G %n' ~/.ssh ~/.ssh/authorized_keys
+```
+
+### 10.2 制造错误权限
 
 ```bash
 chmod 777 ~/.ssh
+```
+
+```bash
 chmod 666 ~/.ssh/authorized_keys
 ```
 
-这是故障注入，不是最终配置。在Ubuntu新开终端，执行：
+### 10.3 从Ubuntu强制测试公钥
 
 ```bash
-source ~/m1-project/course-env.sh
-ssh -vv -o PreferredAuthentications=publickey \
-  -o PasswordAuthentication=no \
-  -i ~/.ssh/linux-course-ed25519 rocky-server@"$ROCKY_SERVER_IP"
+ssh -v -o PasswordAuthentication=no -o IdentitiesOnly=yes -i ~/.ssh/linux-course-ed25519 rocky-server@rocky-server
 ```
 
-该命令强制只使用公钥并关闭密码回退，因此权限错误时应明确失败。观察调试信息中客户端是否提供了正确公钥，以及服务端为何拒绝认证。
+预期公钥认证失败。记录`ssh -v`中客户端提供密钥和服务器拒绝认证的证据。
 
-在服务器查看日志：
+### 10.4 查看服务端日志
+
+回到Rocky控制台：
 
 ```bash
-sudo journalctl -u sshd --since '-10 min' --no-pager | tail -50
+sudo journalctl -u sshd --since '10 minutes ago' --no-pager
 ```
 
-#### 步骤13：修复并复测
+查找与所有权或权限相关的记录。
+
+### 10.5 修复
 
 ```bash
 chmod 700 ~/.ssh
+```
+
+```bash
 chmod 600 ~/.ssh/authorized_keys
-chown -R "$USER:$USER" ~/.ssh
 ```
-
-再次在Ubuntu执行：
 
 ```bash
-source ~/m1-project/course-env.sh
-ssh -vv -o PreferredAuthentications=publickey \
-  -o PasswordAuthentication=no \
-  -i ~/.ssh/linux-course-ed25519 rocky-server@"$ROCKY_SERVER_IP"
+restorecon -RFv ~/.ssh
 ```
 
-> **验收点**：记录故障现象、客户端证据、服务端日志、根因、修复和密钥认证复测。
+### 10.6 重新验证
 
-### 任务七：保存服务端证据
+从Ubuntu执行：
 
 ```bash
-{
-    systemctl is-active sshd
-    sudo ss -lntp | grep ':22'
-    sudo sshd -T | grep -E '^(port|passwordauthentication|pubkeyauthentication|permitrootlogin) '
-    stat -c '%A %a %U:%G %n' ~/.ssh ~/.ssh/authorized_keys
-    sudo journalctl -u sshd --since '-30 min' --no-pager | tail -40
-} > ~/m1-project/evidence/lab10-ssh.txt
+ssh -o PasswordAuthentication=no -o IdentitiesOnly=yes -i ~/.ssh/linux-course-ed25519 rocky-server@rocky-server
 ```
 
-## 七、独立实践
+成功后确认身份并退出。
 
-1. 在Ubuntu为`rocky-server`和`rocky-web`都显式设置`ConnectTimeout 5`。
-2. 使用别名执行远程单条命令：`hostname && uptime`。
-3. 上传一个目录并在服务器比较文件数量。
-4. 查看`known_hosts`中目标主机记录，但不要删除。
-5. 说明服务器IP发生变化和服务器主机密钥发生变化应如何区别处理。
+## 十一、验收标准
 
-## 八、验收标准
+- [ ] 两台Rocky的`sshd`均为active和enabled。
+- [ ] 两台服务器22端口正常监听，firewalld规则明确。
+- [ ] 两个服务器主机指纹均通过控制台核对。
+- [ ] Ubuntu的课程私钥没有复制到服务器。
+- [ ] 指定密钥能够登录两台Rocky，且不回退到密码。
+- [ ] `rs`和`rw`别名的最终参数正确。
+- [ ] 服务端有效配置显示禁止root登录、最大尝试次数为3。
+- [ ] SCP和SFTP均完成上传与下载，哈希或`diff`验证通过。
+- [ ] 密钥权限故障已经制造、定位、修复并复测。
+- [ ] 原DHCP网络和VMware控制台回退入口仍然可用。
 
-- [ ] sshd服务、22端口和有效配置已检查。
-- [ ] 首次连接前核对了服务器主机指纹。
-- [ ] Ubuntu客户端使用各自主账号成功登录两台Rocky。
-- [ ] 已创建独立Ed25519密钥，私钥未提交。
-- [ ] `~/.ssh`为700，`authorized_keys`为600。
-- [ ] 使用密钥和两个客户端别名成功登录对应服务器。
-- [ ] SCP上传文件的SHA256一致，并完成一次下载。
-- [ ] 能区分SFTP本地与远程命令。
-- [ ] 已完成一次密钥权限故障排查和复测。
-- [ ] VMware控制台和管理入口始终可用。
+## 十二、成果提交
 
-## 九、成果提交
+1. 两台服务器的SSH服务、监听端口和主机指纹记录。
+2. `known_hosts`查询结果。
+3. 课程公钥指纹及两次强制公钥登录证据。
+4. `ssh -G rs`与`ssh -G rw`结果。
+5. 服务端`sshd -T`安全基线结果。
+6. SCP和SFTP传输方向、哈希或`diff`结果。
+7. 权限故障的客户端日志、服务端日志和修复结果。
 
-1. SSH服务状态、端口和有效配置。
-2. 服务器主机指纹和用户公钥指纹。
-3. 密钥登录和客户端别名验证。
-4. SCP/SFTP传输及哈希结果。
-5. 密钥权限故障报告。
-6. `lab10-ssh.txt`。
+## 十三、常见问题
 
-严禁提交：
+### 13.1 Connection refused
 
-- `linux-course-ed25519`私钥；
-- 个人常用密码；
-- 其他同学的密钥；
-- 真实生产服务器地址和凭据。
+先在服务端检查：
 
-## 十、常见问题
+```bash
+systemctl is-active sshd
+```
 
-### Q1：Connection refused
+```bash
+sudo ss -lntp | grep ':22 '
+```
 
-目标IP可达但22端口没有接受连接。检查sshd状态、监听端口和连接目标是否正确。
+### 13.2 Connection timed out
 
-### Q2：Connection timed out
+检查客户端路由、VMware网络和服务端防火墙，不要先重置用户密码。
 
-优先检查目标IP、路由、VMware网络和防火墙。超时与密码错误不是同一阶段。
+### 13.3 Permission denied
 
-### Q3：Permission denied publickey,password
+检查客户端实际使用的身份：
 
-使用`ssh -vv`检查客户端尝试了哪个密钥，再检查服务器`authorized_keys`内容、所有权、权限和sshd日志。
+```bash
+ssh -v rs
+```
 
-### Q4：出现REMOTE HOST IDENTIFICATION HAS CHANGED
+检查服务端授权文件：
 
-先确认服务器是否重装、IP是否分配给了另一台虚拟机，以及新主机指纹是否可信。不能无条件删除known_hosts记录。
+```bash
+stat -c '%A %a %U:%G %n' ~/.ssh ~/.ssh/authorized_keys
+```
 
-### Q5：SCP完成后为什么还要校验
+### 13.4 主机密钥发生变化
 
-文件存在不能证明内容完整。通过SHA256或内容比较确认传输前后一致。
+先在VMware控制台重新取得服务器指纹。确认是合法重装后，才能删除对应旧记录：
 
-## 十一、课后思考与拓展
+```bash
+ssh-keygen -R rocky-server
+```
 
-1. 主机密钥和用户密钥分别证明谁的身份？
-2. 为什么私钥口令不能完全替代服务器端账号管理？
-3. 修改SSH端口能减少扫描噪声，但为什么不能替代真正的身份认证和访问控制？
+### 13.5 修改配置后新会话无法登录
 
-## 十二、环境保留
+保持原控制台，不要退出。检查：
 
-保留SSH服务、Ubuntu客户端别名、公钥和正确权限，后续备份与综合项目继续使用。私钥只保存在本人Ubuntu客户端的`~/.ssh/`目录中，不复制到Rocky服务器或Windows公共目录。
+```bash
+sudo sshd -t
+```
+
+```bash
+sudo journalctl -u sshd -n 50 --no-pager
+```
+
+修正配置片段后重新加载。
+
+## 十四、环境保留
+
+保留：
+
+- 两台Rocky的SSH服务和`20-course-baseline.conf`。
+- Ubuntu的`linux-course-ed25519`课程密钥。
+- Ubuntu的`~/.ssh/config`、`rs`和`rw`别名。
+- 两台Rocky的`authorized_keys`正确权限和SELinux上下文。
+
+密码认证本实验仍保持开启。后续确需关闭时，必须重新执行“双会话验证”流程。
+
+这些SSH成果将由实验11的`rsync`、后续Python自动化运维以及虚拟化容器课程继续复用。

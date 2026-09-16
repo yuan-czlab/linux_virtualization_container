@@ -1,366 +1,549 @@
 # 实验12：firewalld与SELinux基础防护
 
-> 所属模块：模块二 网络、远程管理与基础防护  
-> 建议学时：4学时  
-> 实验方式：个人  
-> 对应教材：《模块二 网络、远程管理与基础防护》第21—23章  
-> 知识前置：实验8—10中的地址、端口、服务和客户端验证；教材第21—23章\
-> 状态依赖：实验8交付的三机网络，`rocky-server`的firewalld与SELinux保持正常基线；不依赖实验11的备份任务\
-> 建议起点：`Linux-L1`并保留实验8网络成果\
-> 项目成果：最小端口开放、运行时与永久规则、来源限制、SELinux上下文和规则回滚记录
+> 所属模块：模块二 网络远程管理与基础防护
+> 建议学时：4学时
+> 实验方式：2～3人小组
+> 对应教材：2.9 firewalld基础；2.10 firewalld规则、来源限制与回滚；2.11 SELinux与主机基础防护
+> 知识前置：实验8网络、实验9端口证据链、实验10 SSH回退入口
+> 状态依赖：`rocky-server`的firewalld和SELinux保持正常基线；不依赖实验11备份文件
+> 建议起点：`Linux-L1`并保留实验8和实验10成果
+> 项目成果：防火墙变更单、运行时与永久规则证据、来源限制证据、SELinux标签恢复记录
 
 ## 一、项目情境
 
-服务器需要允许管理人员使用SSH，并允许用户访问指定Web端口，但数据库和缓存端口不能随意暴露。你需要使用firewalld建立最小开放策略，并认识传统文件权限、firewalld和SELinux分别位于不同控制层。
+服务器需要允许管理人员访问指定Web端口，但不能把所有端口对所有来源开放。本实验完成一次最小开放、持久化、来源限制和回滚，同时在独立目录中验证SELinux持久标签。
 
-## 二、实验目标
+## 二、实验规则
 
-### 1. 知识目标
+1. 保持firewalld运行，不能通过停止防火墙完成验收。
+2. 保持SELinux为Enforcing，不能用Permissive作为最终修复。
+3. 所有网络修改在VMware控制台中执行，并保留SSH回退入口。
+4. 规则中的zone和客户端地址必须来自实际环境。
+5. 每条命令单独执行，观察结果后再继续。
+6. 实验结束必须删除8080实验规则并停止临时服务。
 
-1. 说明zone、service、port、source以及运行时和永久规则。
-2. 区分服务运行、端口监听和防火墙放行。
-3. 说明传统DAC权限与SELinux强制访问控制的分层关系。
-4. 说明Enforcing、Permissive和Disabled的区别。
+## 三、任务一：记录安全基线
 
-### 2. 能力目标
+在`rocky-server`执行。
 
-1. 查看接口所属zone和当前规则。
-2. 配置、验证、持久化和回滚端口或服务规则。
-3. 使用rich rule限制来源地址。
-4. 查看和恢复SELinux文件上下文，查询AVC日志。
-
-### 3. 素质目标
-
-1. 修改远程防火墙前保留控制台和SSH会话。
-2. 不通过关闭firewalld或SELinux解决最终问题。
-3. 数据库和Redis端口默认不向整个网络开放。
-
-## 三、知识准备
-
-```text
-客户端请求到达Linux主机
-→ 网络和路由正确
-→ firewalld决定网络流量是否允许
-→ 进程必须在目标地址和端口监听
-→ 文件传统权限决定用户是否可访问
-→ SELinux策略进一步检查进程类型与文件类型
-→ 应用返回结果并记录日志
-```
-
-运行时规则立即生效，重载或重启后可能消失；永久规则保存在配置中，需要reload后进入运行时。先用运行时规则试验，确认不影响管理后再永久化。
-
-进入firewalld任务前打开[firewalld区域、规则与安全变更动画](../../animations/09-firewalld-zones-rules/index.html)。依次完成“流量与Zone”“Service与Port”“运行时与永久”和“来源限制与回滚”，每一步先预测数据包结果，再用活动zone、两套规则查询和`ubuntu-client`访问结果验证。SELinux部分使用下一支独立动画，避免把网络层拒绝和强制访问控制混为一谈。
-
-## 四、实验环境
-
-- 默认在`rocky-server`执行；保留VMware控制台和一个SSH会话。
-- firewalld保持启用，SELinux保持Enforcing。
-- `ubuntu-client`作为正式外部测试客户端。
-- 临时Web端口8080。
-
-## 五、项目任务
-
-1. 保存firewalld和SELinux基线。
-2. 启动临时Web服务，证明监听不等于外部可达。
-3. 配置并验证运行时端口规则。
-4. 将正确规则永久化并验证reload。
-5. 使用rich rule仅允许指定来源。
-6. 配置SELinux持久文件上下文并验证恢复。
-7. 回滚临时规则并保存最终基线。
-
-## 六、实验步骤
-
-### 任务一：保存安全基线
+确认身份：
 
 ```bash
-mkdir -p ~/m1-project/evidence ~/m1-project/logs ~/m1-project/backup/security
-{
-    systemctl is-active firewalld
-    firewall-cmd --get-active-zones
-    firewall-cmd --get-default-zone
-    firewall-cmd --list-all
-    getenforce
-    sestatus
-} | tee ~/m1-project/evidence/lab12-security-before.txt
-sudo firewall-cmd --list-all-zones > ~/m1-project/backup/security/firewalld-all-zones.txt
+hostnamectl --static
 ```
 
-> **验收点**：firewalld为active，SELinux为Enforcing，已保存当前zone和规则。
-
-### 任务二：准备测试服务
+检查firewalld：
 
 ```bash
-mkdir -p ~/m1-project/firewall-test
-printf '<h1>firewalld test</h1>\n' > ~/m1-project/firewall-test/index.html
-cd ~/m1-project/firewall-test
-python3 -m http.server 8080 --bind 0.0.0.0 > ~/m1-project/logs/lab12-http.log 2>&1 &
-LAB12_HTTP_PID=$!
-printf '%s\n' "$LAB12_HTTP_PID" > ~/m1-project/firewall-test/http.pid
-ss -lntp | grep ':8080'
-curl -I http://127.0.0.1:8080/
+systemctl is-active firewalld
 ```
-
-记录虚拟机IP：
 
 ```bash
-VM_IP=$(ip -4 route get 1.1.1.1 | awk 'NR==1 {for(i=1;i<=NF;i++) if($i=="src") print $(i+1)}')
-printf 'vm_ip=%s\n' "$VM_IP"
+firewall-cmd --state
 ```
 
-在Ubuntu客户端测试：
+检查活动zone：
 
 ```bash
-source ~/m1-project/course-env.sh
-ROCKY_IP="$ROCKY_SERVER_IP"
-nc -vz -w 3 "$ROCKY_IP" 8080
-curl --connect-timeout 3 -I "http://$ROCKY_IP:8080/"
+firewall-cmd --get-active-zones
 ```
 
-如果之前实验遗留8080规则，应先记录并删除，否则无法观察规则变化。
-
-> **验收点**：本机HTTP成功，外部结果已经记录；能说明监听和防火墙是两个条件。
-
-### 任务三：运行时规则
-
-#### 步骤1：确认接口所属zone
+检查默认zone：
 
 ```bash
-IFACE=$(ip route show default | awk 'NR==1 {print $5}')
-ZONE=$(firewall-cmd --get-zone-of-interface="$IFACE")
-if [[ -z "$ZONE" || "$ZONE" == 'no zone' ]]; then
-  ZONE=$(firewall-cmd --get-default-zone)
-fi
-printf 'interface=%s zone=%s\n' "$IFACE" "$ZONE"
-printf '%s\n' "$ZONE" > ~/m1-project/firewall-test/zone.txt
+firewall-cmd --get-default-zone
 ```
 
-命令在接口没有显式绑定zone时回退到默认zone。继续前还要用`firewall-cmd --get-active-zones`核对；如果实际活动zone与变量不一致，停止修改并查清NetworkManager连接绑定。
-
-#### 步骤2：开放运行时端口
-
-```bash
-ZONE=$(cat ~/m1-project/firewall-test/zone.txt)
-sudo firewall-cmd --zone="$ZONE" --add-port=8080/tcp
-sudo firewall-cmd --zone="$ZONE" --query-port=8080/tcp
-sudo firewall-cmd --zone="$ZONE" --list-ports
-```
-
-在Ubuntu重新测试：
-
-```bash
-source ~/m1-project/course-env.sh
-ROCKY_IP="$ROCKY_SERVER_IP"
-nc -vz -w 3 "$ROCKY_IP" 8080
-curl --connect-timeout 3 -I "http://$ROCKY_IP:8080/"
-```
-
-> **验收点**：端口规则为yes，Ubuntu获得HTTP响应。
-
-#### 步骤3：验证运行时与永久差异
-
-```bash
-ZONE=$(cat ~/m1-project/firewall-test/zone.txt)
-sudo firewall-cmd --zone="$ZONE" --query-port=8080/tcp
-sudo firewall-cmd --permanent --zone="$ZONE" --query-port=8080/tcp
-```
-
-第一条应为yes，第二条可能为no。
-
-### 任务四：永久规则和回滚
-
-```bash
-ZONE=$(cat ~/m1-project/firewall-test/zone.txt)
-sudo firewall-cmd --permanent --zone="$ZONE" --add-port=8080/tcp
-sudo firewall-cmd --reload
-sudo firewall-cmd --zone="$ZONE" --query-port=8080/tcp
-sudo firewall-cmd --permanent --zone="$ZONE" --query-port=8080/tcp
-```
-
-reload后两种查询都应为yes。
-
-回滚永久规则：
-
-```bash
-ZONE=$(cat ~/m1-project/firewall-test/zone.txt)
-sudo firewall-cmd --permanent --zone="$ZONE" --remove-port=8080/tcp
-sudo firewall-cmd --reload
-sudo firewall-cmd --zone="$ZONE" --query-port=8080/tcp
-```
-
-Ubuntu再次测试应失败，但Rocky本机访问127.0.0.1仍可成功。
-
-> **验收点**：完成配置、永久化、重载和回滚完整闭环。
-
-### 任务五：来源限制
-
-#### 步骤4：取得管理端地址
-
-在Ubuntu客户端执行：
-
-```bash
-source ~/m1-project/course-env.sh
-ROCKY_IP="$ROCKY_SERVER_IP"
-ip -brief address
-ip route get "$ROCKY_IP"
-```
-
-记录访问Rocky时实际使用的IPv4地址。该地址是本实验允许访问8080的管理来源。
-
-#### 步骤5：配置rich rule
-
-```bash
-source ~/m1-project/course-env.sh
-CLIENT_IP="$UBUNTU_CLIENT_IP"
-ZONE=$(cat ~/m1-project/firewall-test/zone.txt)
-sudo firewall-cmd --zone="$ZONE" --add-rich-rule="rule family=ipv4 source address=$CLIENT_IP/32 port port=8080 protocol=tcp accept"
-sudo firewall-cmd --zone="$ZONE" --list-rich-rules
-```
-
-从Ubuntu测试8080，应成功。若用Windows宿主机VMnet8地址作为另一个来源进行可选测试，应被拒绝或超时。
-
-不要在同一zone同时保留普通8080端口开放，否则普通规则会允许所有来源，rich rule限制失去意义。
-
-> **验收点**：8080只通过来源规则开放，能够解释为何不能同时保留全局端口规则。
-
-清理运行时rich rule：
-
-```bash
-source ~/m1-project/course-env.sh
-CLIENT_IP="$UBUNTU_CLIENT_IP"
-ZONE=$(cat ~/m1-project/firewall-test/zone.txt)
-sudo firewall-cmd --zone="$ZONE" --remove-rich-rule="rule family=ipv4 source address=$CLIENT_IP/32 port port=8080 protocol=tcp accept"
-```
-
-### 任务六：SELinux状态与上下文
-
-继续打开[SELinux双重判定、上下文与AVC排障动画](../../animations/10-selinux-dac-context-avc/index.html)。完成“DAC与MAC”“模式与上下文”“标签持久化”和“AVC排障”后，再执行步骤6—9；先预测`chcon`后和`restorecon`后的类型变化，再用`ls -Z`和实际输出验证。
-
-#### 步骤6：检查模式和日志工具
+检查SELinux：
 
 ```bash
 getenforce
+```
+
+```bash
 sestatus
-command -v semanage || sudo dnf install -y policycoreutils-python-utils
-sudo ausearch -m AVC,USER_AVC -ts recent 2>/dev/null | tail -30
 ```
 
-没有AVC记录不代表命令失败，可能表示近期没有发生SELinux拒绝。
+填写：
 
-#### 步骤7：建立服务内容目录
+| 项目 | 实际值 |
+|---|---|
+| 出口网卡 | |
+| 活动zone | |
+| 默认zone | |
+| firewalld状态 | |
+| SELinux模式 | |
 
-```bash
-sudo mkdir -p /srv/selinux-lab
-printf '<h1>SELinux content</h1>\n' | sudo tee /srv/selinux-lab/index.html
-ls -ldZ /srv/selinux-lab
-ls -lZ /srv/selinux-lab/index.html
+后续所有`<实际活动区域>`必须替换为本表记录的zone。
+
+保存运行时规则：
+
+```text
+firewall-cmd --zone=<实际活动区域> --list-all > ~/m1-project/evidence/lab12-firewall-runtime-before.txt
 ```
 
-#### 步骤8：设置持久上下文规则
+保存永久规则：
 
-```bash
-sudo semanage fcontext -a -t httpd_sys_content_t '/srv/selinux-lab(/.*)?' 2>/dev/null || \
-  sudo semanage fcontext -m -t httpd_sys_content_t '/srv/selinux-lab(/.*)?'
-sudo restorecon -Rv /srv/selinux-lab
-ls -ldZ /srv/selinux-lab
-ls -lZ /srv/selinux-lab/index.html
+```text
+firewall-cmd --permanent --zone=<实际活动区域> --list-all > ~/m1-project/evidence/lab12-firewall-permanent-before.txt
 ```
 
-预期类型为`httpd_sys_content_t`。`chcon`只修改当前标签，可能被`restorecon`恢复；`semanage fcontext`定义持久路径规则。
+## 四、任务二：准备8080测试服务
 
-#### 步骤9：制造错误标签并恢复
+打开Rocky终端A和终端B。
+
+在终端A创建目录：
 
 ```bash
-sudo chcon -t user_tmp_t /srv/selinux-lab/index.html
-ls -lZ /srv/selinux-lab/index.html
-sudo restorecon -v /srv/selinux-lab/index.html
-ls -lZ /srv/selinux-lab/index.html
+mkdir -p ~/m1-project/firewall-test
 ```
 
-> **验收点**：错误类型被`restorecon`恢复为持久规则定义的类型。
-
-### 任务七：保存最终证据
+编辑首页：
 
 ```bash
-{
-    firewall-cmd --get-active-zones
-    firewall-cmd --list-all
-    getenforce
-    ls -ldZ /srv/selinux-lab
-    ls -lZ /srv/selinux-lab/index.html
-    semanage fcontext -l | grep '/srv/selinux-lab'
-} > ~/m1-project/evidence/lab12-security-after.txt
+vim ~/m1-project/firewall-test/index.html
 ```
 
-## 七、独立实践
+写入：
 
-1. 临时启动8081端口服务。
-2. 先证明监听存在但外部访问不一定成功。
-3. 只允许Ubuntu客户端地址访问8081。
-4. 保存规则和客户端验证结果。
-5. 删除该运行时规则并证明外部访问再次失败。
-6. 为`/srv/web-content`定义持久`httpd_sys_content_t`并使用`restorecon`应用。
+```html
+<h1>firewalld source test</h1>
+```
 
-## 八、验收标准
-
-- [ ] firewalld保持active，SELinux保持Enforcing。
-- [ ] 能指出实验网卡所属zone。
-- [ ] 完成运行时端口开放和客户端验证。
-- [ ] 完成永久化、reload和回滚。
-- [ ] 来源限制规则没有被普通端口规则绕过。
-- [ ] 能说明监听、firewalld和SELinux处于不同层。
-- [ ] 已设置并验证持久SELinux上下文。
-- [ ] 没有使用关闭防火墙、关闭SELinux或chmod 777作为最终方案。
-- [ ] 临时规则和服务已清理。
-
-## 九、成果提交
-
-1. `lab12-security-before.txt`和`lab12-security-after.txt`。
-2. 8080运行时、永久和回滚证据。
-3. rich rule及来源验证。
-4. SELinux上下文变更和恢复记录。
-5. 独立实践结果。
-
-## 十、常见问题
-
-### Q1：开放端口后外部仍不通
-
-检查服务是否监听虚拟机IP或0.0.0.0、规则是否在正确zone、客户端目标IP是否正确，以及VMware网络是否连通。
-
-### Q2：rich rule配置后所有主机仍能访问
-
-检查是否仍存在普通`--add-port`或service规则。允许规则叠加时，普通开放可能扩大范围。
-
-### Q3：restorecon没有改变类型
-
-先用`semanage fcontext -l`确认路径规则，再确认路径正则和目标文件。仅使用`chcon`不建立持久规则。
-
-### Q4：为什么不把SELinux改为Permissive
-
-Permissive只记录而不阻止，适合受控诊断，不是完成安全配置的标准答案。本实验应在Enforcing下修复标签和策略边界。
-
-## 十一、课后思考与拓展
-
-1. 云安全组已经开放端口，主机firewalld为什么仍可能阻止？
-2. 本机curl成功、外部失败时应该优先检查哪些对象？
-3. 文件权限正确但Web服务仍被拒绝时，SELinux提供了什么额外线索？
-
-## 十二、环境清理
+在终端A启动前台服务：
 
 ```bash
-if test -f ~/m1-project/firewall-test/http.pid; then
-  LAB12_HTTP_PID=$(cat ~/m1-project/firewall-test/http.pid)
-  ps -p "$LAB12_HTTP_PID" -o args= 2>/dev/null | grep -Fq 'http.server 8080' && kill "$LAB12_HTTP_PID" || true
-fi
-ZONE=$(cat ~/m1-project/firewall-test/zone.txt 2>/dev/null || firewall-cmd --get-default-zone)
-sudo firewall-cmd --zone="$ZONE" --remove-port=8080/tcp 2>/dev/null || true
-sudo firewall-cmd --permanent --zone="$ZONE" --remove-port=8080/tcp 2>/dev/null || true
+python3 -m http.server 8080 --bind 0.0.0.0 --directory ~/m1-project/firewall-test
+```
+
+保持终端A运行。
+
+在终端B检查监听：
+
+```bash
+ss -lnt
+```
+
+在Rocky本机访问：
+
+```bash
+curl http://127.0.0.1:8080/
+```
+
+在`ubuntu-client`访问：
+
+```bash
+curl --connect-timeout 3 http://rocky-server:8080/
+```
+
+如果外部访问已经成功，说明存在允许规则。先使用`--list-all`查明并记录来源，不能直接进入后续对照。
+
+## 五、任务三：运行时规则
+
+### 5.1 添加运行时端口
+
+在Rocky终端B使用实际zone：
+
+```text
+sudo firewall-cmd --zone=<实际活动区域> --add-port=8080/tcp
+```
+
+查询：
+
+```text
+firewall-cmd --zone=<实际活动区域> --query-port=8080/tcp
+```
+
+查看端口列表：
+
+```text
+firewall-cmd --zone=<实际活动区域> --list-ports
+```
+
+### 5.2 从Ubuntu验证
+
+```bash
+nc -vz -w 3 rocky-server 8080
+```
+
+```bash
+curl http://rocky-server:8080/
+```
+
+### 5.3 比较永久配置
+
+```text
+firewall-cmd --permanent --zone=<实际活动区域> --query-port=8080/tcp
+```
+
+此时运行时通常为`yes`，永久配置为`no`。
+
+### 5.4 reload观察
+
+```bash
 sudo firewall-cmd --reload
 ```
 
-`/srv/selinux-lab`只用于本实验验证持久上下文，实验14会在`rocky-web`创建独立的`/srv/techcorp`规则，两者没有状态依赖。完成截图和证据保存后，先核对对象，再清理本实验路径和规则，避免后续误认为它是Nginx站点：
+再次查询运行时：
+
+```text
+firewall-cmd --zone=<实际活动区域> --query-port=8080/tcp
+```
+
+只存在于运行时的8080规则应消失。
+
+## 六、任务四：永久规则与回滚
+
+### 6.1 写入永久配置
+
+```text
+sudo firewall-cmd --permanent --zone=<实际活动区域> --add-port=8080/tcp
+```
+
+加载：
+
+```bash
+sudo firewall-cmd --reload
+```
+
+查询运行时：
+
+```text
+firewall-cmd --zone=<实际活动区域> --query-port=8080/tcp
+```
+
+查询永久配置：
+
+```text
+firewall-cmd --permanent --zone=<实际活动区域> --query-port=8080/tcp
+```
+
+从Ubuntu再次访问，预期成功。
+
+### 6.2 回滚普通端口规则
+
+删除永久规则：
+
+```text
+sudo firewall-cmd --permanent --zone=<实际活动区域> --remove-port=8080/tcp
+```
+
+加载：
+
+```bash
+sudo firewall-cmd --reload
+```
+
+确认运行时和永久配置均为`no`。
+
+## 七、任务五：来源限制
+
+### 7.1 取得Ubuntu实际地址
+
+在`ubuntu-client`执行：
+
+```bash
+ip -brief address
+```
+
+记录VMnet8网卡上的IPv4地址，不使用`127.0.0.1`，也不包含`/24`：
+
+| 项目 | 实际值 |
+|---|---|
+| Ubuntu网卡 | |
+| Ubuntu IPv4 | |
+| rich rule使用的来源 | 实际IPv4/32 |
+
+### 7.2 确认不存在普通开放
+
+在Rocky终端B执行：
+
+```text
+firewall-cmd --zone=<实际活动区域> --query-port=8080/tcp
+```
+
+必须为`no`。
+
+### 7.3 添加运行时rich rule
+
+把zone和IP替换成实际值：
+
+```text
+sudo firewall-cmd --zone=<实际活动区域> --add-rich-rule='rule family="ipv4" source address="<Ubuntu实际IPv4>/32" port port="8080" protocol="tcp" accept'
+```
+
+查看完整规则：
+
+```text
+firewall-cmd --zone=<实际活动区域> --list-rich-rules
+```
+
+### 7.4 验证允许来源
+
+在Ubuntu执行：
+
+```bash
+curl http://rocky-server:8080/
+```
+
+小组中另一位同学可以从不同地址测试8080，预期不应被这条规则允许。
+
+### 7.5 永久保存并复测
+
+使用完全相同的规则写入永久配置：
+
+```text
+sudo firewall-cmd --permanent --zone=<实际活动区域> --add-rich-rule='rule family="ipv4" source address="<Ubuntu实际IPv4>/32" port port="8080" protocol="tcp" accept'
+```
+
+重载：
+
+```bash
+sudo firewall-cmd --reload
+```
+
+再次从Ubuntu访问，预期成功。
+
+### 7.6 回滚rich rule
+
+删除永久规则：
+
+```text
+sudo firewall-cmd --permanent --zone=<实际活动区域> --remove-rich-rule='rule family="ipv4" source address="<Ubuntu实际IPv4>/32" port port="8080" protocol="tcp" accept'
+```
+
+重载：
+
+```bash
+sudo firewall-cmd --reload
+```
+
+确认rich rule已经消失：
+
+```text
+firewall-cmd --zone=<实际活动区域> --list-rich-rules
+```
+
+## 八、任务六：SELinux状态与持久标签
+
+### 8.1 安装管理工具
+
+```bash
+command -v semanage
+```
+
+缺少时安装：
+
+```bash
+sudo dnf install -y policycoreutils-python-utils
+```
+
+### 8.2 创建独立实验目录
+
+```bash
+sudo mkdir -p /srv/selinux-lab
+```
+
+创建文件：
+
+```bash
+sudo touch /srv/selinux-lab/index.html
+```
+
+查看当前标签：
+
+```bash
+ls -ldZ /srv/selinux-lab
+```
+
+```bash
+ls -lZ /srv/selinux-lab/index.html
+```
+
+### 8.3 查询现有持久规则
+
+```bash
+sudo semanage fcontext -l | grep '/srv/selinux-lab'
+```
+
+没有输出时，添加规则：
+
+```bash
+sudo semanage fcontext -a -t httpd_sys_content_t '/srv/selinux-lab(/.*)?'
+```
+
+如果规则已存在，应核对类型，不要重复添加。
+
+### 8.4 应用持久标签
+
+```bash
+sudo restorecon -RFv /srv/selinux-lab
+```
+
+检查：
+
+```bash
+ls -lZ /srv/selinux-lab/index.html
+```
+
+预期类型为`httpd_sys_content_t`。
+
+## 九、任务七：制造错误标签并恢复
+
+### 9.1 制造当前标签错误
+
+```bash
+sudo chcon -t user_home_t /srv/selinux-lab/index.html
+```
+
+查看：
+
+```bash
+ls -lZ /srv/selinux-lab/index.html
+```
+
+### 9.2 查询策略默认值
+
+```bash
+matchpathcon /srv/selinux-lab/index.html
+```
+
+当前标签与默认值应不同。
+
+### 9.3 使用restorecon恢复
+
+```bash
+sudo restorecon -v /srv/selinux-lab/index.html
+```
+
+再次查看：
+
+```bash
+ls -lZ /srv/selinux-lab/index.html
+```
+
+应恢复为`httpd_sys_content_t`。这证明`chcon`只改变当前标签，`semanage fcontext`建立的持久映射决定`restorecon`结果。
+
+### 9.4 检查AVC日志
+
+```bash
+sudo ausearch -m AVC,USER_AVC -ts recent
+```
+
+本任务主要验证标签持久性，不保证一定产生AVC。没有AVC时如实记录，不能伪造拒绝日志。
+
+## 十、任务八：清理与最终检查
+
+### 10.1 停止临时HTTP服务
+
+回到Rocky终端A按`Ctrl+C`。
+
+确认8080监听消失：
+
+```bash
+ss -lnt
+```
+
+### 10.2 确认没有遗留防火墙规则
+
+```text
+firewall-cmd --zone=<实际活动区域> --query-port=8080/tcp
+```
+
+```text
+firewall-cmd --permanent --zone=<实际活动区域> --query-port=8080/tcp
+```
+
+```text
+firewall-cmd --zone=<实际活动区域> --list-rich-rules
+```
+
+8080普通规则应为`no`，实验rich rule不应存在。
+
+### 10.3 清理SELinux实验规则
+
+删除持久映射：
+
+```bash
+sudo semanage fcontext -d '/srv/selinux-lab(/.*)?'
+```
+
+删除实验目录前核对：
 
 ```bash
 sudo find /srv/selinux-lab -maxdepth 2 -ls
-sudo semanage fcontext -d '/srv/selinux-lab(/.*)?'
+```
+
+确认只有实验文件后删除：
+
+```bash
 sudo rm -rf /srv/selinux-lab
 ```
+
+### 10.4 确认安全基线
+
+```bash
+systemctl is-active firewalld
+```
+
+```bash
+getenforce
+```
+
+预期分别为`active`和`Enforcing`。
+
+## 十一、验收标准
+
+- [ ] 实际活动zone和网卡已经记录。
+- [ ] 8080运行时规则、reload消失现象已验证。
+- [ ] 8080永久规则在reload后仍生效，并已回滚。
+- [ ] 来源限制使用Ubuntu真实IPv4/32。
+- [ ] 没有同时保留面向所有来源的普通8080规则。
+- [ ] rich rule已经完成添加、持久化、验证和回滚。
+- [ ] SELinux始终保持Enforcing。
+- [ ] `/srv/selinux-lab`持久规则和`restorecon`结果已验证。
+- [ ] 错误标签已经恢复为`httpd_sys_content_t`。
+- [ ] 临时服务、8080规则和SELinux实验目录均已清理。
+
+## 十二、成果提交
+
+1. 防火墙基线表。
+2. 运行时与永久8080规则对照。
+3. reload前后结果。
+4. 来源限制变更单和Ubuntu访问结果。
+5. SELinux模式、当前标签、默认标签和恢复结果。
+6. 清理后的firewalld与SELinux状态。
+
+## 十三、常见问题
+
+### 13.1 添加规则后外部仍不通
+
+依次检查`ss`监听、实际活动zone、规则、客户端地址和路由。
+
+### 13.2 rich rule存在但所有来源都能访问
+
+检查是否仍有普通8080端口或包含8080的service。
+
+### 13.3 reload后规则消失
+
+说明规则只加入运行时，没有写入永久配置。
+
+### 13.4 restorecon没有改变标签
+
+查询持久规则：
+
+```bash
+sudo semanage fcontext -l | grep '/srv/selinux-lab'
+```
+
+检查正则是否覆盖目标路径。
+
+### 13.5 为什么不关闭SELinux
+
+关闭SELinux只是移除了保护层，没有修复错误标签、应用配置或策略需求。本实验要求在Enforcing下完成恢复。
+
+## 十四、环境保留
+
+保留firewalld服务、SELinux Enforcing状态、SSH规则和实验10远程管理入口。
+
+不保留8080实验规则、临时HTTP进程和`/srv/selinux-lab`。模块三会在`rocky-web`为Nginx建立独立的正式目录和SELinux规则。

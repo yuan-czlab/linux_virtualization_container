@@ -100,20 +100,47 @@ Shell会先展开通配符，再把匹配结果交给命令。删除前必须先
 - 使用`rocky-server`普通用户登录。
 - 所有可删除内容限制在`~/m1-project`和`/tmp/lab02-*`。
 
-开始前执行：
+开始前逐条执行，不要把下面的检查复制成一段脚本。
+
+确认当前用户：
 
 ```bash
 whoami
-hostname
-pwd
-df -h ~
-test ! -e "$HOME/m1-project"
-echo "project_name_available=$?"
 ```
 
-> **验收点**：当前用户为rocky-server，家目录可写，磁盘空间满足实验需要，`project_name_available=0`。
+确认主机：
 
-如果`project_name_available`不是0，先执行`find "$HOME/m1-project" -maxdepth 2 -print`确认来源。它若是已经验收的实验2成果，应保留并直接进入后续实验；若要从头重做，应恢复`Linux-L0`。不要让旧文件混入本次结果，也不要直接删除来源不明的目录。
+```bash
+hostname
+```
+
+确认当前位置：
+
+```bash
+pwd
+```
+
+确认家目录所在文件系统有可用空间：
+
+```bash
+df -h ~
+```
+
+检查项目目录是否已经存在：
+
+```bash
+ls -ld ~/m1-project
+```
+
+第一次实验时，最后一条命令应提示目录不存在。若目录已经存在，先执行下面的命令确认来源：
+
+```bash
+find ~/m1-project -maxdepth 2 -print
+```
+
+它若是已经验收的实验2成果，应保留并直接进入后续实验；若要从头重做，应恢复`Linux-L0`。不要让旧文件混入本次结果，也不要直接删除来源不明的目录。
+
+> **验收点**：当前用户为rocky-server，家目录可写，磁盘空间满足实验需要，项目目录没有混入旧文件。
 
 ## 五、项目任务
 
@@ -131,11 +158,33 @@ echo "project_name_available=$?"
 
 #### 步骤1：识别当前Shell和命令类型
 
+逐条执行并比较输出。先查看当前Shell：
+
 ```bash
-printf 'shell=%s\n' "$SHELL"
+echo "$SHELL"
+```
+
+判断`cd`属于哪类命令：
+
+```bash
 type cd
+```
+
+判断`ls`属于哪类命令：
+
+```bash
 type ls
+```
+
+判断`cp`属于哪类命令：
+
+```bash
 type cp
+```
+
+查找`ls`最终执行位置：
+
+```bash
 command -v ls
 ```
 
@@ -145,10 +194,22 @@ command -v ls
 
 #### 步骤2：使用帮助、补全和历史
 
+先查看`ls`内置帮助。内容较长时可滚动终端：
+
 ```bash
-ls --help | head -20
+ls --help
+```
+
+再打开手册页：
+
+```bash
 man ls
-history | tail -10
+```
+
+查看近期历史命令：
+
+```bash
+history
 ```
 
 在`man`中按`/`搜索，按`n`查看下一个结果，按`q`退出。输入命令或路径的一部分后按Tab，可以减少拼写错误。
@@ -157,6 +218,11 @@ history | tail -10
 
 ```bash
 command-does-not-exist
+```
+
+再单独查看上一条命令的退出码：
+
+```bash
 echo $?
 ```
 
@@ -166,9 +232,21 @@ echo $?
 
 #### 步骤3：查看当前目录和主要目录
 
+先查看当前位置：
+
 ```bash
 pwd
+```
+
+观察根目录及常用系统目录：
+
+```bash
 ls -ld / /etc /var /home /usr /opt /srv /tmp /proc
+```
+
+观察自己的家目录：
+
+```bash
 ls -lah ~
 ```
 
@@ -176,13 +254,39 @@ ls -lah ~
 
 ```bash
 cd /var/log
+```
+
+```bash
 pwd
+```
+
+```bash
 cd ..
+```
+
+```bash
 pwd
+```
+
+```bash
 cd ~
+```
+
+```bash
 pwd
+```
+
+```bash
 cd -
+```
+
+```bash
 pwd
+```
+
+最后回到家目录：
+
+```bash
 cd ~
 ```
 
@@ -192,12 +296,57 @@ cd ~
 
 #### 步骤4：创建目录树
 
+先创建项目根目录：
+
 ```bash
-mkdir -p ~/m1-project/{config,web,logs,scripts,backup,evidence}
-find ~/m1-project -maxdepth 1 -type d | sort
+mkdir -p ~/m1-project
 ```
 
-`-p`可以创建缺失的父目录。花括号展开由Shell生成多个目录名。
+进入项目目录：
+
+```bash
+cd ~/m1-project
+```
+
+确认当前位置：
+
+```bash
+pwd
+```
+
+逐个创建子目录：
+
+```bash
+mkdir config
+```
+
+```bash
+mkdir web
+```
+
+```bash
+mkdir logs
+```
+
+```bash
+mkdir scripts
+```
+
+```bash
+mkdir backup
+```
+
+```bash
+mkdir evidence
+```
+
+最后检查一级目录：
+
+```bash
+find . -maxdepth 1 -type d -print
+```
+
+`-p`可以创建缺失的父目录。`scripts`暂时为空，到“Shell服务器巡检”章节再创建脚本。
 
 预期包含：
 
@@ -215,32 +364,89 @@ m1-project
 
 #### 步骤5：创建项目文件
 
-```bash
-touch ~/m1-project/config/app.conf
-printf 'server_name=training.local\nport=8080\nmode=development\n' > ~/m1-project/config/app.conf
-printf '<h1>Linux Course Project</h1>\n' > ~/m1-project/web/index.html
-date > ~/m1-project/logs/deploy.log
-printf '#!/bin/bash\nprintf "project check\\n"\n' > ~/m1-project/scripts/check.sh
-```
-
-验证：
+本步骤仍在`~/m1-project`中执行。先创建空配置文件：
 
 ```bash
-find ~/m1-project -maxdepth 2 -type f -printf '%P\n' | sort
-wc -l ~/m1-project/config/app.conf
+touch config/app.conf
 ```
 
-> **验收点**：存在4个项目文件，`app.conf`包含3行配置。
+写入第一行配置。`>`会覆盖文件原内容：
+
+```bash
+echo 'server_name=training.local' > config/app.conf
+```
+
+追加第二行。`>>`会在文件末尾追加：
+
+```bash
+echo 'port=8080' >> config/app.conf
+```
+
+追加第三行：
+
+```bash
+echo 'mode=development' >> config/app.conf
+```
+
+创建网页文件：
+
+```bash
+echo '<h1>Linux Course Project</h1>' > web/index.html
+```
+
+创建部署日志：
+
+```bash
+date > logs/deploy.log
+```
+
+逐项验证：
+
+```bash
+cat config/app.conf
+```
+
+```bash
+wc -l config/app.conf
+```
+
+```bash
+find . -maxdepth 2 -type f -print
+```
+
+> **验收点**：存在配置、网页和日志3个项目文件，`app.conf`包含3行配置。
 
 ### 任务四：查看文本内容
 
 #### 步骤6：使用不同工具查看文件
 
+先完整查看短配置文件：
+
 ```bash
 cat ~/m1-project/config/app.conf
+```
+
+只查看开头两行：
+
+```bash
 head -n 2 ~/m1-project/config/app.conf
+```
+
+只查看末尾两行：
+
+```bash
 tail -n 2 ~/m1-project/config/app.conf
+```
+
+统计行数、单词数和字节数：
+
+```bash
 wc -l -w -c ~/m1-project/config/app.conf
+```
+
+使用分页方式查看日志：
+
+```bash
 less ~/m1-project/logs/deploy.log
 ```
 
@@ -252,9 +458,21 @@ less ~/m1-project/logs/deploy.log
 
 #### 步骤7：练习追加和覆盖重定向
 
+追加当前时间：
+
 ```bash
 date >> ~/m1-project/logs/deploy.log
-printf 'deployment=ready\n' >> ~/m1-project/logs/deploy.log
+```
+
+追加部署状态：
+
+```bash
+echo 'deployment=ready' >> ~/m1-project/logs/deploy.log
+```
+
+查看追加结果：
+
+```bash
 cat ~/m1-project/logs/deploy.log
 ```
 
@@ -266,10 +484,27 @@ cat ~/m1-project/logs/deploy.log
 
 #### 步骤8：备份配置文件
 
+复制配置并尽量保留原属性：
+
 ```bash
 cp -p ~/m1-project/config/app.conf ~/m1-project/backup/app.conf.bak
+```
+
+观察源文件和备份：
+
+```bash
 ls -l ~/m1-project/config/app.conf ~/m1-project/backup/app.conf.bak
+```
+
+比较两个文件内容：
+
+```bash
 cmp ~/m1-project/config/app.conf ~/m1-project/backup/app.conf.bak
+```
+
+`cmp`内容相同时通常没有输出。继续检查退出码：
+
+```bash
 echo $?
 ```
 
@@ -279,11 +514,34 @@ echo $?
 
 #### 步骤9：移动和重命名
 
+先重命名日志：
+
 ```bash
 mv ~/m1-project/logs/deploy.log ~/m1-project/logs/deploy-history.log
+```
+
+确认新文件存在：
+
+```bash
+ls -l ~/m1-project/logs/deploy-history.log
+```
+
+把网页复制到临时目录：
+
+```bash
 cp ~/m1-project/web/index.html /tmp/lab02-index.html
+```
+
+再把临时副本移动到项目备份目录并重命名：
+
+```bash
 mv /tmp/lab02-index.html ~/m1-project/backup/index.html.copy
-find ~/m1-project -maxdepth 2 -type f -printf '%P\n' | sort
+```
+
+查看当前项目文件：
+
+```bash
+find ~/m1-project -maxdepth 2 -type f -print
 ```
 
 同一文件系统中，`mv`既可以移动文件，也可以修改文件名。
@@ -297,18 +555,59 @@ find ~/m1-project -maxdepth 2 -type f -printf '%P\n' | sort
 先确认本实验临时名称未被占用：
 
 ```bash
-test ! -e /tmp/lab02-sort
-echo "temp_name_available=$?"
+ls -ld /tmp/lab02-sort
 ```
 
-只有`temp_name_available=0`时才继续。若目录是上次未完成的实验残留，先核对内容，再按本实验末尾的清理步骤处理。
+第一次实验时应提示目录不存在。若它是上次未完成的实验残留，先核对内容，再按本实验末尾的清理步骤处理。
+
+创建临时目录：
 
 ```bash
 mkdir -p /tmp/lab02-sort
-touch /tmp/lab02-sort/{app1.log,app2.log,app3.log,config1.bak,config2.bak,readme.txt}
-printf '%s\n' /tmp/lab02-sort/*
-printf '%s\n' /tmp/lab02-sort/app?.log
-printf '%s\n' /tmp/lab02-sort/*.bak
+```
+
+逐个创建测试文件：
+
+```bash
+touch /tmp/lab02-sort/app1.log
+```
+
+```bash
+touch /tmp/lab02-sort/app2.log
+```
+
+```bash
+touch /tmp/lab02-sort/app3.log
+```
+
+```bash
+touch /tmp/lab02-sort/config1.bak
+```
+
+```bash
+touch /tmp/lab02-sort/config2.bak
+```
+
+```bash
+touch /tmp/lab02-sort/readme.txt
+```
+
+先观察`*`匹配范围：
+
+```bash
+ls -l /tmp/lab02-sort/*
+```
+
+再观察`?`匹配范围：
+
+```bash
+ls -l /tmp/lab02-sort/app?.log
+```
+
+最后观察扩展名匹配：
+
+```bash
+ls -l /tmp/lab02-sort/*.bak
 ```
 
 观察`*`、`?`和扩展名匹配范围。
@@ -325,7 +624,12 @@ printf '%s\n' /tmp/lab02-sort/*.bak
 
 ```bash
 rm /tmp/lab02-sort/*.bak
-find /tmp/lab02-sort -maxdepth 1 -type f -printf '%f\n' | sort
+```
+
+删除后检查剩余文件：
+
+```bash
+find /tmp/lab02-sort -maxdepth 1 -type f -print
 ```
 
 不要把未经验证的变量、路径或通配符与`rm -rf`组合使用。
@@ -336,15 +640,43 @@ find /tmp/lab02-sort -maxdepth 1 -type f -printf '%f\n' | sort
 
 #### 步骤12：保存文件清单和关键内容
 
+先保存文件清单：
+
 ```bash
-find ~/m1-project -maxdepth 2 -printf '%y %M %P\n' | sort > ~/m1-project/evidence/file-list.txt
-{
-    printf 'user=%s\n' "$(whoami)"
-    printf 'host=%s\n' "$(hostname)"
-    printf 'workdir=%s\n' "$(pwd)"
-    printf 'time=%s\n' "$(date '+%F %T')"
-} > ~/m1-project/evidence/lab02-summary.txt
+find ~/m1-project -maxdepth 2 -print > ~/m1-project/evidence/file-list.txt
+```
+
+把当前用户写入摘要文件：
+
+```bash
+whoami > ~/m1-project/evidence/lab02-summary.txt
+```
+
+追加主机名：
+
+```bash
+hostname >> ~/m1-project/evidence/lab02-summary.txt
+```
+
+追加当前目录：
+
+```bash
+pwd >> ~/m1-project/evidence/lab02-summary.txt
+```
+
+追加当前时间：
+
+```bash
+date >> ~/m1-project/evidence/lab02-summary.txt
+```
+
+分别查看两个证据文件：
+
+```bash
 cat ~/m1-project/evidence/file-list.txt
+```
+
+```bash
 cat ~/m1-project/evidence/lab02-summary.txt
 ```
 
@@ -368,7 +700,7 @@ cat ~/m1-project/evidence/lab02-summary.txt
 - [ ] 能解释绝对路径和相对路径。
 - [ ] 能说明`/etc`、`/var`、`/home`、`/srv`和`/tmp`的主要用途。
 - [ ] `~/m1-project`目录结构完整且用途清楚。
-- [ ] 配置、网页、日志、脚本和备份文件位于正确目录。
+- [ ] 配置、网页、日志和备份文件位于正确目录，`scripts`目录已为后续课程保留。
 - [ ] 能根据文件长度选择`cat`、`less`、`head`或`tail`。
 - [ ] 能区分`>`覆盖和`>>`追加。
 - [ ] 配置备份通过`cmp`验证。
@@ -394,6 +726,11 @@ cat ~/m1-project/evidence/lab02-summary.txt
 
 ```bash
 pwd
+```
+
+再检查相关路径：
+
+```bash
 ls -ld ~/m1-project ~/m1-project/backup
 ```
 
@@ -409,6 +746,11 @@ ls -ld ~/m1-project ~/m1-project/backup
 
 ```bash
 cp -a ~/m1-project/config ~/m1-project/backup/config-copy
+```
+
+复制后再检查：
+
+```bash
 find ~/m1-project/backup/config-copy -maxdepth 2 -type f -print
 ```
 
@@ -436,6 +778,11 @@ find ~/m1-project/backup/config-copy -maxdepth 2 -type f -print
 
 ```bash
 find /tmp/lab02-sort -maxdepth 1 -print
+```
+
+确认输出只属于本实验后再删除：
+
+```bash
 rm -r /tmp/lab02-sort
 ```
 
