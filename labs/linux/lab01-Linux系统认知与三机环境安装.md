@@ -90,8 +90,6 @@ Rocky Linux接近企业RHEL环境，适合学习DNF、systemd、firewalld和SELi
 
 VMware Workstation运行在Windows之上，属于Type 2虚拟化软件。本课程默认使用VMnet8 NAT网络，使三台虚拟机处于同一实验网络并可经宿主机访问外部资源。
 
-开始安装前，打开[VMware三种网络模式与课程三机拓扑动画](../../animations/01-vmware-network-modes/index.html)。依次观察三种模式的可达范围，再回答“为什么本课程初装统一使用NAT”。动画显示的是概念地址；本实验必须以虚拟网络编辑器和DHCP实际结果为准。
-
 ## 五、实验准备
 
 ### 1. 宿主机建议配置
@@ -117,7 +115,7 @@ VMware Workstation运行在Windows之上，属于Type 2虚拟化软件。本课�
 
 | 虚拟机 | vCPU | 内存 | 虚拟磁盘 | 网络 | 安装方式 |
 |---|---:|---:|---:|---|---|
-| `rocky-server` | 2 | 4GB | 50GB | VMnet8 NAT | Minimal Install |
+| `rocky-server` | 2 | 4GB | 40GB | VMnet8 NAT | Minimal Install |
 | `rocky-web` | 2 | 2GB | 40GB | VMnet8 NAT | Minimal Install |
 | `ubuntu-client` | 2 | 4GB | 40GB | VMnet8 NAT | Ubuntu Desktop |
 
@@ -135,7 +133,9 @@ Rocky-server后续承担数据库、KVM和Docker，可在相应模块开始前�
 | 120—155分钟 | 三机首次登录、身份、sudo、网络和基础工具检查 |
 | 155—180分钟 | 快照、三机基线、互访预检和验收 |
 
-先完整完成`rocky-server`，再依据统一参数独立完成`rocky-web`；Ubuntu部分重点关注图形安装界面、软件源和账号配置与Rocky的差异。
+先完整完成`rocky-server`，再依据统一参数独立完成`rocky-web`；
+
+Ubuntu部分重点关注图形安装界面、软件源和账号配置与Rocky的差异。
 
 ## 七、实验步骤
 
@@ -265,14 +265,14 @@ Get-FileHash 'D:\LinuxCourse\VMwareInstaller\VMware-workstation-full.exe' -Algor
 |---|---|---|---|
 | 客户机类型 | RHEL 9 64-bit | RHEL 9 64-bit | Ubuntu 64-bit |
 | VMware名称 | `rocky-server` | `rocky-web` | `ubuntu-client` |
-| 保存目录 | `VirtualMachines\rocky-server` | `VirtualMachines\rocky-web` | `VirtualMachines\ubuntu-client` |
+| 保存目录 | `Virtual Machines\rocky-server` | `Virtual Machines\rocky-web` | `Virtual Machines\ubuntu-client` |
 | vCPU | 2 | 2 | 2 |
 | 内存 | 4096MB | 2048MB | 4096MB |
-| 磁盘 | 50GB | 40GB | 40GB |
+| 磁盘 | 40GB | 40GB | 40GB |
 | CD/DVD | Rocky Minimal ISO | Rocky Minimal ISO | Ubuntu Desktop ISO |
 | 网络 | NAT | NAT | NAT |
 
-> **验收点**：VMware左侧恰好出现`rocky-server`、`rocky-web`、`ubuntu-client`，名称没有学号后缀或大小写变化。
+> **验收点**：VMware左侧恰好出现`rocky-server`、`rocky-web`、`ubuntu-client`。
 
 ### 任务三：安装rocky-server
 
@@ -286,7 +286,7 @@ Get-FileHash 'D:\LinuxCourse\VMwareInstaller\VMware-workstation-full.exe' -Algor
 |---|---|
 | 语言、键盘 | 中文（中国）/ 简体中文 |
 | 时间 | Asia/Shanghai |
-| 安装目标 | 选择50GB虚拟磁盘，自动LVM |
+| 安装目标 | 选择40GB虚拟磁盘，自动LVM |
 | 软件选择 | Minimal Install，不安装图形界面 |
 | 网络 | 启用网卡，IPv4暂用DHCP |
 | 主机名 | `rocky-server` |
@@ -844,7 +844,6 @@ Ubuntu通过右上角系统菜单正常关机，或在Terminal执行同一命令
 ## 八、独立实践
 
 1. 分别使用什么命令查看发行版版本和Linux内核版本？
-2. VMware Workstation为什么属于Type 2 Hypervisor？
 3. 为什么三台虚拟机必须使用不同主机名和不同IP地址？
 4. 为什么`ubuntu-client`使用图形桌面，而两台Rocky使用最小化安装？
 5. 为什么本实验使用DHCP，静态IP留到实验8？
@@ -869,17 +868,11 @@ Ubuntu通过右上角系统菜单正常关机，或在Terminal执行同一命令
 
 ## 十、成果提交
 
-提交目录：
+提交文件要求：
 
 ```text
-学号-姓名-实验01/
-├── 使用说明.md
-├── 主机检查.md
-├── 三台主机的基本信息.md
-└── 实验报告
+学号-姓名-实验一.docx
 ```
-
-`README.md`回答独立实践问题；基线文件记录三台机器的身份、版本、资源、地址、网关、工具和快照。截图不得包含除本课程统一教学口令以外的个人密码、Token或私钥。
 
 ## 十一、常见问题
 
