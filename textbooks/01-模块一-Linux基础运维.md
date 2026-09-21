@@ -1,7 +1,7 @@
 # 模块一：Linux基础运维
 
 > 适用课程：《Linux操作系统》  
-> 对应实验：实验1—实验7｜建议学时：20学时
+> 对应实验：实验1—实验7｜建议学时：22学时
 > 主线环境：`rocky-server`、`rocky-web`｜Ubuntu 22.04 Desktop `ubuntu-client`
 
 ## 模块导读
@@ -45,7 +45,7 @@ Linux是服务器、云计算平台、网络设备、容器平台和自动化运
 | 实验4（4学时） | 第7—9章 | 用户、组、共享权限、umask和最小sudo | 部门账号、共享目录和授权证据 |
 | 实验5（2学时） | 第10章 | DNF、RPM、仓库和GPG | 软件安装、查询、卸载与回退记录 |
 | 实验6（2学时） | 第11章 | systemd、journal和启动故障 | 状态—日志—根因—修复记录 |
-| 实验7（2学时） | 第12章 | CPU、内存、进程、磁盘和容量 | 系统状态与容量巡检表 |
+| 实验7（4学时） | 第12章 | CPU、内存、进程、普通挂载、LVM和容量 | 持久挂载、LVM扩容与系统巡检表 |
 
 ## 本册学习方式
 
@@ -1337,199 +1337,1013 @@ cat backup/app.conf.initial
 
 # 第5章 文件查看、查找与链接
 
-### 操作素材准备
+## 本章学习目标
 
-本章使用独立目录并一次性创建日志、文档和链接练习所需的输入：
+完成本章后，应能够：
+
+1. 根据文件大小和任务选择`cat`、`less`、`head`、`tail`。
+2. 使用`grep`按内容筛选，并读懂常见正则表达式。
+3. 使用`wc`统计行、单词和字节，说明“筛选”和“统计”的区别。
+4. 使用`sort`、`uniq`和`cut`完成字段提取、排序与频次统计。
+5. 使用`find`按名称、类型、大小、时间和所有者查找文件。
+6. 理解标准输入、标准输出、标准错误、管道和重定向。
+7. 区分inode、硬链接和符号链接，并预测删除原路径后的结果。
+
+## 5.1 先准备真实的练习数据
+
+文本处理命令不是为了背选项，而是为了从大量内容中回答问题。本章使用两类真实数据：
+
+- 系统真实文件：`/etc/passwd`和`/etc/os-release`；
+- 真实日志：使用`logger`把消息写入systemd journal，再用`journalctl`导出为普通文本文件。
+
+`journalctl`的完整用法将在1.11学习。本章只把它当作日志数据来源。
+
+### 步骤1：创建本章目录
 
 ```bash
-mkdir -p ~/course-practice/m1/ch05/{logs,docs,data/link-lab}
-cat > ~/course-practice/m1/ch05/logs/app.log <<'EOF'
-2026-07-05 09:00:01 INFO service preparation started
-2026-07-05 09:00:03 WARN configuration not deployed
-2026-07-05 09:00:05 ERROR sample connection failed
-2026-07-05 09:00:08 INFO waiting for operator
-EOF
+mkdir -p ~/course-practice/m1/ch05/logs
 ```
-
-验证输入存在：
 
 ```bash
-test -s ~/course-practice/m1/ch05/logs/app.log
-echo "log_check=$?"
+mkdir -p ~/course-practice/m1/ch05/docs
 ```
 
-只有`log_check=0`时才继续。
+```bash
+mkdir -p ~/course-practice/m1/ch05/data/link-lab
+```
 
-## 5.1 查看文本文件
+```bash
+mkdir -p ~/course-practice/m1/ch05/evidence
+```
+
+```bash
+cd ~/course-practice/m1/ch05
+```
+
+本章前半部分为了便于观察，使用`logs/...`、`docs/...`等相对路径，它们都以`~/course-practice/m1/ch05`为起点。如果中途重新登录或更换终端，应先重新执行上面的`cd`命令；5.10综合任务改用绝对路径，避免提交时依赖当前目录。
+
+### 步骤2：向系统日志写入一组可识别的事件
+
+下面每条`logger`命令都会调用系统日志接口，不是直接向练习文件中伪造结果。`-t course-ch05`为日志设置统一标识，便于随后筛选。
+
+```bash
+logger -t course-ch05 'INFO service=web action=start result=success'
+```
+
+```bash
+logger -t course-ch05 'INFO service=db action=start result=success'
+```
+
+```bash
+logger -p user.warning -t course-ch05 'WARN service=web action=healthcheck result=slow'
+```
+
+```bash
+logger -p user.err -t course-ch05 'ERROR service=db action=connect result=failed'
+```
+
+```bash
+logger -t course-ch05 'INFO service=cache action=start result=success'
+```
+
+```bash
+logger -p user.warning -t course-ch05 'WARN service=cache action=memory result=high'
+```
+
+```bash
+logger -p user.err -t course-ch05 'ERROR service=web action=request result=timeout'
+```
+
+```bash
+logger -t course-ch05 'INFO service=web action=recover result=success'
+```
+
+### 步骤3：从journal导出最近8条课程日志
+
+```bash
+sudo journalctl -t course-ch05 -n 8 --no-pager -o cat > logs/course-ch05.log
+```
+
+这里使用`-o cat`只保留消息正文，方便初学者观察文本处理过程。查看文件是否存在且非空：
+
+```bash
+test -s logs/course-ch05.log
+```
+
+```bash
+echo $?
+```
+
+返回`0`表示检查成立。再查看行数：
+
+```bash
+wc -l logs/course-ch05.log
+```
+
+预期为8行。如果不是8行，重新执行八条`logger`命令和导出命令，不要创建同名空文件代替。
+
+> **为什么要先导出为文件**：日志原本保存在journal中。导出副本后，后续筛选不会修改系统日志，也能反复对同一份输入进行观察。
+
+## 5.2 查看文本文件
+
+### cat：一次输出短文件
 
 ```bash
 cat /etc/os-release
-cat ~/course-practice/m1/ch05/logs/app.log
-less ~/course-practice/m1/ch05/logs/app.log
-head -n 20 /etc/passwd
-tail -n 3 ~/course-practice/m1/ch05/logs/app.log
-tail -f ~/course-practice/m1/ch05/logs/app.log
 ```
 
-`tail -f`会持续等待新内容，按`Ctrl+C`结束。Rocky系统若存在`/var/log/messages`，通常需要使用`sudo less /var/log/messages`或`sudo tail /var/log/messages`读取；部分最小化环境主要使用systemd journal，第11章将专门练习。
+```bash
+cat logs/course-ch05.log
+```
 
-适用场景：
+`cat`适合内容较少、能够在一个屏幕中看完的文件。对数千行日志直接使用`cat`，重要内容会快速滚出屏幕。
 
-| 命令 | 适合场景 |
+显示行号时可使用：
+
+```bash
+cat -n logs/course-ch05.log
+```
+
+### less：分页查看长文件
+
+```bash
+less /etc/services
+```
+
+进入`less`后可使用：
+
+| 按键 | 作用 |
 |---|---|
-| `cat` | 较短文件一次输出 |
-| `less` | 分页查看较长文件，可搜索 |
-| `head` | 查看开头 |
-| `tail` | 查看结尾或跟踪日志 |
+| `Space`或`PageDown` | 向下翻页 |
+| `b`或`PageUp` | 向上翻页 |
+| `/ssh` | 向后搜索`ssh` |
+| `n` | 跳到下一个匹配项 |
+| `N` | 跳到上一个匹配项 |
+| `g`、`G` | 跳到开头、结尾 |
+| `q` | 退出 |
 
-在`less`中：
+`less`只负责查看，不会因为搜索或翻页修改原文件。
 
-- `/error`搜索error。
-- `n`跳到下一个结果。
-- `g`到开头，`G`到结尾。
-- `q`退出。
+### head和tail：查看开头或结尾
 
-## 5.2 筛选、统计与排序
+```bash
+head -n 5 /etc/passwd
+```
 
-`grep`按内容筛选行，`wc`统计数量，`sort`排序，`uniq`处理相邻重复行，`cut`按字段提取内容：
+```bash
+tail -n 3 logs/course-ch05.log
+```
+
+`head`常用于确认文件格式，`tail`常用于观察日志最新记录。
+
+实时跟踪文件追加内容：
+
+```bash
+tail -f logs/course-ch05.log
+```
+
+当前导出文件不会自动接收journal的新消息，因此这里主要用于认识`tail -f`的等待状态；按`Ctrl+C`结束。真正跟踪journal可在1.11使用`journalctl -f`。
+
+| 命令 | 适合场景 | 不适合场景 |
+|---|---|---|
+| `cat` | 短文件一次看完 | 大文件分页阅读 |
+| `less` | 长文件分页、搜索 | 把内容交给下一命令 |
+| `head` | 快速确认文件开头和字段格式 | 查看最新日志 |
+| `tail` | 查看末尾、持续跟踪追加内容 | 阅读文件中间的大段内容 |
+
+## 5.3 使用grep筛选需要的行
+
+`grep`解决的问题是：**哪些行包含我关心的内容？**
+
+基本格式：
+
+```text
+grep [选项] '匹配模式' 文件
+```
+
+### 从最简单的筛选开始
+
+找出包含`ERROR`的行：
+
+```bash
+grep 'ERROR' logs/course-ch05.log
+```
+
+同时显示行号：
+
+```bash
+grep -n 'ERROR' logs/course-ch05.log
+```
+
+忽略大小写：
+
+```bash
+grep -ni 'error' logs/course-ch05.log
+```
+
+反向筛选，不显示包含`INFO`的行：
+
+```bash
+grep -v 'INFO' logs/course-ch05.log
+```
+
+只统计匹配行数：
+
+```bash
+grep -c 'WARN' logs/course-ch05.log
+```
+
+只判断是否存在，不输出匹配内容：
+
+```bash
+grep -q 'ERROR' logs/course-ch05.log
+```
+
+紧接着查看返回值：
+
+```bash
+echo $?
+```
+
+`grep`的返回值具有明确含义：
+
+| 返回值 | 含义 |
+|---|---|
+| `0` | 找到至少一条匹配 |
+| `1` | 没找到匹配，这不等于命令损坏 |
+| `2` | 文件不存在、选项错误等真正的执行错误 |
+
+再次验证“未找到”的情况：
+
+```bash
+grep -q 'FATAL' logs/course-ch05.log
+```
+
+```bash
+echo $?
+```
+
+### 同时匹配多个关键词
+
+`-E`启用扩展正则表达式，竖线`|`表示“或者”：
+
+```bash
+grep -nE 'WARN|ERROR' logs/course-ch05.log
+```
+
+只匹配完整单词可使用`-w`：
+
+```bash
+grep -w 'INFO' logs/course-ch05.log
+```
+
+查看匹配行的上下文：
+
+```bash
+grep -n -C 1 'ERROR' logs/course-ch05.log
+```
+
+其中`-C 1`显示匹配行前后各1行；`-A 2`只显示后2行，`-B 2`只显示前2行。
+
+### 理解最常用的正则表达式
+
+正则表达式描述的是文本特征，不是文件通配符。
+
+| 写法 | 含义 | 示例 |
+|---|---|---|
+| `^root` | 行首是`root` | 查找root账号记录 |
+| `bash$` | 行尾是`bash` | 查找登录Shell为bash的记录 |
+| `.` | 任意单个字符 | `r..t`可匹配`root` |
+| `[0-9]` | 任意一位数字 | 查找包含数字的行 |
+| `*` | 前一个字符出现0次或多次 | `ro*t`可匹配`rt`、`rot`、`root` |
+| `WARN\|ERROR` | 基本正则中的“或” | 不使用`-E`时需要转义 |
+| `WARN|ERROR` | 扩展正则中的“或” | 需要配合`grep -E` |
+
+查找以`root`开头的账号记录：
+
+```bash
+grep '^root:' /etc/passwd
+```
+
+查找以`bash`结尾的账号记录：
 
 ```bash
 grep 'bash$' /etc/passwd
-grep -n -i 'error' ~/course-practice/m1/ch05/logs/app.log
-wc -l /etc/passwd
+```
+
+查找使用`bash`或`sh`作为登录Shell的账号：
+
+```bash
+grep -E '/(ba)?sh$' /etc/passwd
+```
+
+模式通常使用单引号，避免`$`、`*`、`|`等字符被Shell提前解释。
+
+### 在目录中递归查找内容
+
+`grep`找的是**文件内容**，不是文件名：
+
+```bash
+grep -RIn 'service=' ~/course-practice/m1/ch05
+```
+
+| 选项 | 作用 |
+|---|---|
+| `-R` | 递归读取目录中的文件 |
+| `-I` | 忽略二进制文件 |
+| `-n` | 显示行号 |
+| `-i` | 忽略大小写 |
+| `-v` | 反向选择 |
+| `-w` | 匹配完整单词 |
+| `-c` | 只输出匹配行数 |
+| `-q` | 静默，只用返回值表示是否匹配 |
+| `-E` | 使用扩展正则表达式 |
+
+## 5.4 使用wc统计数量
+
+`wc`解决的问题是：**一共有多少？**
+
+```bash
+wc logs/course-ch05.log
+```
+
+未指定选项时，依次显示行数、单词数、字节数和文件名。
+
+```bash
+wc -l logs/course-ch05.log
+```
+
+```bash
+wc -w logs/course-ch05.log
+```
+
+```bash
+wc -c logs/course-ch05.log
+```
+
+```bash
+wc -m logs/course-ch05.log
+```
+
+| 选项 | 统计内容 |
+|---|---|
+| `-l` | 换行符数量，通常理解为行数 |
+| `-w` | 由空白分隔的单词数量 |
+| `-c` | 字节数量 |
+| `-m` | 字符数量；包含中文时可能与字节数不同 |
+
+### 先筛选，再统计
+
+先只看异常日志：
+
+```bash
+grep -E 'WARN|ERROR' logs/course-ch05.log
+```
+
+确认筛选正确后，再统计异常行数：
+
+```bash
+grep -E 'WARN|ERROR' logs/course-ch05.log | wc -l
+```
+
+这条管道可以从左向右读成：“读取日志 → 保留WARN或ERROR行 → 统计保留下来的行数”。
+
+`grep -c`也能统计匹配行，但两种写法关注点不同：
+
+- `grep -c 'ERROR' 文件`：由`grep`直接报告该文件的匹配行数；
+- `前一命令 | wc -l`：统计任何前一命令输出了多少行，更通用。
+
+## 5.5 使用cut、sort和uniq整理结果
+
+这三个命令各自只做一件事：
+
+- `cut`：按分隔符取字段；
+- `sort`：把行排成指定顺序；
+- `uniq`：合并**相邻**的重复行。
+
+### cut：从账号文件中提取字段
+
+`/etc/passwd`每行使用冒号分隔。先查看前3行：
+
+```bash
+head -n 3 /etc/passwd
+```
+
+第1字段是用户名，第7字段是登录Shell。只提取用户名：
+
+```bash
+cut -d: -f1 /etc/passwd
+```
+
+只提取登录Shell：
+
+```bash
 cut -d: -f7 /etc/passwd
+```
+
+同时提取用户名和Shell：
+
+```bash
+cut -d: -f1,7 /etc/passwd
+```
+
+`-d:`指定冒号为分隔符，`-f1,7`选择第1和第7字段。`cut`适合分隔符明确的文本，不适合列宽不固定且连续空格较多的`ps aux`输出。
+
+### sort：按字符或数字排序
+
+对Shell路径按字符排序：
+
+```bash
+cut -d: -f7 /etc/passwd | sort
+```
+
+`sort`默认按字符顺序。处理数字时应明确使用`-n`：
+
+```bash
+find ~/course-practice/m1/ch05 -type f -printf '%s %p\n' | sort -n
+```
+
+按文件字节数从大到小排列：
+
+```bash
+find ~/course-practice/m1/ch05 -type f -printf '%s %p\n' | sort -nr
+```
+
+常用选项：
+
+| 选项 | 作用 |
+|---|---|
+| `-n` | 按数值而不是字符排序 |
+| `-r` | 反向排序 |
+| `-h` | 识别`K`、`M`、`G`等易读单位 |
+| `-u` | 排序并去除重复行 |
+| `-t:` | 指定字段分隔符为冒号 |
+| `-k2,2` | 以第2字段为排序键 |
+
+### uniq：先让重复项相邻
+
+直接执行：
+
+```bash
+cut -d: -f7 /etc/passwd | uniq -c
+```
+
+这个结果不一定正确统计全部Shell，因为`uniq`只能识别相邻重复行。先排序，再计数：
+
+```bash
+cut -d: -f7 /etc/passwd | sort | uniq -c
+```
+
+最后按出现次数从多到少排列：
+
+```bash
 cut -d: -f7 /etc/passwd | sort | uniq -c | sort -nr
 ```
 
-| 命令或选项 | 含义 |
-|---|---|
-| `grep PATTERN FILE` | 输出匹配模式的行 |
-| `grep -n` | 显示行号 |
-| `grep -i` | 忽略大小写 |
-| `grep -v` | 输出不匹配的行 |
-| `wc -l` | 统计行数 |
-| `sort` | 按行排序，使相同内容相邻 |
-| `uniq -c` | 对相邻重复行计数，通常先配合`sort` |
-| `sort -nr` | 按数字倒序排列 |
-| `cut -d: -f7` | 以冒号分隔并提取第7字段 |
+不要急着背整条命令。它是四个可以单独验证的步骤：
 
-正则表达式中的`$`表示行尾，因此`grep 'bash$' /etc/passwd`匹配以`bash`结尾的账号记录。模式应使用单引号，避免Shell提前解释特殊字符。
+1. `cut`提取Shell字段；
+2. 第一个`sort`让相同Shell相邻；
+3. `uniq -c`统计相邻重复项；
+4. `sort -nr`按次数倒序。
 
-## 5.3 使用find查找
+### 对真实日志统计级别分布
+
+日志第1字段是级别。先确认字段结构：
 
 ```bash
-find /etc -name '*.conf'
-find /var/log -type f
-find /var -type f -size +100M 2>/dev/null
-find /tmp -type f -mtime -1
-find ~/course-practice/m1/ch05 -maxdepth 2 -print
+head -n 3 logs/course-ch05.log
 ```
 
-常用条件：
+提取第1字段：
 
-| 条件 | 含义 |
+```bash
+cut -d' ' -f1 logs/course-ch05.log
+```
+
+排序并计数：
+
+```bash
+cut -d' ' -f1 logs/course-ch05.log | sort | uniq -c
+```
+
+按次数倒序：
+
+```bash
+cut -d' ' -f1 logs/course-ch05.log | sort | uniq -c | sort -nr
+```
+
+## 5.6 使用find查找文件系统对象
+
+`grep`按**内容**找行，`find`按**名称、类型、大小、时间、所有者等属性**找文件系统对象。不要把两者混淆。
+
+基本结构：
+
+```text
+find 起点 查找条件 输出或操作
+```
+
+例如：
+
+```bash
+find ~/course-practice/m1/ch05 -type f -name '*.log' -print
+```
+
+- 起点：`~/course-practice/m1/ch05`；
+- 条件：普通文件，并且名称以`.log`结尾；
+- 动作：`-print`输出路径。
+
+### 按名称和类型查找
+
+```bash
+find /etc -maxdepth 2 -type f -name '*.conf'
+```
+
+```bash
+find ~/course-practice/m1/ch05 -type d -print
+```
+
+```bash
+find ~/course-practice/m1/ch05 -type l -print
+```
+
+`'*.conf'`必须加引号。加引号后，通配符由`find`处理；不加引号时，Shell可能在`find`启动前就把它展开，导致结果错误。
+
+### 按大小查找
+
+列出本章所有非空普通文件：
+
+```bash
+find ~/course-practice/m1/ch05 -type f -size +0c -printf '%s %p\n'
+```
+
+`c`表示字节。查找大于10MiB的文件：
+
+```bash
+find /var -type f -size +10M 2>/dev/null
+```
+
+`+10M`表示大于，`-10M`表示小于，`10M`表示按find的单位规则等于相应大小范围。
+
+### 按修改时间查找
+
+```bash
+find ~/course-practice/m1/ch05 -type f -mmin -30 -print
+```
+
+`-mmin -30`表示最近30分钟内修改。按天计算时：
+
+```bash
+find /tmp -type f -mtime -1 -print
+```
+
+`-mtime -1`表示不足24小时，`-mtime +7`表示超过7个完整的24小时。结果为空不一定是命令失败，可能只是没有对象满足条件。
+
+### 按所有者、权限和空文件查找
+
+```bash
+find ~/course-practice/m1/ch05 -user "$USER" -type f -print
+```
+
+```bash
+find ~/course-practice/m1/ch05 -type f -empty -print
+```
+
+```bash
+find ~/course-practice/m1/ch05 -type f -perm /002 -print
+```
+
+最后一条查找“其他用户具有写权限”的普通文件。权限条件将在1.8进一步学习。
+
+### 组合多个条件
+
+相邻条件默认是“并且”：
+
+```bash
+find ~/course-practice/m1/ch05 -type f -name '*.log' -size +0c -print
+```
+
+使用`-o`表示“或者”。括号需要转义，防止Shell解释：
+
+```bash
+find /etc -maxdepth 2 -type f \( -name '*.conf' -o -name '*.service' \) -print
+```
+
+### 控制输出格式
+
+```bash
+find ~/course-practice/m1/ch05 -type f -printf '%TY-%Tm-%Td %TH:%TM %s %p\n'
+```
+
+常用格式符：
+
+| 格式符 | 含义 |
 |---|---|
-| `-name` | 按名称，区分大小写 |
-| `-iname` | 按名称，不区分大小写 |
-| `-type f/d/l` | 文件/目录/链接 |
-| `-size +100M` | 大于100MiB |
-| `-mtime -1` | 24小时内修改 |
-| `-user USER` | 指定所有者 |
-| `-maxdepth N` | 限制递归深度 |
+| `%p` | 完整路径 |
+| `%f` | 文件名 |
+| `%s` | 字节数 |
+| `%u` | 所有者 |
+| `%m` | 八进制权限 |
+| `%TY-%Tm-%Td` | 修改日期 |
 
-对查找结果执行操作前先打印确认。相比拼接字符串，`-exec`能够更安全地处理空格：
+`-printf`是GNU find常用能力，Rocky Linux和Ubuntu均可使用。
+
+### 对查找结果执行命令
+
+先只打印，确认范围：
+
+```bash
+find ~/course-practice/m1/ch05 -type f -name '*.log' -print
+```
+
+确认无误后，再查看详细信息：
 
 ```bash
 find ~/course-practice/m1/ch05 -type f -name '*.log' -exec ls -lh {} \;
 ```
 
-## 5.4 查找命令位置
+`{}`代表当前找到的路径，`\;`表示每找到一个文件执行一次。若命令支持多个路径，可以用`+`批量执行，效率更高：
+
+```bash
+find ~/course-practice/m1/ch05 -type f -name '*.log' -exec ls -lh {} +
+```
+
+不要在尚未检查范围时把`-print`直接换成`-delete`或`-exec rm`。运维中的安全顺序是“先查找、再核对、后操作”。
+
+### find常用条件汇总
+
+| 条件 | 含义 |
+|---|---|
+| `-name '*.conf'` | 按名称，区分大小写 |
+| `-iname '*.CONF'` | 按名称，不区分大小写 |
+| `-type f`、`d`、`l` | 普通文件、目录、符号链接 |
+| `-size +10M` | 大于10MiB |
+| `-mmin -30` | 最近30分钟修改 |
+| `-mtime +7` | 超过7个完整的24小时未修改 |
+| `-user USER` | 所有者为指定用户 |
+| `-empty` | 空文件或空目录 |
+| `-maxdepth 2` | 最多向下搜索2层 |
+
+## 5.7 管道、标准流与重定向
+
+每个Linux进程通常具有三个标准流：
+
+| 编号 | 名称 | 默认位置 |
+|---|---|---|
+| `0` | 标准输入stdin | 键盘 |
+| `1` | 标准输出stdout | 终端 |
+| `2` | 标准错误stderr | 终端 |
+
+管道`|`只把左侧命令的**标准输出**交给右侧命令的标准输入。标准错误不会自动进入管道。
+
+### 用逐级缩小范围的方法构造管道
+
+第一步，查看全部日志：
+
+```bash
+cat logs/course-ch05.log
+```
+
+第二步，只保留异常：
+
+```bash
+grep -E 'WARN|ERROR' logs/course-ch05.log
+```
+
+第三步，只取异常级别：
+
+```bash
+grep -E 'WARN|ERROR' logs/course-ch05.log | cut -d' ' -f1
+```
+
+第四步，统计不同异常级别：
+
+```bash
+grep -E 'WARN|ERROR' logs/course-ch05.log | cut -d' ' -f1 | sort | uniq -c
+```
+
+第五步，按次数倒序：
+
+```bash
+grep -E 'WARN|ERROR' logs/course-ch05.log | cut -d' ' -f1 | sort | uniq -c | sort -nr
+```
+
+如果最终结果不对，应从第一步开始检查是哪一级首次出现偏差，而不是盲目修改整条命令。
+
+### 把输出保存到文件
+
+覆盖写入：
+
+```bash
+grep -E 'WARN|ERROR' logs/course-ch05.log > evidence/abnormal.log
+```
+
+查看保存结果：
+
+```bash
+cat evidence/abnormal.log
+```
+
+追加写入：
+
+```bash
+date >> evidence/abnormal.log
+```
+
+`>`会先清空目标文件，`>>`保留原内容并在末尾追加。执行前必须确认目标路径。
+
+### 同时显示并保存：tee
+
+```bash
+grep -E 'WARN|ERROR' logs/course-ch05.log | tee evidence/abnormal.log
+```
+
+`tee`把输入同时写到屏幕和文件。追加模式使用：
+
+```bash
+date | tee -a evidence/abnormal.log
+```
+
+### 单独处理错误输出
+
+故意访问不存在的路径：
+
+```bash
+ls /not-exist
+```
+
+只保存错误：
+
+```bash
+ls /not-exist 2> logs/command-error.log
+```
+
+```bash
+cat logs/command-error.log
+```
+
+丢弃查找时的权限错误：
+
+```bash
+find /var -type f -size +10M 2>/dev/null
+```
+
+把标准输出和标准错误保存到同一文件：
+
+```bash
+find /var -type f -size +10M > docs/large-files.txt 2>&1
+```
+
+| 符号 | 作用 |
+|---|---|
+| `|` | 把前一命令的标准输出交给后一命令 |
+| `>` | 覆盖标准输出到文件 |
+| `>>` | 追加标准输出到文件 |
+| `2>` | 覆盖标准错误到文件 |
+| `2>>` | 追加标准错误到文件 |
+| `2>&1` | 让标准错误去往当前标准输出的位置 |
+| `tee FILE` | 屏幕显示的同时覆盖写入文件 |
+| `tee -a FILE` | 屏幕显示的同时追加写入文件 |
+
+> **注意**：管道默认只报告最后一个命令的退出状态。Shell脚本中的`set -o pipefail`会在模块四系统学习，本章先通过逐级执行检查每一步。
+
+## 5.8 查找命令位置
+
+文件查找和命令查找不是同一件事：
 
 ```bash
 type ls
-command -v ls
-which ls
-whereis ls
 ```
 
-- `type`能识别别名、函数、内建命令和外部命令。
-- `command -v`适合脚本检查命令是否存在。
-- `whereis`可能同时显示程序、源码和手册位置。
-
-## 5.5 inode与链接
-
-文件名是目录中的记录，inode保存文件类型、权限、所有者、时间和数据块位置等元数据。
-
-继续打开[Linux目录树、路径与链接动画](../animations/02-linux-filesystem-paths-links/index.html)的“inode与链接”主题，先预测创建硬链接、创建软链接和删除原文件后的inode与可读性，再执行下面的真实命令。
+```bash
+type cd
+```
 
 ```bash
-mkdir -p ~/course-practice/m1/ch05/data/link-lab
-rm -f ~/course-practice/m1/ch05/data/link-lab/{origin,hard-link,soft-link}.txt
-echo 'important practice data' > ~/course-practice/m1/ch05/data/link-lab/origin.txt
-ls -li ~/course-practice/m1/ch05/data/link-lab/origin.txt
+command -v grep
+```
 
-ln ~/course-practice/m1/ch05/data/link-lab/origin.txt \
-  ~/course-practice/m1/ch05/data/link-lab/hard-link.txt
+```bash
+which grep
+```
+
+```bash
+whereis grep
+```
+
+- `type`能识别别名、函数、Shell内建命令和外部命令；
+- `command -v`适合确认Shell将执行哪个命令，也适合脚本检查依赖；
+- `which`通常在`PATH`中查找可执行文件；
+- `whereis`可能同时显示程序、源码和手册位置；
+- `find`从指定目录递归查找文件系统对象，范围和用途完全不同。
+
+## 5.9 inode与链接
+
+目录中保存“文件名到inode”的对应关系。inode记录文件类型、权限、所有者、时间和数据块位置等元数据，但不保存文件名本身。
+
+继续打开[Linux目录树、路径与链接动画](../animations/02-linux-filesystem-paths-links/index.html)的“inode与链接”主题，先预测创建硬链接、创建软链接和删除原文件后的inode与可读性，再执行真实命令。
+
+清理本章上一次链接练习残留：
+
+```bash
+rm -f ~/course-practice/m1/ch05/data/link-lab/origin.txt
+```
+
+```bash
+rm -f ~/course-practice/m1/ch05/data/link-lab/hard-link.txt
+```
+
+```bash
+rm -f ~/course-practice/m1/ch05/data/link-lab/soft-link.txt
+```
+
+创建原文件：
+
+```bash
+echo 'important practice data' > ~/course-practice/m1/ch05/data/link-lab/origin.txt
+```
+
+```bash
+ls -li ~/course-practice/m1/ch05/data/link-lab/origin.txt
+```
+
+创建硬链接：
+
+```bash
+ln ~/course-practice/m1/ch05/data/link-lab/origin.txt ~/course-practice/m1/ch05/data/link-lab/hard-link.txt
+```
+
+创建相对路径符号链接：
+
+```bash
 ln -s origin.txt ~/course-practice/m1/ch05/data/link-lab/soft-link.txt
+```
+
+```bash
 ls -li ~/course-practice/m1/ch05/data/link-lab/*.txt
 ```
 
 | 特性 | 硬链接 | 符号链接 |
 |---|---|---|
 | inode | 与原文件相同 | 拥有自己的inode |
+| 保存内容 | 同一inode的另一个名称 | 目标路径字符串 |
 | 跨文件系统 | 通常不可以 | 可以 |
-| 链接目录 | 通常禁止 | 可以 |
-| 删除原文件后 | 数据仍可访问 | 链接失效 |
-| 保存内容 | 指向同一inode | 保存目标路径 |
+| 链接目录 | 普通用户通常不可以 | 可以 |
+| 删除原文件名后 | 数据仍可访问 | 链接失效 |
 
-验证：
+删除原文件名：
 
 ```bash
 rm ~/course-practice/m1/ch05/data/link-lab/origin.txt
+```
+
+验证硬链接：
+
+```bash
 cat ~/course-practice/m1/ch05/data/link-lab/hard-link.txt
+```
+
+验证符号链接：
+
+```bash
 cat ~/course-practice/m1/ch05/data/link-lab/soft-link.txt
 ```
 
-符号链接适合把稳定路径指向不同版本，例如`current -> releases/v2`。硬链接不能替代备份，因为对同一inode的内容修改会同时体现。
+最后一条预期报告“没有那个文件或目录”。这不是实验失败，而是软链接目标已经消失。硬链接不能替代备份，因为它仍然指向同一份数据块；内容被误改时，所有硬链接读到的都是修改后的内容。
 
-## 5.6 管道与重定向入门
+## 5.10 综合任务
 
-```bash
-ps aux | less
-find /var/log -type f | wc -l
-ls -lah ~/course-practice/m1/ch05 > ~/course-practice/m1/ch05/docs/files.txt
-date >> ~/course-practice/m1/ch05/docs/files.txt
-ls /not-exist 2> ~/course-practice/m1/ch05/logs/command-error.log
-```
+### 本章短练习：提交真实日志与文件审计结果
 
-| 符号 | 含义 |
-|---|---|
-| `|` | 把前一命令标准输出交给后一命令 |
-| `>` | 覆盖写入文件 |
-| `>>` | 追加写入文件 |
-| `2>` | 重定向标准错误 |
+### 任务情境
 
-### 本章短练习：提交文件审计结果
+运维人员需要提交一份主机基础审计证据，回答以下问题：
 
-项目经理要求提交一次文件审计：
+1. 本次课程日志中有哪些WARN和ERROR？
+2. WARN与ERROR各有多少条？
+3. 当前主机使用了哪些登录Shell，各有多少账号？
+4. `/etc`前两层中有哪些`.conf`文件？
+5. 本章练习目录中哪些文件最大？
 
-1. 找出`/etc`下前20个`.conf`文件。
-2. 找出`/var`下大于10MiB的文件，不显示权限错误。
-3. 从项目日志中提取包含`WARN`或`ERROR`的行。
-4. 解释删除源文件后硬链接仍可读、软链接失效的原因。
-5. 将以上查找命令和结果整理到`~/course-practice/m1/ch05/docs/find-result.txt`。
+所有结果必须来自真实命令，不手工填写统计数字。
 
-验收：
+### 步骤1：再次确认输入
 
 ```bash
-test -s ~/course-practice/m1/ch05/docs/find-result.txt
-grep -E 'WARN|ERROR' ~/course-practice/m1/ch05/logs/app.log
-ls -l ~/course-practice/m1/ch05/data/link-lab
+test -s ~/course-practice/m1/ch05/logs/course-ch05.log
 ```
 
-### 实验衔接：实验3前半部分
+```bash
+echo $?
+```
 
-实验3会使用实验2保留的`~/m1-project/config/app.conf`完成真实配置查找和链接任务。本章短练习目录只用于掌握方法，不复制到正式项目。
+只有返回`0`才继续。
+
+### 步骤2：保存异常日志
+
+先在屏幕验证：
+
+```bash
+grep -nE 'WARN|ERROR' ~/course-practice/m1/ch05/logs/course-ch05.log
+```
+
+再显示并保存：
+
+```bash
+grep -nE 'WARN|ERROR' ~/course-practice/m1/ch05/logs/course-ch05.log | tee ~/course-practice/m1/ch05/evidence/abnormal-lines.txt
+```
+
+### 步骤3：统计异常级别
+
+先验证提取结果：
+
+```bash
+grep -E 'WARN|ERROR' ~/course-practice/m1/ch05/logs/course-ch05.log | cut -d' ' -f1
+```
+
+再完成排序、计数和保存：
+
+```bash
+grep -E 'WARN|ERROR' ~/course-practice/m1/ch05/logs/course-ch05.log | cut -d' ' -f1 | sort | uniq -c | sort -nr | tee ~/course-practice/m1/ch05/evidence/abnormal-count.txt
+```
+
+### 步骤4：统计账号Shell
+
+先确认字段：
+
+```bash
+cut -d: -f7 /etc/passwd | sort | uniq -c
+```
+
+再排序并保存：
+
+```bash
+cut -d: -f7 /etc/passwd | sort | uniq -c | sort -nr | tee ~/course-practice/m1/ch05/evidence/login-shell-count.txt
+```
+
+### 步骤5：查找配置文件
+
+先确认范围：
+
+```bash
+find /etc -maxdepth 2 -type f -name '*.conf' 2>/dev/null
+```
+
+排序、取前20项并保存：
+
+```bash
+find /etc -maxdepth 2 -type f -name '*.conf' 2>/dev/null | sort | head -n 20 | tee ~/course-practice/m1/ch05/evidence/etc-conf-top20.txt
+```
+
+### 步骤6：按大小审计本章文件
+
+先输出字节数和路径：
+
+```bash
+find ~/course-practice/m1/ch05 -type f -printf '%s %p\n'
+```
+
+按数字倒序并保存：
+
+```bash
+find ~/course-practice/m1/ch05 -type f ! -name 'ch05-files-by-size.txt' -printf '%s %p\n' | sort -nr | tee ~/course-practice/m1/ch05/evidence/ch05-files-by-size.txt
+```
+
+### 验收
+
+```bash
+find ~/course-practice/m1/ch05/evidence -maxdepth 1 -type f -size +0c -printf '%f\n' | sort
+```
+
+应至少看到：
+
+- `abnormal-lines.txt`；
+- `abnormal-count.txt`；
+- `login-shell-count.txt`；
+- `etc-conf-top20.txt`；
+- `ch05-files-by-size.txt`。
+
+随机抽查证据内容：
+
+```bash
+cat ~/course-practice/m1/ch05/evidence/abnormal-count.txt
+```
+
+```bash
+head -n 5 ~/course-practice/m1/ch05/evidence/etc-conf-top20.txt
+```
+
+### 思考题
+
+1. 为什么`uniq -c`之前通常需要`sort`？
+2. 为什么`grep -c`和`grep | wc -l`都能统计，但适用范围不同？
+3. 为什么`find -name '*.conf'`中的通配符需要单引号？
+4. 为什么`2>/dev/null`只隐藏错误，不能解决权限问题本身？
+5. 如果一个长管道结果错误，为什么应逐级查看中间结果？
+
+## 实验衔接：实验3前半部分
+
+实验3继续使用实验2保留的`~/m1-project`，对真实项目配置和日志执行内容筛选、数量统计、属性查找与证据保存，然后完成链接、归档和恢复。本章目录用于方法练习，实验3目录用于项目成果，二者不要混用。
 
 ---
 
@@ -1537,29 +2351,16 @@ ls -l ~/course-practice/m1/ch05/data/link-lab
 
 ### 操作素材准备
 
-本章不修改实验2的正式项目，先建立可重复练习的配置和文档：
+本章不修改实验2的正式项目。先只建立章节目录，不提前用大段Shell命令生成练习内容：
 
 ```bash
-mkdir -p ~/course-practice/m1/ch06/{config,backup,docs}
-cat > ~/course-practice/m1/ch06/README.md <<'EOF'
-# 配置归档练习
-
-- 主机：rocky-server
-- 状态：初始化中
-EOF
-cat > ~/course-practice/m1/ch06/config/app.conf <<'EOF'
-server_name=training.local
-port=8080
-mode=development
-EOF
-touch ~/course-practice/m1/ch06/docs/directory-plan.md
+mkdir -p ~/course-practice/m1/ch06
+mkdir ~/course-practice/m1/ch06/config
+mkdir ~/course-practice/m1/ch06/backup
+mkdir ~/course-practice/m1/ch06/docs
 ```
 
-验证三个输入文件均已创建：
-
-```bash
-find ~/course-practice/m1/ch06 -maxdepth 2 -type f -printf '%P\n' | sort
-```
+说明文件和配置文件将在掌握vim最小操作闭环后逐个创建。
 
 ## 6.1 为什么需要文本编辑器
 
@@ -1593,12 +2394,6 @@ vim具有模式概念：
 
 ## 6.2 vim基本操作
 
-打开文件：
-
-```bash
-vim ~/course-practice/m1/ch06/README.md
-```
-
 普通模式常用操作：
 
 | 按键 | 功能 |
@@ -1629,6 +2424,8 @@ vim ~/course-practice/m1/ch06/README.md
 | `:q` | 退出 |
 | `:wq` | 保存并退出 |
 | `:q!` | 放弃未保存修改 |
+
+第一次使用vim时，只要求掌握“按`i`输入、按`Esc`返回、输入`:wq`保存退出”这一最小闭环。然后用vim逐个创建`README.md`和`config/app.conf`，不要使用尚未学习的多行Shell重定向代替编辑过程。文件正文和逐条步骤以学习通分章教材1.6为准。
 
 搜索替换：
 
@@ -1683,16 +2480,9 @@ find "$restore_dir" -maxdepth 3 -print
 
 不要盲目以root身份解开来源不明的归档文件。归档中可能包含绝对路径、特殊权限或覆盖目标文件的内容。
 
-## 6.4 zip与unzip
+## 6.4 zip与unzip（拓展阅读）
 
-```bash
-sudo dnf install -y zip unzip
-(cd "$HOME/course-practice/m1" && zip -r "$HOME/course-practice/m1/ch06.zip" ch06)
-unzip -l "$HOME/course-practice/m1/ch06.zip"
-zip_restore=$(mktemp -d "$HOME/course-practice/m1/ch06-zip-restore.XXXXXX")
-unzip "$HOME/course-practice/m1/ch06.zip" -d "$zip_restore"
-echo "$zip_restore"
-```
+ZIP主要用于与Windows用户交换文件。本章只要求识别`zip -r`、`unzip -l`和`unzip -d`，不作为实验3必做内容；课堂实操优先完成tar归档、隔离恢复和内容比较。
 
 ## 6.5 备份必须验证恢复
 
@@ -1719,13 +2509,11 @@ diff -ru "$HOME/course-practice/m1/ch06" "$restore_dir/ch06"
 项目工单要求：
 
 1. 使用vim把`README.md`中的状态改为“基础文件已整理”。
-2. 使用vim完成`docs/directory-plan.md`。
-3. 创建`docs/initialization-record.md`，至少记录当前DHCP地址、网关、DNS、目录规划和当前日期；固定IP将在实验8配置。
-4. 使用搜索与替换确认文档中的主机名统一为`rocky-server`。
-5. 修改完成后重新创建一份新归档，不复用6.3节修改前的演示归档。
-6. 把新归档恢复到新的空目录，使用`diff -ru`验证。
+2. 使用vim完成`docs/directory-plan.md`，写出三个子目录的用途。
+3. 修改完成后重新创建一份新归档，不复用6.3节修改前的演示归档。
+4. 把新归档恢复到新的空目录，使用`diff -ru`验证。
 
-完成第1—4项后执行下面的交付命令：
+完成第1—2项后执行下面的交付命令：
 
 ```bash
 archive="$HOME/course-practice/m1/ch06-final-$(date +%F-%H%M%S).tar.gz"
@@ -2081,6 +2869,8 @@ getfacl /srv/course-share /srv/course-share/project.conf
 
 ACL输出中的`group:project-audit`表示额外授予审计组权限。设置ACL后仍要用实际账号验证，不能只看配置文件。
 
+该规则只覆盖当前目录和已经存在的`project.conf`，不会自动应用到以后新建的文件。实验4只验收审计员对当前项目配置的只读访问；默认ACL作为课后拓展，不占用本次4课时实验。
+
 ### SUID
 
 SUID可使可执行文件以文件所有者的有效身份运行，风险较高。本模块只要求识别：
@@ -2193,13 +2983,13 @@ sudo visudo -c
 
 ### 本章短练习：编写最小授权草案
 
-假设`juniorops`需要查询Nginx是否正在运行，但不允许查看任意服务详情、重启服务、创建用户、安装软件或执行任意root命令。本练习只在个人目录编写草案，不修改`/etc/sudoers.d/`。
+假设`juniorops`需要查询系统已有的chronyd服务是否正在运行，但不允许查看任意服务详情、重启服务、创建用户、安装软件或执行任意root命令。本练习只在个人目录编写草案，不修改`/etc/sudoers.d/`。
 
 ```bash
 mkdir -p ~/course-practice/m1/ch09
 command -v systemctl
 printf '%s\n' \
-  'juniorops ALL=(root) NOPASSWD: /usr/bin/systemctl is-active nginx' \
+  'juniorops ALL=(root) NOPASSWD: /usr/bin/systemctl is-active chronyd' \
   > ~/course-practice/m1/ch09/course-juniorops.draft
 cat ~/course-practice/m1/ch09/course-juniorops.draft
 ```
@@ -2207,7 +2997,7 @@ cat ~/course-practice/m1/ch09/course-juniorops.draft
 草案使用绝对命令路径，是因为sudo要匹配被授权的具体程序。若`command -v systemctl`显示的路径不同，应将草案中的路径改为实际结果。回答下面三个问题：
 
 1. 规则中的主体用户、目标身份、程序和参数分别是什么？
-2. 为什么不能把`status nginx`写成任意参数？
+2. 为什么不能把`is-active chronyd`放宽成任意参数？
 3. 为什么不能直接授予`ALL`？
 
 检查草案非空且只包含一条授权规则：
@@ -2227,17 +3017,17 @@ wc -l ~/course-practice/m1/ch09/course-juniorops.draft
 ```bash
 sudo visudo -cf /etc/sudoers.d/course-juniorops
 sudo -l -U juniorops
-sudo -u juniorops sudo /usr/bin/systemctl is-active nginx
-sudo -u juniorops sudo /usr/bin/systemctl restart nginx
+sudo -u juniorops sudo /usr/bin/systemctl is-active chronyd
+sudo -u juniorops sudo /usr/bin/systemctl restart chronyd
 printf 'restart_exit_code=%s\n' "$?"
 ```
 
-如果尚未安装Nginx，`is-active nginx`可能输出`unknown`或`inactive`并返回非0，但命令没有出现sudo拒绝信息，说明授权匹配；`restart nginx`必须被sudo拒绝。使用`is-active`还避免把可能调用交互式分页器的`status`命令纳入免密授权。
+Rocky Linux 9课程镜像中的chronyd预期为`active`；若不是，应先排查服务基线，不能把服务故障误判为sudo授权故障。`restart chronyd`必须被sudo拒绝。
 
 ## 9.4 NOPASSWD风险
 
 ```sudoers
-juniorops ALL=(root) NOPASSWD: /usr/bin/systemctl restart nginx
+juniorops ALL=(root) NOPASSWD: /usr/bin/systemctl restart chronyd
 ```
 
 `NOPASSWD`适合明确且受控的自动化命令，但会降低再次认证保护。不要写成：
@@ -2339,9 +3129,10 @@ tree --version
 
 ```bash
 dnf check-update
-sudo dnf upgrade
 dnf history
 ```
+
+全系统升级命令为`sudo dnf upgrade`，本课程只要求识别，不在普通课堂实验中统一执行。
 
 `dnf check-update`发现存在可更新软件包时会返回退出码100，这表示“有更新”，不是普通故障；返回0表示没有可用更新。脚本不能把所有非0状态都简单解释为失败。
 
@@ -2364,19 +3155,15 @@ sudo apt remove tree
 
 Ubuntu 22.04采用合并后的`/usr`目录布局时，`/bin`与`/usr/bin`之间可能存在兼容符号链接。`dpkg -S`按包数据库记录的路径查询，不应假定`/usr/bin/ls`一定是数据库中的原始路径；查询刚安装且路径明确的`tree`更稳定。
 
-`apt update`只更新本地软件索引，不等于升级已安装软件。升级软件使用：
-
-```bash
-sudo apt upgrade
-```
+`apt update`只更新本地软件索引，不等于升级已安装软件。全系统升级命令为`sudo apt upgrade`，本课程只要求识别，不在普通课堂实验中统一执行。
 
 Ubuntu 22.04 Desktop的软件源通常位于`/etc/apt/sources.list`，APT操作记录可在`/var/log/dpkg.log`等位置查看。
 
 交互操作可以使用`apt`；非交互脚本通常更适合使用`apt-get`，并明确处理失败状态。
 
-## 10.4 配置国内镜像源并验证回退
+## 10.4 配置国内镜像源并验证回退（参考操作）
 
-本节涉及系统软件源修改，用于解释“备份—修改—刷新—验证—回退”的完整方法。课堂短练习只做查询和事务预演；实际换源必须在教师确认镜像地址与机房网络可用后，按实验1或实验5执行，不能把不同版本的仓库配置混用。
+本节用于解释“备份—修改—刷新—验证—回退”的完整方法，不是实验5必做步骤。只有课程初始源失效，并且教师确认镜像地址与机房网络可用时才执行，不能把不同版本的仓库配置混用。
 
 第2章为了保证后续命令可安装，已经完成一次国内镜像初始化。本节从包管理角度重新检查其原理、配置、验证和回退，不要求重复创建另一套仓库。镜像源不是“复制一段命令就结束”，完整操作必须包含版本确认、原配置备份、修改、刷新缓存、安装验证和回退验证。以下以阿里云公开镜像为例；若课程环境统一使用清华镜像，应使用镜像站针对当前发行版生成的配置，不能混用其他版本代号。
 
@@ -2652,92 +3439,30 @@ journalctl -u chronyd -f
 
 服务启动失败时不要反复restart。先读取`systemctl status`和`journalctl -u`给出的首个有效错误。
 
-## 11.6 创建简单服务
+## 11.6 读懂简单服务
 
-### 本章短练习：创建、排错并清理临时服务
+### 本章短练习：分析Unit并预测结果
 
-本练习使用独立名称`course-heartbeat.service`，不依赖实验6的`course-demo.service`。开始前检查是否有上次未清理的同名对象：
+完整的服务创建、故障注入和恢复放在实验6完成。本章只分析一个Unit，不在系统中创建第二套临时服务：
 
-```bash
-systemctl status course-heartbeat.service --no-pager
-ls -l /usr/local/bin/course-heartbeat.sh \
-  /etc/systemd/system/course-heartbeat.service
-```
-
-两个对象都不存在时可以继续；若存在，应先确认它们是上次本章练习的残留，再执行本节末尾的清理步骤。不要覆盖来源不明的同名服务。
-
-创建脚本：
-
-```bash
-sudo tee /usr/local/bin/course-heartbeat.sh <<'SCRIPT'
-#!/bin/bash
-while true; do
-  echo "heartbeat host=$(hostname) time=$(date -Iseconds)"
-  sleep 10
-done
-SCRIPT
-sudo chmod 755 /usr/local/bin/course-heartbeat.sh
-```
-
-创建Unit：
-
-```bash
-sudo tee /etc/systemd/system/course-heartbeat.service <<'UNIT'
+```ini
 [Unit]
-Description=Course heartbeat example
+Description=Course demo service
 After=network.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/course-heartbeat.sh
+ExecStart=/usr/bin/python3 -m http.server 8088 --bind 127.0.0.1 --directory /home/student/m1-project/systemd/site
 Restart=on-failure
-User=nobody
+User=student
 
 [Install]
 WantedBy=multi-user.target
-UNIT
 ```
 
-加载和验证：
+阅读后应能指出`ExecStart`的程序与参数、`After`的启动顺序含义、`Restart`策略，以及`WantedBy`与当前运行状态的区别。先用`command -v python3`和`test -d ~/m1-project`检查前置对象；实验6会创建`systemd/site`专用站点目录。示例用户名及家目录`student`必须在实验6中替换为实际账号，不要直接复制后启动。
 
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable --now course-heartbeat
-systemctl status course-heartbeat --no-pager
-journalctl -u course-heartbeat -n 10
-systemctl show course-heartbeat -p MainPID -p User -p ActiveState
-```
-
-修改Unit后必须执行`daemon-reload`。修改脚本内容不一定需要reload，但需要restart服务才能重新启动脚本进程。
-
-制造一次故障：
-
-```bash
-sudo chmod 644 /usr/local/bin/course-heartbeat.sh
-sudo systemctl restart course-heartbeat
-systemctl status course-heartbeat --no-pager
-journalctl -u course-heartbeat -n 20 --no-pager
-```
-
-修复：
-
-```bash
-sudo chmod 755 /usr/local/bin/course-heartbeat.sh
-sudo systemctl restart course-heartbeat
-systemctl is-active course-heartbeat
-```
-
-清理：
-
-```bash
-sudo systemctl disable --now course-heartbeat
-sudo rm -f /etc/systemd/system/course-heartbeat.service
-sudo rm -f /usr/local/bin/course-heartbeat.sh
-sudo systemctl daemon-reload
-systemctl status course-heartbeat.service --no-pager
-```
-
-最后一次`status`应提示找不到该Unit或返回非0，两个文件也应不存在。本练习不向`~/m1-project`写入成果。
+修改已安装的Unit后需要执行`systemctl daemon-reload`，但它只让systemd重新读取配置，并不会自动重启服务。
 
 ### 服务排障流程
 
@@ -2752,17 +3477,33 @@ systemctl status
 
 ### 实验衔接：实验6
 
-实验6使用新的`course-demo.service`完成更完整的项目任务：先建立脚本与Unit，再比较active/enabled，制造`ExecStart`路径错误，保存日志证据并恢复。不要把已经清理的`course-heartbeat.service`当作实验6成果。
+实验6使用`course-demo.service`完成本章唯一一次完整实操：建立Unit，比较active/enabled，使用curl验证功能，制造`ExecStart`路径错误，保存日志证据并恢复。教材示例只用于阅读和预测，所有系统修改以实验6步骤为准。
 
 ---
 
 # 第12章 系统状态、进程、磁盘与容量
 
+## 本章学习目标
+
+完成本章后，应能够：
+
+1. 读取负载、CPU、内存、进程、磁盘空间和inode等状态。
+2. 区分磁盘、分区、文件系统、挂载点和目录容量。
+3. 在确认空白实验盘后创建分区、XFS文件系统并完成临时和持久挂载。
+4. 说明PV、VG、LV、文件系统和挂载点的层次，完成逻辑卷创建与在线扩容。
+5. 逐条采集证据并形成包含判断依据的系统健康摘要。
+
 ## 12.1 CPU与系统负载
 
 ```bash
 uptime
+```
+
+```bash
 nproc
+```
+
+```bash
 top
 ```
 
@@ -2789,6 +3530,9 @@ top
 
 ```bash
 free -h
+```
+
+```bash
 ps aux --sort=-%mem | head
 ```
 
@@ -2800,13 +3544,31 @@ ps aux --sort=-%mem | head
 
 ```bash
 command -v ps
-command -v pstree || sudo dnf install -y psmisc
+```
+
+```bash
+command -v pstree
+```
+
+如果没有输出，再安装提供`pstree`的工具包：
+
+```bash
+sudo dnf install -y psmisc
 ```
 
 ```bash
 ps aux
+```
+
+```bash
 ps -ef
+```
+
+```bash
 pgrep -a sshd
+```
+
+```bash
 pstree -p
 ```
 
@@ -2824,11 +3586,26 @@ pstree -p
 
 ```bash
 sleep 300 &
-TEST_PID=$!
-ps -p "$TEST_PID" -o pid,stat,cmd
-kill "$TEST_PID"
-wait "$TEST_PID" 2>/dev/null || true
-ps -p "$TEST_PID" || echo 'test process stopped'
+```
+
+Shell会显示类似`[1] 2345`的结果，其中`2345`是本次练习进程PID。把实际数字记录下来。
+
+先按下面格式查看进程，中文占位说明必须替换为刚记录的PID：
+
+```text
+ps -p 实际PID -o pid,stat,cmd
+```
+
+确认命令显示的是`sleep 300`后，再按格式发送正常终止信号：
+
+```text
+kill 实际PID
+```
+
+最后再次执行查询。没有显示该PID，表示进程已经结束：
+
+```text
+ps -p 实际PID -o pid,stat,cmd
 ```
 
 只有进程无法正常退出并确认影响后，才考虑：
@@ -2856,8 +3633,17 @@ kill -9 实际PID
 
 ```bash
 lsblk -o NAME,TYPE,SIZE,FSTYPE,FSAVAIL,FSUSE%,MOUNTPOINTS
+```
+
+```bash
 findmnt
+```
+
+```bash
 findmnt /
+```
+
+```bash
 sudo blkid
 ```
 
@@ -2867,29 +3653,447 @@ sudo blkid
 物理卷PV → 卷组VG → 逻辑卷LV → 文件系统 → 挂载点
 ```
 
-本模块只要求识别：
+查看LVM结构：
 
 ```bash
-command -v pvs || sudo dnf install -y lvm2
+command -v pvs
+```
+
+如果没有输出，再安装LVM管理工具：
+
+```bash
+sudo dnf install -y lvm2
+```
+
+```bash
 sudo pvs
+```
+
+```bash
 sudo vgs
+```
+
+```bash
 sudo lvs
 ```
 
-不要在不了解存储结构时执行扩容、缩容或格式化命令。
+仅会查看还不足以承担基础运维工作。本课程要求在实验7提供的空白虚拟磁盘上完成下面这条最小能力链：
+
+```text
+识别空白磁盘
+→ 创建GPT分区
+→ 创建XFS文件系统
+→ 临时挂载并验证读写
+→ 使用UUID配置/etc/fstab
+→ 创建PV、VG和LV
+→ 创建并挂载逻辑卷文件系统
+→ 扩展LV和XFS
+→ 重启验证
+```
+
+不要求学习RAID、LUKS、LVM快照、thin pool、条带卷或缩容。
+
+### 1. 存储操作的安全边界
+
+分区、格式化、`pvcreate`都会改变磁盘结构。执行前必须同时确认：
+
+1. 当前位于`rocky-server`，并已建立实验前快照。
+2. VMware已经为该虚拟机增加一块8GiB空白实验盘。
+3. 系统盘与根文件系统不在准备操作的磁盘上。
+4. 课程标准实验盘为`/dev/sdb`；如果实际名称不同，停止并由教师确认，不能自行把命令中的设备名改成猜测值。
+
+列出整块磁盘，不显示分区：
+
+```bash
+lsblk -dpno NAME,SIZE,TYPE,MODEL
+```
+
+确认根文件系统来自哪个设备：
+
+```bash
+findmnt -no SOURCE /
+```
+
+查看`/dev/sdb`是否已有文件系统或签名，但不修改它：
+
+```bash
+sudo wipefs -n /dev/sdb
+```
+
+查看现有分区表：
+
+```bash
+sudo parted /dev/sdb print
+```
+
+如果`/dev/sdb`已挂载、已有需要保留的数据、容量不是教师规定值，或者根文件系统位于该磁盘，立即停止。
+
+### 2. 创建普通分区和XFS文件系统
+
+实验7把8GiB空白盘分成两个区域：
+
+```text
+/dev/sdb1：约2GiB，普通XFS文件系统，挂载到/data
+/dev/sdb2：剩余空间，作为LVM物理卷
+```
+
+安装所需工具：
+
+```bash
+sudo dnf install -y parted lvm2 xfsprogs
+```
+
+在已经完成安全确认的空白盘上建立GPT分区表：
+
+```bash
+sudo parted -s /dev/sdb mklabel gpt
+```
+
+创建约2GiB普通分区：
+
+```bash
+sudo parted -s /dev/sdb mkpart data xfs 1MiB 2049MiB
+```
+
+使用剩余空间创建LVM分区：
+
+```bash
+sudo parted -s /dev/sdb mkpart lvm 2049MiB 100%
+```
+
+为第2分区设置LVM标志：
+
+```bash
+sudo parted -s /dev/sdb set 2 lvm on
+```
+
+通知内核重新读取分区表：
+
+```bash
+sudo partprobe /dev/sdb
+```
+
+```bash
+sudo udevadm settle
+```
+
+核对结果：
+
+```bash
+lsblk -o NAME,TYPE,SIZE,FSTYPE,MOUNTPOINTS /dev/sdb
+```
+
+只有看到`sdb1`和`sdb2`后才继续。为普通分区创建XFS：
+
+```bash
+sudo mkfs.xfs -L DATA /dev/sdb1
+```
+
+`mkfs`创建的是文件系统，会覆盖目标分区上的原有文件系统信息。因此它只能作用于已确认的实验分区。
+
+### 3. 临时挂载、验证与卸载
+
+创建挂载点：
+
+```bash
+sudo mkdir -p /data
+```
+
+临时挂载：
+
+```bash
+sudo mount /dev/sdb1 /data
+```
+
+确认“设备—文件系统—挂载点”关系：
+
+```bash
+findmnt /data
+```
+
+```bash
+df -hT /data
+```
+
+写入测试文件：
+
+```bash
+echo 'ordinary mount works' | sudo tee /data/mount-test.txt
+```
+
+读取验证：
+
+```bash
+cat /data/mount-test.txt
+```
+
+卸载前不能让终端当前目录停留在`/data`中。先返回主目录：
+
+```bash
+cd ~
+```
+
+卸载：
+
+```bash
+sudo umount /data
+```
+
+验证已经卸载：
+
+```bash
+findmnt /data
+```
+
+没有输出表示当前未挂载。卸载只解除访问关系，不会删除文件系统中的测试文件。
+
+### 4. 使用UUID配置持久挂载
+
+手工`mount`只在本次运行期间有效。持久挂载需要配置`/etc/fstab`。
+
+修改前备份：
+
+```bash
+sudo cp -a /etc/fstab /etc/fstab.before-storage-lab
+```
+
+读取普通分区UUID：
+
+```bash
+sudo blkid /dev/sdb1
+```
+
+编辑：
+
+```bash
+sudo vim /etc/fstab
+```
+
+根据实际UUID增加一行，不能照抄`实际UUID`四个字：
+
+```text
+UUID=实际UUID  /data  xfs  defaults  0  0
+```
+
+六个字段依次表示：设备、挂载点、文件系统类型、挂载选项、dump标志和文件系统检查顺序。
+
+先做语法和引用检查：
+
+```bash
+sudo findmnt --verify --verbose
+```
+
+再让系统按`fstab`挂载：
+
+```bash
+sudo mount -a
+```
+
+验证挂载和原测试文件：
+
+```bash
+findmnt /data
+```
+
+```bash
+cat /data/mount-test.txt
+```
+
+只有`findmnt --verify`和`mount -a`都没有错误时，才允许重启。配置错误时先恢复备份：
+
+```bash
+sudo cp -a /etc/fstab.before-storage-lab /etc/fstab
+```
+
+### 5. 创建PV、VG和LV
+
+LVM的层次不能省略：
+
+```text
+/dev/sdb2分区
+→ PV物理卷
+→ vg_data卷组
+→ lv_app逻辑卷
+→ XFS文件系统
+→ /srv/appdata挂载点
+```
+
+把第2分区初始化为PV：
+
+```bash
+sudo pvcreate /dev/sdb2
+```
+
+创建卷组：
+
+```bash
+sudo vgcreate vg_data /dev/sdb2
+```
+
+查看卷组总量和剩余空间：
+
+```bash
+sudo vgs
+```
+
+创建2GiB逻辑卷：
+
+```bash
+sudo lvcreate -L 2G -n lv_app vg_data
+```
+
+核对每个层次及其底层设备：
+
+```bash
+sudo pvs
+```
+
+```bash
+sudo vgs
+```
+
+```bash
+sudo lvs -o lv_name,vg_name,lv_size,devices
+```
+
+### 6. 为逻辑卷创建文件系统并持久挂载
+
+逻辑卷创建完成后仍不能直接保存普通文件，必须先创建文件系统：
+
+```bash
+sudo mkfs.xfs -L APPDATA /dev/vg_data/lv_app
+```
+
+```bash
+sudo mkdir -p /srv/appdata
+```
+
+```bash
+sudo mount /dev/vg_data/lv_app /srv/appdata
+```
+
+```bash
+echo 'lvm mount works' | sudo tee /srv/appdata/lvm-test.txt
+```
+
+读取逻辑卷文件系统UUID：
+
+```bash
+sudo blkid /dev/vg_data/lv_app
+```
+
+再次编辑`/etc/fstab`，按实际UUID增加：
+
+```text
+UUID=逻辑卷文件系统的实际UUID  /srv/appdata  xfs  defaults  0  0
+```
+
+验证配置：
+
+```bash
+sudo findmnt --verify --verbose
+```
+
+```bash
+sudo mount -a
+```
+
+```bash
+findmnt /srv/appdata
+```
+
+### 7. 扩展逻辑卷与XFS
+
+扩容前先记录两层容量：
+
+```bash
+sudo lvs /dev/vg_data/lv_app
+```
+
+```bash
+df -hT /srv/appdata
+```
+
+先把LV扩大1GiB：
+
+```bash
+sudo lvextend -L +1G /dev/vg_data/lv_app
+```
+
+此时块设备已经变大，但已挂载XFS还需要扩展：
+
+```bash
+sudo xfs_growfs /srv/appdata
+```
+
+重新检查两层容量：
+
+```bash
+sudo lvs /dev/vg_data/lv_app
+```
+
+```bash
+df -hT /srv/appdata
+```
+
+确认原文件仍可读取：
+
+```bash
+cat /srv/appdata/lvm-test.txt
+```
+
+`lvextend`扩展的是逻辑卷，`xfs_growfs`扩展的是文件系统。只完成前一步，`lvs`可能显示容量已经增加，但`df`仍看不到可用空间增加。
+
+### 8. 本课程的LVM边界
+
+必须掌握：
+
+- PV、VG、LV、文件系统、挂载点的关系；
+- `pvcreate`、`vgcreate`、`lvcreate`；
+- `pvs`、`vgs`、`lvs`；
+- 在卷组有空闲空间时扩展LV与XFS；
+- 使用UUID持久挂载并在重启前验证。
+
+只要求了解：
+
+- `lvextend -r`可以尝试同时扩展LV与文件系统；
+- 新增磁盘后可以通过`vgextend`为卷组增加PV。
+
+本课程不做：
+
+- XFS缩容，因为XFS不支持直接缩小；
+- 在包含正式数据的卷上练习缩容；
+- RAID、LUKS、LVM快照和thin pool。
+
+执行存储修改的原则是：先识别层次和设备，再备份配置，修改后逐层验证，不在不明确的设备上尝试命令。
 
 ## 12.5 磁盘空间与inode
 
 后面的“已删除但仍被占用文件”检查需要`lsof`：
 
 ```bash
-command -v lsof || sudo dnf install -y lsof
+command -v lsof
+```
+
+如果没有输出，再安装`lsof`：
+
+```bash
+sudo dnf install -y lsof
 ```
 
 ```bash
 df -h
+```
+
+```bash
 df -i
+```
+
+```bash
 sudo du -sh /var/log
+```
+
+```bash
 sudo du -xhd1 /var | sort -h
 ```
 
@@ -2909,6 +4113,9 @@ sudo lsof +L1
 
 ```bash
 ss -lntup
+```
+
+```bash
 ss -tan state established
 ```
 
@@ -2927,36 +4134,87 @@ ss -tan state established
 
 ### 本章短练习：采集并解释系统状态
 
-本练习只采集状态，不制造负载、不终止进程，也不修改服务。先创建本章独立目录，再生成摘要：
+本练习只采集状态，不制造负载、不终止进程，也不修改服务。先创建本章独立目录：
 
 ```bash
 mkdir -p ~/course-practice/m1/ch12
-{
-    printf '=== identity ===\n'
-    date -Iseconds
-    hostname
-    printf '\n=== load and memory ===\n'
-    uptime
-    nproc
-    free -h
-    printf '\n=== top processes ===\n'
-    ps -eo pid,user,stat,%cpu,%mem,comm --sort=-%cpu | head -10
-    printf '\n=== storage ===\n'
-    lsblk -o NAME,TYPE,SIZE,FSTYPE,MOUNTPOINTS
-    df -hT
-    df -i
-    printf '\n=== failed services ===\n'
-    systemctl --failed --no-pager
-    printf '\n=== listening ports ===\n'
-    ss -lntup
-} > ~/course-practice/m1/ch12/status-summary.txt
+```
+
+先把采集时间写入摘要文件。第一条使用`>`创建或覆盖文件：
+
+```bash
+date -Iseconds > ~/course-practice/m1/ch12/status-summary.txt
+```
+
+后续命令全部使用`>>`追加，避免覆盖已有结果：
+
+```bash
+hostname >> ~/course-practice/m1/ch12/status-summary.txt
+```
+
+```bash
+uptime >> ~/course-practice/m1/ch12/status-summary.txt
+```
+
+```bash
+nproc >> ~/course-practice/m1/ch12/status-summary.txt
+```
+
+```bash
+free -h >> ~/course-practice/m1/ch12/status-summary.txt
+```
+
+```bash
+ps -eo pid,user,stat,%cpu,%mem,comm --sort=-%cpu >> ~/course-practice/m1/ch12/status-summary.txt
+```
+
+```bash
+lsblk -o NAME,TYPE,SIZE,FSTYPE,MOUNTPOINTS >> ~/course-practice/m1/ch12/status-summary.txt
+```
+
+```bash
+findmnt >> ~/course-practice/m1/ch12/status-summary.txt
+```
+
+```bash
+sudo pvs >> ~/course-practice/m1/ch12/status-summary.txt
+```
+
+```bash
+sudo vgs >> ~/course-practice/m1/ch12/status-summary.txt
+```
+
+```bash
+sudo lvs >> ~/course-practice/m1/ch12/status-summary.txt
+```
+
+```bash
+df -hT >> ~/course-practice/m1/ch12/status-summary.txt
+```
+
+```bash
+df -i >> ~/course-practice/m1/ch12/status-summary.txt
+```
+
+```bash
+systemctl --failed --no-pager >> ~/course-practice/m1/ch12/status-summary.txt
+```
+
+```bash
+ss -lntup >> ~/course-practice/m1/ch12/status-summary.txt
 ```
 
 检查文件非空，并用vim在末尾补充三条结论：当前CPU/负载、内存、磁盘是否存在明显风险，以及判断依据。
 
 ```bash
 test -s ~/course-practice/m1/ch12/status-summary.txt
+```
+
+```bash
 echo "summary_nonempty_check=$?"
+```
+
+```bash
 sed -n '1,120p' ~/course-practice/m1/ch12/status-summary.txt
 ```
 
@@ -2964,84 +4222,21 @@ sed -n '1,120p' ~/course-practice/m1/ch12/status-summary.txt
 
 ### 实验衔接：实验7
 
-实验7从保留的`~/m1-project`起步，增加一个可控CPU异常的“制造—定位—终止—复测”过程，并把正式报告写入`~/m1-project/evidence/lab07-health-report.txt`。本章摘要不能复制后改名冒充实验报告。
+实验7从保留的`~/m1-project`和教师准备的8GiB空白虚拟磁盘起步。学生需要先完成设备安全确认，再完成普通分区挂载、UUID持久挂载、LVM创建与扩容，最后进行可控CPU异常的“制造—定位—终止—复测”，并把正式报告写入`~/m1-project/evidence/lab07-health-report.txt`。本章摘要不能复制后改名冒充实验报告。
 
-## 12.8 拓展阅读：把巡检固化为脚本
+## 12.8 从人工巡检到自动化脚本
 
-下面的脚本用于展示条件判断、循环和退出码怎样把人工检查固化。Shell脚本的完整项目实践安排在实验19；本节可作为学有余力的拓展，不是实验7的起点依赖。
+本章的重点是理解每个状态命令及其输出，暂不要求编写完整脚本。自动化巡检会把本章已经执行过的动作重新组织成以下流程：
 
-创建脚本：
-
-```bash
-mkdir -p ~/course-practice/m1/ch12
-cat > ~/course-practice/m1/ch12/m1-health-check.sh <<'SCRIPT'
-#!/bin/bash
-set -u
-
-status=0
-echo "=== health check $(date -Iseconds) host=$(hostname) ==="
-
-echo "[load]"
-uptime
-
-echo "[memory]"
-free -h
-
-echo "[filesystem]"
-df -h -x tmpfs -x devtmpfs
-
-while read -r filesystem size used available percent mountpoint; do
-  usage=${percent%%%}
-  if [[ $usage =~ ^[0-9]+$ ]] && (( usage >= 80 )); then
-    echo "WARNING filesystem=$mountpoint usage=${usage}%"
-    status=1
-  fi
-done < <(df -P -x tmpfs -x devtmpfs | tail -n +2)
-
-echo "[failed services]"
-failed_count=$(systemctl list-units --type=service --state=failed --no-legend --no-pager | grep -c . || true)
-systemctl list-units --type=service --state=failed --no-pager
-if (( failed_count > 0 )); then
-  echo "WARNING failed_services=$failed_count"
-  status=1
-fi
-
-echo "[important services]"
-for service in sshd chronyd; do
-  if systemctl is-active --quiet "$service"; then
-    echo "OK service=$service"
-  else
-    echo "WARNING service=$service"
-    status=1
-  fi
-done
-
-echo "[listening ports]"
-ss -lntup
-
-echo "result=$status"
-exit "$status"
-SCRIPT
-
-chmod +x ~/course-practice/m1/ch12/m1-health-check.sh
-~/course-practice/m1/ch12/m1-health-check.sh
-echo "exit_code=$?"
+```text
+采集时间和主机身份
+→ 采集负载、内存、文件系统和服务
+→ 把数值与阈值比较
+→ 输出正常项和告警项
+→ 使用退出码表示整体结果
 ```
 
-脚本中的关键结构：
-
-| 结构 | 作用 |
-|---|---|
-| `status=0` | 先假定巡检正常 |
-| `$(命令)` | 捕获命令输出并赋值 |
-| `while read ...; do ...; done` | 逐行读取`df`结果 |
-| `< <(命令)` | 把命令输出作为循环输入，这是Bash进程替换 |
-| `[[ ... ]]` | 进行模式或条件判断 |
-| `(( ... ))` | 进行整数条件判断 |
-| `for ...; do ...; done` | 依次检查多个服务 |
-| `exit "$status"` | 正常时退出0，发现告警时退出1 |
-
-脚本将结果展示给人，同时用退出状态告诉自动化工具是否发现磁盘、关键服务或失败Unit问题。该版本按Rocky主线环境检查`sshd`和`chronyd`；迁移到Ubuntu前，应先用`systemctl list-unit-files`确认对应Unit名称。后续Python自动化运维课程可以通过SSH批量执行这类脚本。
+进入[3.6 Shell服务器巡检](linux/模块三/3.6-Shell服务器巡检.md)后，再学习变量、条件判断、循环、命令替换和退出码，并完成可执行巡检脚本。本章不把看不懂的脚本作为实验7的前置要求。
 
 ## 12.9 系统状态排障案例
 
@@ -3080,95 +4275,6 @@ uptime/nproc
 
 ---
 
-# 模块综合实践（教材拓展）：交付一台可管理的Linux基础服务器
-
-## 任务背景
-
-一台新安装的Rocky Linux 9服务器需要交付给后续网络和服务部署模块。它必须具备明确的身份、规范的用户权限、可用的软件源、受控的sudo授权、正常的基础服务和可执行的健康检查。
-
-## 任务清单
-
-1. 主机名保持为`rocky-server`；若尚未进入实验8，保留当前DHCP地址并记录，完成实验8后再使用教师分配的稳定静态地址。
-2. 保留普通账号`rocky-server`，不得日常共用root。
-3. 确认`project-dev`、`project-audit`组以及`dev01`、`dev02`、`auditor`、`juniorops`账号符合第7章角色矩阵。
-4. 确认`/srv/course-share`允许`project-dev`成员协作，新文件继承组；`auditor`只读；`juniorops`不能访问项目共享目录。
-5. 保留sudoers独立文件，只允许`juniorops`执行`systemctl is-active nginx`。
-6. 验证DNF软件源，安装`tree`和`vim-enhanced`。
-7. 确认`chronyd`和`sshd`运行且开机自启。
-8. 检查`~/m1-project/evidence/lab07-health-report.txt`，确认报告包含资源数据、失败服务和基于证据的结论。
-9. 归档`~/m1-project`并完成恢复验证。
-10. 提交服务器基线报告。
-
-## 基线报告模板
-
-```markdown
-# Linux基础服务器交付报告
-
-## 1. 系统信息
-- 主机名：
-- 发行版：
-- 内核：
-- CPU/内存/磁盘：
-
-## 2. 用户和组
-- 管理账号：
-- 项目组：
-- sudo授权：
-
-## 3. 文件和权限
-- 共享目录：
-- 所有者和组：
-- 权限与特殊权限：
-
-## 4. 软件与服务
-- 软件源：
-- 已安装软件：
-- active/enabled服务：
-
-## 5. 资源与健康
-- 磁盘使用率：
-- inode使用率：
-- 失败服务：
-- 巡检报告结论与证据：
-
-## 6. 备份恢复
-- 归档文件：
-- 恢复目录：
-- diff验证结果：
-
-## 7. 已知问题
-```
-
-## 综合验收命令
-
-```bash
-hostnamectl
-cat /etc/os-release
-ip -br addr
-ip route
-id rocky-server
-id dev01
-id dev02
-id auditor
-id juniorops
-getent group project-dev
-getent group project-audit
-ls -ld /srv/course-share
-getfacl /srv/course-share /srv/course-share/project.conf
-sudo -l -U juniorops
-dnf repolist
-rpm -q tree vim-enhanced
-systemctl is-active chronyd sshd
-systemctl is-enabled chronyd sshd
-systemctl --failed
-df -h
-df -i
-test -s ~/m1-project/evidence/lab07-health-report.txt
-sed -n '1,80p' ~/m1-project/evidence/lab07-health-report.txt
-```
-
----
-
 # 模块复习
 
 ## 核心对象关系
@@ -3186,7 +4292,9 @@ sudo
   ↓ 安装程序和服务
 systemd + journal
   ↓ 管理运行状态和日志
-CPU/内存/磁盘/进程/端口
+磁盘 → 分区 → PV → VG → LV → 文件系统 → 挂载点
+  ↓ 提供持久存储
+CPU/内存/进程/端口
   ↓ 提供运行证据
 ```
 
@@ -3206,6 +4314,7 @@ CPU/内存/磁盘/进程/端口
 | Ubuntu软件 | `apt`、`dpkg` |
 | 服务日志 | `systemctl`、`journalctl` |
 | 资源状态 | `top`、`free`、`lsblk`、`df`、`du`、`ps`、`ss` |
+| 挂载与LVM | `mount`、`umount`、`findmnt`、`blkid`、`pvs`、`vgs`、`lvs`、`lvextend`、`xfs_growfs` |
 
 ## 复习题
 
@@ -3220,7 +4329,9 @@ CPU/内存/磁盘/进程/端口
 9. `apt update`是否会升级所有已安装软件？
 10. 为什么判断内存是否不足应关注`available`？
 11. `df -h`有空间但无法创建文件，下一步应检查什么？
-12. 服务启动失败时，应该按什么顺序收集证据？
+12. 为什么扩展LV之后还需要扩展文件系统？
+13. 为什么修改`/etc/fstab`后必须先执行验证再重启？
+14. 服务启动失败时，应该按什么顺序收集证据？
 
 ## 拓展练习
 

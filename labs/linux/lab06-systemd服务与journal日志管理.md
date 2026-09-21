@@ -308,7 +308,7 @@ curl --fail http://127.0.0.1:8088/
 journalctl -u course-demo.service -n 5 --no-pager
 ```
 
-> **验收点**：服务恢复active，日志重新出现周期输出。
+> **验收点**：服务恢复active；执行curl访问后，日志重新出现HTTP访问记录。
 
 ### 任务五：保存证据
 
@@ -328,7 +328,9 @@ systemctl show course-demo.service -p ActiveState -p SubState -p Result >> ~/m1-
 journalctl -u course-demo.service -n 10 --no-pager >> ~/m1-project/evidence/lab06-systemd.txt
 ```
 
-## 七、独立实践
+## 七、独立实践（课堂余量或课后巩固）
+
+核心服务已经完成“创建—运行—故障—日志—恢复”闭环后，再进行端口迁移练习。该任务不计入2学时课堂的基本验收：
 
 1. 把Unit中的端口由8088改为8089。
 2. 使用`systemd-analyze verify`检查Unit。
@@ -344,14 +346,14 @@ journalctl -u course-demo.service -n 10 --no-pager >> ~/m1-project/evidence/lab0
 - [ ] 服务状态和日志能够互相印证。
 - [ ] 已制造、记录并修复ExecStart路径故障。
 - [ ] 修复后状态和日志均已复测。
-- [ ] `lab06-systemd.txt`和独立实践完整。
+- [ ] `lab06-systemd.txt`及核心故障证据完整；独立实践为拓展任务。
 
 ## 九、成果提交
 
 1. `site/index.html`和`course-demo.service`。
 2. 故障报告：现象、证据、判断、根因、修复和验证。
 3. `lab06-systemd.txt`。
-4. 独立实践记录。
+4. 独立实践记录（拓展任务完成时提交）。
 
 ## 十、常见问题
 

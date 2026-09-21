@@ -1,17 +1,17 @@
 # 实验16：MongoDB数据库服务部署与安全配置
 
 > 所属模块：模块三 企业服务器部署与综合运维
-> 建议学时：4学时
+> 建议学时：2学时
 > 实验方式：个人
 > 对应教材：3.3 MongoDB文档数据库
-> 知识前置：数据库基础、systemd、YAML、认证授权和备份恢复
+> 知识前置：数据库基础、systemd、YAML和认证授权
 > 状态依赖：`rocky-server`软件源可用且CPU满足MongoDB要求；不依赖实验15数据
 > 建议起点：`Linux-L2`
-> 项目成果：company_db文档、认证与RBAC配置、BSON备份和隔离恢复证据
+> 项目成果：company_db文档、认证与RBAC配置、本地监听边界和认证故障证据
 
 ## 一、项目情境
 
-TechCorp需要使用MongoDB保存巡检文档。数据库只供本机应用使用，需要启用身份认证，为管理员和业务程序分配不同角色，并通过逻辑备份证明数据能够恢复。
+TechCorp需要使用MongoDB保存巡检文档。数据库只供本机应用使用，需要启用身份认证，为管理员和业务程序分配不同角色，并验证监听边界和认证故障。MongoDB逻辑备份与隔离恢复保留在教材中讲解，在实验20综合交付时完成一次正式操作。
 
 ## 二、实验规则
 
@@ -20,8 +20,7 @@ TechCorp需要使用MongoDB保存巡检文档。数据库只供本机应用使�
 3. 密码通过`passwordPrompt()`或`-p`交互输入。
 4. 业务用户不授予用户管理权限。
 5. 修改`mongod.conf`前保存原文件。
-6. 备份必须恢复到`company_restore`验证。
-7. YAML使用空格缩进，不使用Tab。
+6. YAML使用空格缩进，不使用Tab。
 
 ## 三、任务一：平台与安装前检查
 
@@ -116,10 +115,6 @@ mongod --version
 
 ```bash
 mongosh --version
-```
-
-```bash
-mongodump --version
 ```
 
 ## 五、任务三：启动并检查默认边界
@@ -377,85 +372,7 @@ sudo tail -n 50 /var/log/mongodb/mongod.log
 mongosh --host 127.0.0.1 --authenticationDatabase company_db -u inspectionApp -p company_db
 ```
 
-## 十一、任务九：逻辑备份
-
-创建父目录：
-
-```bash
-mkdir -p ~/backup-lab/mongodb
-```
-
-检查目标是否已经存在：
-
-```bash
-ls -ld ~/backup-lab/mongodb/company-dump
-```
-
-已存在时不得直接覆盖，应先核对、归档或从课程检查点重新开始。
-
-执行备份：
-
-```bash
-mongodump --host 127.0.0.1 --port 27017 --authenticationDatabase company_db -u inspectionApp -p --db company_db --out ~/backup-lab/mongodb/company-dump
-```
-
-紧接着查看退出状态：
-
-```bash
-echo $?
-```
-
-检查文件：
-
-```bash
-find ~/backup-lab/mongodb/company-dump -type f -ls
-```
-
-## 十二、任务十：误删与隔离恢复
-
-使用业务用户记录数量：
-
-```bash
-mongosh --host 127.0.0.1 --authenticationDatabase company_db -u inspectionApp -p company_db --quiet --eval 'db.inspections.countDocuments({})'
-```
-
-确认备份成功后删除集合：
-
-```bash
-mongosh --host 127.0.0.1 --authenticationDatabase company_db -u inspectionApp -p company_db --quiet --eval 'db.inspections.drop()'
-```
-
-恢复到独立数据库：
-
-```bash
-mongorestore --host 127.0.0.1 --port 27017 --authenticationDatabase admin -u courseAdmin -p --nsFrom='company_db.*' --nsTo='company_restore.*' ~/backup-lab/mongodb/company-dump
-```
-
-检查数量：
-
-```bash
-mongosh --host 127.0.0.1 --authenticationDatabase admin -u courseAdmin -p company_restore --quiet --eval 'db.inspections.countDocuments({})'
-```
-
-检查关键文档：
-
-```bash
-mongosh --host 127.0.0.1 --authenticationDatabase admin -u courseAdmin -p company_restore --quiet --eval 'db.inspections.find().forEach(printjson)'
-```
-
-隔离恢复正确后恢复正式库：
-
-```bash
-mongorestore --host 127.0.0.1 --port 27017 --authenticationDatabase admin -u courseAdmin -p --drop --nsInclude='company_db.*' ~/backup-lab/mongodb/company-dump
-```
-
-最终验证：
-
-```bash
-mongosh --host 127.0.0.1 --authenticationDatabase company_db -u inspectionApp -p company_db --quiet --eval 'db.inspections.find().forEach(printjson)'
-```
-
-## 十三、任务十一：验证网络边界
+## 十一、任务九：验证网络边界
 
 在Rocky确认只监听回环地址：
 
@@ -477,7 +394,7 @@ nc -vz -w 3 rocky-server 27017
 
 远程连接失败是本实验的安全验收结果。
 
-## 十四、验收标准
+## 十二、验收标准
 
 - [ ] 体系结构和CPU检查完成。
 - [ ] MongoDB服务端、mongosh和Database Tools来自统一来源。
@@ -487,41 +404,37 @@ nc -vz -w 3 rocky-server 27017
 - [ ] courseAdmin能够管理用户，inspectionApp仅有company_db的readWrite。
 - [ ] 错误认证数据库故障已经验证。
 - [ ] 业务用户不能创建用户。
-- [ ] 备份退出状态为0且BSON文件存在。
-- [ ] company_restore文档数量和关键字段正确。
-- [ ] company_db已经恢复。
 - [ ] Ubuntu不能直接连接27017。
 
-## 十五、成果提交
+## 十三、成果提交
 
 1. 平台、版本、服务和监听结果。
 2. `mongod.conf`的net与security关键部分。
 3. 两个用户的角色证据。
 4. 嵌套文档查询和越权失败结果。
 5. 错误认证数据库的故障记录。
-6. 备份文件、退出状态和隔离恢复结果。
-7. 本地监听与Ubuntu远程失败证据。
+6. 本地监听与Ubuntu远程失败证据。
 
-## 十六、常见问题
+## 十四、常见问题
 
-### 16.1 mongod启动失败
+### 14.1 mongod启动失败
 
 查看systemd和MongoDB日志，重点检查YAML缩进和Tab。
 
-### 16.2 Illegal instruction
+### 14.2 Illegal instruction
 
 检查宿主CPU和VMware是否向虚拟机暴露所需指令集，不能靠重复安装解决。
 
-### 16.3 Authentication failed
+### 14.3 Authentication failed
 
 确认用户创建在哪个数据库，并使用正确`--authenticationDatabase`。
 
-### 16.4 Unauthorized
+### 14.4 Unauthorized
 
 说明身份可能已经验证，但角色不允许当前操作。检查业务用户角色，不随意提升为管理员。
 
-## 十七、环境保留
+## 十五、环境保留
 
-保留mongod、认证配置、company_db、courseAdmin、inspectionApp和`company-dump`供实验20使用。
+保留mongod、认证配置、company_db、courseAdmin和inspectionApp供实验20使用。实验20将使用这些现有数据完成一次MongoDB正式备份和隔离恢复。
 
-MongoDB保持只监听`127.0.0.1`，不添加27017防火墙规则。`company_restore`验收后可以删除。
+MongoDB保持只监听`127.0.0.1`，不添加27017防火墙规则。

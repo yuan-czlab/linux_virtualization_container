@@ -104,7 +104,7 @@ sudo ls -ld /srv/course-share
 3. 验证开发人员协作、审计人员只读和无关用户拒绝访问。
 4. 检查umask对新文件默认权限的影响。
 5. 验证共享成员不能删除其他成员拥有的文件。
-6. 为初级运维人员授予查询Nginx运行状态的最小sudo权限。
+6. 为初级运维人员授予查询chronyd运行状态的最小sudo权限。
 7. 锁定测试账号并保留审计证据。
 
 ## 六、实验步骤
@@ -408,7 +408,7 @@ sudo visudo -f /etc/sudoers.d/course-juniorops
 写入一行；若`systemctl`路径不同，应使用实际路径：
 
 ```text
-juniorops ALL=(root) NOPASSWD: /usr/bin/systemctl is-active nginx
+juniorops ALL=(root) NOPASSWD: /usr/bin/systemctl is-active chronyd
 ```
 
 保存后检查：
@@ -425,23 +425,29 @@ sudo chmod 440 /etc/sudoers.d/course-juniorops
 sudo -l -U juniorops
 ```
 
-> **验收点**：语法检查通过，授权列表只包含查询Nginx运行状态的命令。
+> **验收点**：语法检查通过，授权列表只包含查询chronyd运行状态的命令。
 
 #### 步骤12：验证允许和拒绝
 
-如果尚未安装Nginx，`is-active nginx`可能输出`unknown`或`inactive`并返回非0；只要没有出现sudo拒绝信息，授权匹配仍可验证。
+先由当前管理员确认chronyd服务基线：
 
 ```bash
-sudo -u juniorops sudo /usr/bin/systemctl is-active nginx
+systemctl is-active chronyd
+```
+
+Rocky Linux 9的课程镜像预期输出`active`。若不是`active`，先排查服务基线，不要继续把服务故障和sudo规则混在一起。然后验证授权命令：
+
+```bash
+sudo -u juniorops sudo /usr/bin/systemctl is-active chronyd
 ```
 
 再验证未授权的重启操作：
 
 ```bash
-sudo -u juniorops sudo /usr/bin/systemctl restart nginx
+sudo -u juniorops sudo /usr/bin/systemctl restart chronyd
 ```
 
-这里使用`NOPASSWD`只为便于在实验环境中验证这一条精确查询命令，不代表可以对任意命令免密授权。`is-active nginx`应被sudo规则允许，重启命令应被拒绝。没有授权`systemctl status`，也避免免密命令进入交互式分页器。
+这里使用`NOPASSWD`只为便于在实验环境中验证这一条精确查询命令，不代表可以对任意命令免密授权。`is-active chronyd`应被sudo规则允许，重启命令应被拒绝。没有授权`systemctl status`，也避免免密命令进入交互式分页器。
 
 > **验收点**：提供一条允许证据和一条拒绝证据。
 
@@ -507,7 +513,9 @@ less ~/m1-project/evidence/lab04-permissions.txt
 
 > **验收点**：证据文件包含用户组、目录、ACL和sudo授权信息。
 
-## 七、独立实践
+## 七、独立实践（课堂余量或课后巩固）
+
+下面是一套新的权限设计任务，用于迁移应用本实验的方法。核心项目验收完成后再进行，不计入4学时课堂的基本验收：
 
 1. 创建`operator01`账号和`web-ops`用户组。
 2. 创建`/srv/web-content`，要求web-ops成员可协作写入，其他用户无权访问。
@@ -528,7 +536,7 @@ less ~/m1-project/evidence/lab04-permissions.txt
 - [ ] 能解释0022与0002对默认权限的影响。
 - [ ] sudoers文件通过`visudo -cf`检查。
 - [ ] juniorops只能执行被授权的运行状态查询，不能重启服务。
-- [ ] 独立实践和证据文件完整。
+- [ ] 核心项目账号、共享权限、sudo规则和证据文件完整；独立实践为拓展任务。
 
 ## 九、成果提交
 
@@ -537,7 +545,7 @@ less ~/m1-project/evidence/lab04-permissions.txt
 3. 允许和拒绝访问的命令、错误与退出码。
 4. sudo最小授权文件内容和语法检查结果。
 5. `~/m1-project/evidence/lab04-permissions.txt`。
-6. 独立实践结果。
+6. 独立实践结果（拓展任务完成时提交）。
 
 ## 十、常见问题
 

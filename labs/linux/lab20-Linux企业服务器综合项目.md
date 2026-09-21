@@ -159,10 +159,6 @@ test -s ~/backup-lab/mysql/company_db.sql
 ```
 
 ```bash
-find ~/backup-lab/mongodb/company-dump -type f -print -quit
-```
-
-```bash
 git -C ~/m1-project/git-lab status --short --branch
 ```
 

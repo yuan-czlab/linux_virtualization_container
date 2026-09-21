@@ -11,7 +11,7 @@
 
 ## 一、项目情境
 
-项目目录已经建立，但运维人员还需要修改配置、快速定位文件，并在变更前进行归档。你需要使用Vim修改实验配置，使用`find`定位目标，创建软链接和硬链接，最后对项目目录进行归档并验证能够恢复。
+项目目录已经建立，但运维人员还需要修改配置、从真实项目文件中筛选信息、快速定位文件，并在变更前进行归档。你需要使用Vim修改实验配置，使用`grep`、`wc`、`sort`、`find`和管道形成审计证据，创建软链接和硬链接，最后对项目目录进行归档并验证能够恢复。
 
 ## 二、实验目标
 
@@ -24,9 +24,10 @@
 ### 2. 能力目标
 
 1. 使用Vim完成定位、修改、保存、撤销和退出。
-2. 使用`find`按名称、类型、大小和时间查找文件。
-3. 创建并验证软链接和硬链接。
-4. 使用`tar`创建归档、查看内容并恢复到新目录。
+2. 使用`grep`、`wc`、`sort`、`find`和管道分析真实项目文件。
+3. 使用`find`按名称、类型、大小和时间查找文件。
+4. 创建并验证软链接和硬链接。
+5. 使用`tar`创建归档、查看内容并恢复到新目录。
 
 ### 3. 素质目标
 
@@ -51,7 +52,14 @@
 
 操作前打开[Linux目录树、路径与链接动画](../../animations/02-linux-filesystem-paths-links/index.html)并切换到“inode与链接”。先预测删除原文件后的结果，再在本实验中用`ls -li`、`stat`和`cat`验证。
 
-### 3. 归档与压缩
+### 3. 文本筛选与文件查找
+
+- `grep`根据内容筛选行，`find`根据文件名、类型、大小、时间等属性查找文件系统对象。
+- `wc -l`统计输入行数，`sort -n`按数字排序，`sort -nr`按数字倒序。
+- 管道应从左向右逐级构造。先单独验证前一条命令的输出，再增加下一段处理。
+- `tee`可以把结果同时显示在屏幕并写入证据文件。
+
+### 4. 归档与压缩
 
 `tar`先把多个文件组织成一个归档，也可以调用gzip等算法压缩。常用组合：
 
@@ -83,10 +91,13 @@ find "$HOME/m1-project" -maxdepth 2 -type f -printf '%P\n' | sort
 ## 五、项目任务
 
 1. 备份并使用Vim修改配置。
-2. 使用不同条件查找项目文件。
-3. 创建并验证软链接和硬链接。
-4. 创建带时间标记的项目归档。
-5. 把归档恢复到新目录并比较关键文件。
+2. 筛选真实配置和日志内容，形成项目审计证据。
+3. 使用不同条件查找项目文件。
+4. 创建并验证软链接和硬链接。
+5. 创建带时间标记的项目归档。
+6. 把归档恢复到新目录并比较关键文件。
+
+本实验按90分钟有效上机时间组织：Vim修改约15分钟，查找与内容审计约25分钟，链接验证约15分钟，归档恢复约25分钟，证据整理约10分钟。教材中的完整命令已经逐条练习，本实验只完成一次真实项目闭环，不追求把同类命令反复执行。
 
 ## 六、实验步骤
 
@@ -138,19 +149,19 @@ diff -u ~/m1-project/backup/app.conf.before-vim ~/m1-project/config/app.conf
 
 > **验收点**：配置包含`mode=training`和`log_level=info`，能够解释`diff`结果。
 
-#### 步骤3：练习搜索和不保存退出
+#### 步骤3：使用搜索确认修改（有余量时练习不保存退出）
 
 ```bash
 vim ~/m1-project/config/app.conf
 ```
 
-在普通模式输入`/log_level`搜索。按`n`查找下一个结果。临时修改任意字符后按`Esc`，输入`:q!`退出，再执行：
+在普通模式输入`/log_level`搜索，确认能够定位新增配置。时间充足时，可临时修改任意字符后按`Esc`，输入`:q!`退出，体会“放弃本次修改”。然后执行：
 
 ```bash
 grep '^log_level=' ~/m1-project/config/app.conf
 ```
 
-> **验收点**：临时修改没有保存，原配置仍为`log_level=info`。
+> **验收点**：能够在Vim中搜索`log_level`，退出后原配置仍为`log_level=info`。`:q!`练习不计入必交证据。
 
 ### 任务二：查找文件
 
@@ -168,23 +179,9 @@ find ~/m1-project -type f -name '*.log' -print
 find ~/m1-project -type d -maxdepth 2 -print | sort
 ```
 
-查找命令程序位置：
+`find`搜索文件系统中的目录和文件；`command -v`、`which`和`type`已经在教材1.5中用于判断命令来源，本实验不再重复。
 
-```bash
-command -v tar
-```
-
-```bash
-which vim
-```
-
-```bash
-type cd
-```
-
-`find`搜索文件系统对象，`command -v`或`which`查找将执行的命令，二者用途不同。
-
-> **验收点**：找到`app.conf`，并能说明`find`与`which`的区别。
+> **验收点**：找到`app.conf`，并能说明这里查找的是文件系统对象而不是Shell命令来源。
 
 #### 步骤5：按大小和时间查找
 
@@ -200,9 +197,63 @@ find ~/m1-project -type f -mmin -30 -printf '%TY-%Tm-%Td %TH:%TM %p\n'
 
 > **验收点**：保存两种条件的查找结果，不能把“无结果”直接解释为命令失败。
 
+#### 步骤6：筛选项目内容并保存审计证据
+
+本步骤只分析实验2和本实验已经产生的真实文件，不另外编造日志。先确认配置与部署日志都存在：
+
+```bash
+test -s ~/m1-project/config/app.conf
+```
+
+```bash
+test -s ~/m1-project/logs/deploy-history.log
+```
+
+两条命令都没有报错才继续。先在`config`和`logs`目录中筛选关键配置与部署状态：
+
+```bash
+grep -RInE 'mode=|port=|deployment=' ~/m1-project/config ~/m1-project/logs
+```
+
+确认输出符合预期后，显示并保存同一结果：
+
+```bash
+grep -RInE 'mode=|port=|deployment=' ~/m1-project/config ~/m1-project/logs | tee ~/m1-project/evidence/lab03-content-audit.txt
+```
+
+统计审计结果共有多少行：
+
+```bash
+wc -l ~/m1-project/evidence/lab03-content-audit.txt
+```
+
+接着查看项目文件大小，不要立即拼接排序命令：
+
+```bash
+find ~/m1-project -maxdepth 2 -type f -printf '%s %p\n'
+```
+
+确认第一列是字节数后，按数字倒序并保存：
+
+```bash
+find ~/m1-project -maxdepth 2 -type f ! -name 'lab03-file-size-audit.txt' -printf '%s %p\n' | sort -nr | tee ~/m1-project/evidence/lab03-file-size-audit.txt
+```
+
+最后验证两份证据均存在且非空：
+
+```bash
+test -s ~/m1-project/evidence/lab03-content-audit.txt
+```
+
+```bash
+test -s ~/m1-project/evidence/lab03-file-size-audit.txt
+```
+
+> **验收点**：能指出管道中每一段命令接收什么输入、产生什么输出；两份审计证据来自真实项目文件。
+
 ### 任务三：链接实验
 
-#### 步骤6：创建硬链接和软链接
+#### 步骤7：创建硬链接和软链接
 
 ```bash
 mkdir -p ~/m1-project/links
@@ -226,7 +277,7 @@ readlink ~/m1-project/links/app.conf.soft
 
 观察：原文件和硬链接inode编号相同，软链接显示保存的目标路径。
 
-#### 步骤7：验证链接行为
+#### 步骤8：验证链接行为
 
 ```bash
 printf 'link_test=ok\n' >> ~/m1-project/links/app.conf.hard
@@ -246,7 +297,7 @@ cat ~/m1-project/links/app.conf.soft
 
 ### 任务四：归档与恢复
 
-#### 步骤8：创建归档
+#### 步骤9：创建归档
 
 本实验使用固定归档名，避免后续步骤依赖只存在于旧终端中的变量。先创建归档目录：
 
@@ -288,7 +339,7 @@ tar -tzf ~/m1-project/backup/archives/lab03-m1-project.tar.gz | sed -n '1,30p'
 
 > **验收点**：归档非空，内容列表包含`m1-project/config/app.conf`。
 
-#### 步骤9：恢复到新目录
+#### 步骤10：恢复到新目录
 
 ```bash
 test -s ~/m1-project/backup/archives/lab03-m1-project.tar.gz
@@ -328,7 +379,7 @@ cmp ~/m1-project/config/app.conf /tmp/lab03-restore/m1-project/config/app.conf
 
 > **验收点**：恢复后的配置与当前配置一致，`cmp`返回0。
 
-#### 步骤10：生成校验值
+#### 步骤11：生成校验值
 
 ```bash
 sha256sum "$(cat ~/m1-project/evidence/lab03-latest-archive.path)" | tee ~/m1-project/evidence/lab03-archive.sha256
@@ -338,33 +389,35 @@ sha256sum "$(cat ~/m1-project/evidence/lab03-latest-archive.path)" | tee ~/m1-pr
 
 > **验收点**：校验文件存在，归档已经完成一次真实恢复。
 
-## 七、独立实践
+## 七、独立实践（课后任选一项）
 
-1. 使用Vim把`port=8080`改为`port=9090`，修改前创建新的备份。
-2. 使用`find`只列出`~/m1-project`中大于20字节的普通文件。
-3. 为`web/index.html`创建一个相对路径软链接。
-4. 创建一个只包含`config`和`web`的归档。
-5. 恢复到另一个新目录，并比较两个关键文件。
+课堂必做任务全部完成后，从下面选择一项巩固，不计入实验基本验收：
+
+1. 使用`find`只列出`~/m1-project`中大于20字节的普通文件。
+2. 为`web/index.html`创建一个相对路径软链接，并解释其目标路径。
+3. 创建一个只包含`config`和`web`的归档，恢复到新目录后比较两个关键文件。
 
 ## 八、验收标准
 
 - [ ] 能使用Vim完成搜索、修改、保存和不保存退出。
 - [ ] 配置修改前存在可用备份。
+- [ ] 能使用`grep`、`wc`、`sort`和管道生成真实项目审计证据。
 - [ ] 能使用`find`按名称、类型、大小和时间查找。
 - [ ] 能通过inode和`readlink`区分硬链接与软链接。
 - [ ] 归档文件非空且内容列表正确。
 - [ ] 已把归档恢复到新目录。
 - [ ] 恢复后的关键文件通过内容比较。
-- [ ] 已保存归档SHA256和独立实践结果。
+- [ ] 已保存归档SHA256；独立实践为课后选做。
 
 ## 九、成果提交
 
 1. 修改后的`config/app.conf`。
-2. `backup/app.conf.before-vim`及独立实践备份。
-3. 文件查找命令和结果。
-4. 归档文件名称、大小和内容列表。
-5. `evidence/lab03-archive.sha256`。
-6. 恢复目录文件清单及`cmp`验证结果。
+2. `backup/app.conf.before-vim`。
+3. `evidence/lab03-content-audit.txt`和`evidence/lab03-file-size-audit.txt`。
+4. 文件查找命令和结果。
+5. 归档文件名称、大小和内容列表。
+6. `evidence/lab03-archive.sha256`。
+7. 恢复目录文件清单及`cmp`验证结果。
 
 ## 十、常见问题
 
